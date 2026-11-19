@@ -1,393 +1,53 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { fetchKaroEventsFeed } from './eventFeedClient'
+import { PksMapView } from './PksMapView'
+import { ProfileSettingsPanel } from './ProfileSettingsPanel'
+import {
+  AGE_GROUP_OPTIONS,
+  AuthenticatedGoogleUser,
+  BASE_DEFAULT_PROFILE,
+  buildInitialProfileForGoogleUser,
+  buildInviteUrl,
+  calcDistanceKm,
+  calcFamilyMatch,
+  ChildItem,
+  CloseRelativeItem,
+  CoParentItem,
+  DbCommitFeedEntry,
+  DbSyncStatus,
+  DEMO_FAMILIES,
+  DemoSelectionEvent,
+  emailToUserId,
+  FamilyEvent,
+  FamilyProfile,
+  FloatingPos,
+  generateInviteCode,
+  INITIAL_ATTENDING_IDS,
+  INITIAL_EVENTS,
+  NERD_DB_QUIPS,
+  normalizeProfile,
+  nowClock,
+  PersistedSessionState,
+  ProfileSubView,
+  RELATIVE_ROLES,
+  SESSION_STORAGE_PREFIX,
+  TabKey,
+  UserProfileState,
+} from './protoData'
 
-// --- TIETOMALLIT ---
-interface AuthenticatedGoogleUser {
-  id: string
-  displayName: string
-  email: string
-  avatarUrl?: string
-}
-
-interface CoParentItem {
-  id: string
-  name: string
-  email: string
-  status: 'pending' | 'accepted'
-  invitedAt: string
-  inviteCode: string
-}
-
-interface ChildItem {
-  id: string
-  ageLabel: string
-  group: string
-}
-
-interface CloseRelativeItem {
-  id: string
-  relationLabel: string
-  note: string
-}
-
-interface FamilyProfile {
-  id: string
-  name: string
-  area: string
-  city: string
-  distanceKm: number
-  childrenAges: string
-  ageGroups: string[]
-  closeRelativesSummary?: string
-  hasCloseRelatives?: boolean
-  bio: string
-  interests: string[]
-  attendingEventId: string
-  coords: [number, number]
-}
-
-interface FamilyEvent {
-  id: string
-  title: string
-  venue: string
-  city: string
-  time: string
-  ageGroup: string
-  price: string
-  coords: [number, number]
-}
-
-interface UserProfileState {
-  familyName: string
-  area: string
-  bio: string
-  coParents: CoParentItem[]
-  children: ChildItem[]
-  closeRelatives: CloseRelativeItem[]
-  interests: string[]
-  filters: {
-    maxDistanceKm: number
-    targetAgeGroups: string[]
-    targetCity: string
-  }
-  privacy: {
-    discoverable: boolean
-    shareEventsWithMatches: boolean
-    showCloseRelativesInMatches: boolean
-  }
-}
-
-interface PersistedProtoState {
-  profile: UserProfileState
-  attendingIds: string[]
-  dismissedIds: string[]
-  matchedIds: string[]
-  messages: Record<string, string[]>
-}
-
-interface DemoSelectionEvent {
-  id: string
-  time: string
-  action: string
-  detail: string
-}
-
-interface DbCommitFeedEntry {
-  id: string
-  statusCode: string
-  terminalLine: string
-  diffStamp: string
-  quip: string
-  revision: number
-}
-
-interface FloatingPos {
-  x: number
-  y: number
-}
-
-interface LeafletCircleMarker {
-  addTo: (map: LeafletMapInstance) => LeafletCircleMarker
-  bindPopup: (html: string) => LeafletCircleMarker
-}
-
-interface LeafletMapInstance {
-  remove: () => void
-  invalidateSize: () => void
-  setView: (coords: [number, number], zoom: number) => void
-  fitBounds: (bounds: unknown, options?: { padding?: [number, number] }) => void
-}
-
-interface LeafletGlobal {
-  map: (container: HTMLElement, options?: { zoomSnap?: number }) => LeafletMapInstance
-  tileLayer: (
-    url: string,
-    options?: { attribution?: string; maxZoom?: number },
-  ) => { addTo: (map: LeafletMapInstance) => void }
-  latLngBounds: (sw: [number, number], ne: [number, number]) => unknown
-  circleMarker: (
-    coords: [number, number],
-    options: {
-      radius: number
-      fillColor: string
-      color: string
-      weight: number
-      fillOpacity: number
-    },
-  ) => LeafletCircleMarker
-}
-
-type TabKey = 'events' | 'families' | 'map' | 'profile'
-type ProfileSubView = 'main' | 'members' | 'store_inspector'
-type DbSyncStatus = 'idle' | 'saving' | 'saved' | 'error'
-
-const STORAGE_PREFIX = 'perhepiiri_proto_v1_'
-const INITIAL_ATTENDING_IDS = ['evt-2']
-
-const NERD_DB_QUIPS: string[] = [
-  'BSON-serpentti nielaisi dokumentin. Zero schema migrations harmed.',
-  'fsync() kätteli levyn kanssa. Eventual consistency on heikoille.',
-  'Atomic rename suoritettu. Jopa Brio-juna pysyi kiskoilla.',
-  'Write-ahead log kuivui ilman deadlockeja. CAP-teoreema nyökkäsi.',
-  'JSON-klusteri nielee tavut kuin OOM-killer ahneen Node-prosessin.',
-  'Idempotentti upsert valmis. Bitit rivissä kuin sotilaat.',
-  'Ei yhtään ORMia vahingoitettu tämän levyoperaation aikana.',
-  'Dokumentti ankkuroitu levylle kovempaa kuin ACID-transaktio.',
-  'Dirty pages huuhdeltu. Välimuisti ja levy ovat vihdoin puheväleissä.',
-  'Schema-on-read voitti taas yhden turhan ALTER TABLE -migraation.',
-  'Levy-I/O läpäisi tulikokeen ilman segfaultia tai korruptiota.',
-  'Tila serialisoitu puhtaaksi UTF-8:ksi. Ei NaN-ylläreitä.',
-  'Temp-tiedosto atomisesti nimetty uudelleen. Race condition jäi nuolemaan näppejään.',
-  'Dokumenttikanta päivitetty. Jopa linteri pysyi hiljaa.',
-  'Journalointi kuitti. Sähkökatkokaan ei enää pelota.',
-  'Muistivuodot nollassa, levylohkot järjestyksessä. Ship it.',
-  'Payload parsittu ja lukittu levylle ennen kuin event loop ehti räpäyttää.',
-  'Kokoelma synkassa. Ei tarvittu Kubernetes-klusteria tähän operaatioon.',
-  'Tavuja siirretty tarkkuudella, josta RAID-ohjainkin olisi ylpeä.',
-  'Upsert-operaatio meni läpi kuin root-oikeuksilla tehty chmod.',
-  'Dokumentti talletettu ilman yhtäkään turhaa microservices-hyppyä.',
-  'Levykirjoitus valmis. Cache invalidation on silti se vaikein ongelma.',
-  'Bitti kerrallaan kohti ikuisuutta. Persistency achieved.',
-  'JSON-puun oksat karsittu ja talletettu. Garbage collector kiittää.',
-]
-
-const AVAILABLE_TAGS = [
-  'Puistotreffit',
-  'Luontoretket',
-  'Pyöräily',
-  'Kulttuuri',
-  'Uinti',
-  'Jalkapallo',
-  'Lautapelit',
-  'Koodaus',
-  'Kirjastot',
-  'Vertaistuki',
-]
-
-const AGE_GROUP_OPTIONS = ['0-3v', '4-6v', '7-12v', '13-16v']
-const RELATIVE_ROLES = ['Isovanhempi', 'Kummi', 'Läheinen']
-
-// --- DEMODATA ---
-const INITIAL_EVENTS: FamilyEvent[] = [
-  {
-    id: 'evt-1',
-    title: 'Lasten lauantaidisko',
-    venue: 'Espoon kulttuurikeskus, Tapiola',
-    city: 'Espoo',
-    time: 'La 21.11. klo 14:00',
-    ageGroup: '3–10 v',
-    price: 'Maksuton',
-    coords: [60.1773, 24.8042],
-  },
-  {
-    id: 'evt-2',
-    title: 'Koko perheen ulkoilupäivä & makkaranpaisto',
-    venue: 'Oittaan ulkoilualue',
-    city: 'Espoo',
-    time: 'Su 22.11. klo 11:00',
-    ageGroup: 'Kaikenikäiset',
-    price: 'Maksuton',
-    coords: [60.2392, 24.6565],
-  },
-  {
-    id: 'evt-3',
-    title: 'Perheiden koodaus- ja robottipaja',
-    venue: 'Keskustakirjasto Oodi',
-    city: 'Helsinki',
-    time: 'La 28.11. klo 12:00',
-    ageGroup: '6–12 v',
-    price: 'Maksuton',
-    coords: [60.1741, 24.9382],
-  },
-]
-
-const DEMO_FAMILIES: FamilyProfile[] = [
-  {
-    id: 'fam-1',
-    name: 'Virtasen perhe',
-    area: 'Tapiola, Espoo',
-    city: 'Espoo',
-    distanceKm: 1.8,
-    childrenAges: '4v ja 7v',
-    ageGroups: ['4-6v', '7-12v'],
-    hasCloseRelatives: true,
-    closeRelativesSummary: 'Isovanhemmat mukana viikonloppuretkillä',
-    bio: 'Ulkoilua, pyöräilyä ja uusia leikkikavereita viikonloppuihin. Kahvi maistuu puiston laidalla!',
-    interests: ['Puistotreffit', 'Pyöräily', 'Kulttuuri'],
-    attendingEventId: 'evt-1',
-    coords: [60.1756, 24.8053],
-  },
-  {
-    id: 'fam-2',
-    name: 'Korhosen perhe',
-    area: 'Kauniainen',
-    city: 'Kauniainen',
-    distanceKm: 3.4,
-    childrenAges: '5v ja 8v',
-    ageGroups: ['4-6v', '7-12v'],
-    hasCloseRelatives: false,
-    closeRelativesSummary: '',
-    bio: 'Muutettiin hiljattain alueelle. Etsitään rentoa perheseuraa retkille ja harrastuksiin.',
-    interests: ['Luontoretket', 'Jalkapallo', 'Lautapelit'],
-    attendingEventId: 'evt-2',
-    coords: [60.2114, 24.7265],
-  },
-  {
-    id: 'fam-3',
-    name: 'Mäkisen perhe',
-    area: 'Leppävaara, Espoo',
-    city: 'Espoo',
-    distanceKm: 4.9,
-    childrenAges: '6v ja 9v',
-    ageGroups: ['4-6v', '7-12v'],
-    hasCloseRelatives: true,
-    closeRelativesSummary: 'Kummi ja isovanhemmat lähellä',
-    bio: 'Kaksi aktiivista koululaista ja vauhdikas arki. Mukaan kirjastoreissuille ja pajoihin!',
-    interests: ['Koodaus', 'Kirjastot', 'Uinti'],
-    attendingEventId: 'evt-3',
-    coords: [60.2189, 24.8124],
-  },
-  {
-    id: 'fam-4',
-    name: 'Lindqvistin perhe',
-    area: 'Töölö, Helsinki',
-    city: 'Helsinki',
-    distanceKm: 11.5,
-    childrenAges: '2v',
-    ageGroups: ['0-3v'],
-    hasCloseRelatives: false,
-    closeRelativesSummary: '',
-    bio: 'Taaperoarkea ja puistokahveja keskustan ja Seurasaaren maastoissa.',
-    interests: ['Puistotreffit', 'Vertaistuki', 'Kulttuuri'],
-    attendingEventId: 'evt-1',
-    coords: [60.1805, 24.9182],
-  },
-]
-
-const BASE_DEFAULT_PROFILE: UserProfileState = {
-  familyName: 'Oma Perhe',
-  area: 'Espoon keskus / Kauniainen',
-  bio: 'Etsitään rentoa perheseuraa viikonlopun ulkoiluihin ja tapahtumiin.',
-  coParents: [],
-  children: [
-    { id: 'c1', ageLabel: '5 v', group: '4-6v' },
-    { id: 'c2', ageLabel: '8 v', group: '7-12v' },
-  ],
-  closeRelatives: [
-    { id: 'r1', relationLabel: 'Isovanhempi', note: 'Tukiverkko viikonloppuisin' },
-  ],
-  interests: ['Luontoretket', 'Pyöräily', 'Jalkapallo'],
-  filters: {
-    maxDistanceKm: 15,
-    targetAgeGroups: ['4-6v', '7-12v'],
-    targetCity: 'Kaikki PKS',
-  },
-  privacy: {
-    discoverable: true,
-    shareEventsWithMatches: true,
-    showCloseRelativesInMatches: false,
-  },
-}
-
-function buildDefaultProfileForGoogleUser(user: AuthenticatedGoogleUser): UserProfileState {
-  const firstName = user.displayName.split(' ')[0] || 'Oma'
-  return {
-    ...BASE_DEFAULT_PROFILE,
-    familyName: `${firstName} – perhe`,
-  }
-}
-
-function emailToUserId(email: string): string {
-  return email
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-}
-
-function nowClock(): string {
-  return new Date().toLocaleTimeString('fi-FI', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-function generateInviteCode(): string {
-  const part = Math.random().toString(36).substring(2, 6).toUpperCase()
-  return `PP-${part}`
-}
-
-function buildInviteUrl(invite: CoParentItem): string {
-  const base =
-    typeof window !== 'undefined' && window.location?.origin
-      ? window.location.origin
-      : 'https://perhepiiri.example.fi'
-  return `${base}/kutsu?code=${encodeURIComponent(invite.inviteCode)}&email=${encodeURIComponent(invite.email)}`
-}
-
-function normalizeProfile(
-  incoming?: Partial<UserProfileState> | null,
-  fallbackBase: UserProfileState = BASE_DEFAULT_PROFILE,
-): UserProfileState {
-  if (!incoming) return fallbackBase
-  const rawParents = Array.isArray(incoming.coParents) ? incoming.coParents : fallbackBase.coParents
-  const normalizedParents: CoParentItem[] = rawParents.map((p, idx) => ({
-    id: p.id || `cp-${idx}`,
-    name: p.name || 'Toinen vanhempi',
-    email: p.email || '',
-    status: p.status === 'accepted' ? 'accepted' : 'pending',
-    invitedAt: p.invitedAt || 'Aiemmin',
-    inviteCode: p.inviteCode || `PP-DEMO${idx + 1}`,
-  }))
-
-  return {
-    ...fallbackBase,
-    ...incoming,
-    coParents: normalizedParents,
-    children: Array.isArray(incoming.children) ? incoming.children : fallbackBase.children,
-    closeRelatives: Array.isArray(incoming.closeRelatives)
-      ? incoming.closeRelatives
-      : fallbackBase.closeRelatives,
-    interests: Array.isArray(incoming.interests) ? incoming.interests : fallbackBase.interests,
-    filters: { ...fallbackBase.filters, ...incoming.filters },
-    privacy: { ...fallbackBase.privacy, ...incoming.privacy },
-  }
-}
-
-function loadUserPersistedState(userId: string): PersistedProtoState | null {
+function loadTransientSession(userId: string): PersistedSessionState | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(`${STORAGE_PREFIX}${userId}`)
+    const raw = window.localStorage.getItem(`${SESSION_STORAGE_PREFIX}${userId}`)
     if (!raw) return null
-    return JSON.parse(raw) as PersistedProtoState
+    return JSON.parse(raw) as PersistedSessionState
   } catch {
     return null
   }
 }
 
-// Kelluva raahattava ikkuna, joka sijoittuu oletuksena näkymän oikealle puolelle
 function FloatingDockWindow({
   title,
   badge,
@@ -474,9 +134,7 @@ function FloatingDockWindow({
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[10px] opacity-75">⠿</span>
-          <span className="font-mono text-[10px] font-bold tracking-wider truncate">
-            {title}
-          </span>
+          <span className="font-mono text-[10px] font-bold tracking-wider truncate">{title}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/35 text-zinc-200">
@@ -498,7 +156,6 @@ function FloatingDockWindow({
 }
 
 export default function PerheAppPrototypePage() {
-  // Aidon Google OAuth -istunnon tila
   const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>(
     'loading',
   )
@@ -510,10 +167,18 @@ export default function PerheAppPrototypePage() {
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main')
   const [familySubTab, setFamilySubTab] = useState<'discover' | 'matches'>('discover')
 
-  // Profiilin ja suodattimien tila
   const [profile, setProfile] = useState<UserProfileState>(BASE_DEFAULT_PROFILE)
 
-  // Toisen vanhemman kutsulomake & esikatselu
+  const [events, setEvents] = useState<FamilyEvent[]>(INITIAL_EVENTS)
+  const [eventFeedStatus, setEventFeedStatus] = useState<'loading' | 'live-api' | 'fallback'>(
+    'loading',
+  )
+  const [eventFeedDebug, setEventFeedDebug] = useState<{
+    httpStatus: number | null
+    errorDetail?: string
+    count: number
+  }>({ httpStatus: null, count: 0 })
+
   const [inviteParentName, setInviteParentName] = useState('')
   const [inviteParentEmail, setInviteParentEmail] = useState('')
   const [inviteError, setInviteError] = useState('')
@@ -526,32 +191,24 @@ export default function PerheAppPrototypePage() {
   const [childError, setChildError] = useState('')
   const [newRelativeRole, setNewRelativeRole] = useState('Isovanhempi')
   const [newRelativeNote, setNewRelativeNote] = useState('')
-  const [customTag, setCustomTag] = useState('')
+
   const [profileSavedToast, setProfileSavedToast] = useState(false)
+  const [transientResetToast, setTransientResetToast] = useState(false)
   const [dbSyncStatus, setDbSyncStatus] = useState<DbSyncStatus>('idle')
   const [mongoInstanceLabel, setMongoInstanceLabel] = useState<string>('')
   const [mongoUpdatedAt, setMongoUpdatedAt] = useState<string>('')
   const [mongoRevision, setMongoRevision] = useState<number>(0)
   const [dbFeedLog, setDbFeedLog] = useState<DbCommitFeedEntry[]>([])
-  const [mapError, setMapError] = useState(false)
 
-  // Kelluvat paneelit (oletuksena oikeassa laidassa, raahattavissa mihin tahansa)
   const [showDemoMonitor, setShowDemoMonitor] = useState(true)
   const [showNerdDbFloat, setShowNerdDbFloat] = useState(true)
   const [demoFloatPos, setDemoFloatPos] = useState<FloatingPos | null>(null)
   const [dbFloatPos, setDbFloatPos] = useState<FloatingPos | null>(null)
 
-  // Demoamisvalintojen seurantaikkuna (ei kantaan tallentuvia profiili-/jäsen-/viestitietoja)
   const [demoSelections, setDemoSelections] = useState<DemoSelectionEvent[]>([
-    {
-      id: 'init-1',
-      time: nowClock(),
-      action: 'OAUTH_CHECK',
-      detail: 'checking /api/auth/session',
-    },
+    { id: 'init-1', time: nowClock(), action: 'OAUTH_CHECK', detail: 'checking /api/auth/session' },
   ])
 
-  // Rivikohtainen muokkaustila (lapset ja läheiset)
   const [editingChildId, setEditingChildId] = useState<string | null>(null)
   const [editChildAge, setEditChildAge] = useState('')
   const [editChildGroup, setEditChildGroup] = useState('4-6v')
@@ -560,7 +217,6 @@ export default function PerheAppPrototypePage() {
   const [editRelativeRole, setEditRelativeRole] = useState('Isovanhempi')
   const [editRelativeNote, setEditRelativeNote] = useState('')
 
-  // Jaettu sovellustila
   const [attendingIds, setAttendingIds] = useState<string[]>(INITIAL_ATTENDING_IDS)
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
   const [matchedIds, setMatchedIds] = useState<string[]>([])
@@ -575,11 +231,10 @@ export default function PerheAppPrototypePage() {
   const lastQuipIdxRef = useRef<number>(-1)
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const transientToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const mapContainerRef = useRef<HTMLDivElement>(null)
-  const mapInstanceRef = useRef<LeafletMapInstance | null>(null)
 
-  const recordDemoSelection = (action: string, detail: string) => {
+  const recordDemoSelection = useCallback((action: string, detail: string) => {
     setDemoSelections((prev) => [
       {
         id: `sel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -589,13 +244,36 @@ export default function PerheAppPrototypePage() {
       },
       ...prev.slice(0, 14),
     ])
-  }
+  }, [])
 
-  // Tarkistetaan aito Google-istunto (/api/auth/session) & asetetaan kelluvat ikkunat oikealle
+  const loadEventsFeed = useCallback(
+    async (manual = false) => {
+      setEventFeedStatus('loading')
+      const result = await fetchKaroEventsFeed('/api/events')
+      setEvents(result.events)
+      setEventFeedStatus(result.sourceStatus)
+      setEventFeedDebug({
+        httpStatus: result.httpStatus,
+        errorDetail: result.errorDetail,
+        count: result.rawCount,
+      })
+      const statusStr = result.httpStatus ? `HTTP ${result.httpStatus}` : 'NET_ERR'
+      const detailStr = result.errorDetail
+        ? `${statusStr} • ${result.errorDetail}`
+        : `${statusStr} • ${result.sourceStatus} (${result.rawCount} items)`
+      recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', detailStr)
+    },
+    [recordDemoSelection],
+  )
+
+  useEffect(() => {
+    void loadEventsFeed(false)
+  }, [loadEventsFeed])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     setDemoFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 24 })
-    setDbFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 236 })
+    setDbFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 268 })
 
     const params = new URLSearchParams(window.location.search)
     const errParam = params.get('error')
@@ -612,7 +290,7 @@ export default function PerheAppPrototypePage() {
         if (!res.ok) {
           if (!cancelled) {
             setAuthStatus('unauthenticated')
-            recordDemoSelection('OAUTH_SESSION', 'none (HTTP ' + res.status + ')')
+            recordDemoSelection('OAUTH_SESSION', `none (HTTP ${res.status})`)
           }
           return
         }
@@ -650,15 +328,13 @@ export default function PerheAppPrototypePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [recordDemoSelection])
 
-  // Käynnistää aidon Google OAuth -kirjautumisen (/api/auth/signin/google)
   const startGoogleSignIn = async () => {
     if (typeof window === 'undefined') return
     setAuthRedirecting(true)
     setAuthErrorMessage(null)
     recordDemoSelection('GOOGLE_SIGNIN_START', '/api/auth/signin/google')
-
     const callbackUrl = `${window.location.origin}${window.location.pathname}`
 
     try {
@@ -669,32 +345,27 @@ export default function PerheAppPrototypePage() {
           const form = document.createElement('form')
           form.method = 'POST'
           form.action = '/api/auth/signin/google'
-
           const csrfInput = document.createElement('input')
           csrfInput.type = 'hidden'
           csrfInput.name = 'csrfToken'
           csrfInput.value = csrfData.csrfToken
           form.appendChild(csrfInput)
-
           const cbInput = document.createElement('input')
           cbInput.type = 'hidden'
           cbInput.name = 'callbackUrl'
           cbInput.value = callbackUrl
           form.appendChild(cbInput)
-
           document.body.appendChild(form)
           form.submit()
           return
         }
       }
     } catch {
-      // Siirrytään suoraan GET-ohjaukseen jos CSRF-reittiä ei ole erikseen käytössä
+      // Fallback
     }
-
     window.location.href = `/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`
   }
 
-  // Kirjaa Google-istunnon ulos (/api/auth/signout)
   const signOutGoogleSession = async () => {
     if (typeof window === 'undefined') return
     setAuthRedirecting(true)
@@ -709,19 +380,16 @@ export default function PerheAppPrototypePage() {
           const form = document.createElement('form')
           form.method = 'POST'
           form.action = '/api/auth/signout'
-
           const csrfInput = document.createElement('input')
           csrfInput.type = 'hidden'
           csrfInput.name = 'csrfToken'
           csrfInput.value = csrfData.csrfToken
           form.appendChild(csrfInput)
-
           const cbInput = document.createElement('input')
           cbInput.type = 'hidden'
           cbInput.name = 'callbackUrl'
           cbInput.value = callbackUrl
           form.appendChild(cbInput)
-
           document.body.appendChild(form)
           form.submit()
           return
@@ -730,7 +398,6 @@ export default function PerheAppPrototypePage() {
     } catch {
       // Fallback
     }
-
     window.location.href = `/api/auth/signout?callbackUrl=${encodeURIComponent(callbackUrl)}`
   }
 
@@ -775,11 +442,11 @@ export default function PerheAppPrototypePage() {
     return () => {
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
       if (savedToastTimerRef.current) clearTimeout(savedToastTimerRef.current)
+      if (transientToastTimerRef.current) clearTimeout(transientToastTimerRef.current)
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
     }
   }, [])
 
-  // Ladataan kirjautuneen Google-käyttäjän oma profiili + tila localStoragesta ja instanssikannasta
   useEffect(() => {
     if (!currentUser) return
     let cancelled = false
@@ -787,24 +454,17 @@ export default function PerheAppPrototypePage() {
     const hydrateForGoogleUser = async () => {
       const userId = currentUser.id
       const docKey = `family-${userId}`
-      const baseDefault = buildDefaultProfileForGoogleUser(currentUser)
-      const saved = loadUserPersistedState(userId)
+      const baseDefault = buildInitialProfileForGoogleUser(currentUser)
+      const transient = loadTransientSession(userId)
 
-      let resolvedProfile = baseDefault
-      if (saved) {
-        resolvedProfile = normalizeProfile(saved.profile, baseDefault)
-        setProfile(resolvedProfile)
-        setAttendingIds(Array.isArray(saved.attendingIds) ? saved.attendingIds : INITIAL_ATTENDING_IDS)
-        setDismissedIds(Array.isArray(saved.dismissedIds) ? saved.dismissedIds : [])
-        setMatchedIds(Array.isArray(saved.matchedIds) ? saved.matchedIds : [])
-        setMessages(saved.messages && typeof saved.messages === 'object' ? saved.messages : {})
-      } else {
-        setProfile(baseDefault)
-        setAttendingIds(INITIAL_ATTENDING_IDS)
-        setDismissedIds([])
-        setMatchedIds([])
-        setMessages({})
-      }
+      setAttendingIds(
+        Array.isArray(transient?.attendingIds) ? transient.attendingIds : INITIAL_ATTENDING_IDS,
+      )
+      setDismissedIds(Array.isArray(transient?.dismissedIds) ? transient.dismissedIds : [])
+      setMatchedIds(Array.isArray(transient?.matchedIds) ? transient.matchedIds : [])
+      setMessages(
+        transient?.messages && typeof transient.messages === 'object' ? transient.messages : {},
+      )
 
       const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
       try {
@@ -815,12 +475,11 @@ export default function PerheAppPrototypePage() {
           const data = await res.json()
           const inst = data?.document?.instanceId || 'default-instance'
           setMongoInstanceLabel(inst)
-          if (data?.document?.updatedAt) {
-            setMongoUpdatedAt(data.document.updatedAt)
-          }
+          if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
+
           if (data?.document?.profile) {
-            resolvedProfile = normalizeProfile(data.document.profile, baseDefault)
-            setProfile(resolvedProfile)
+            const loaded = normalizeProfile(data.document.profile, baseDefault)
+            setProfile(loaded)
             const ms = Math.max(
               1,
               Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0),
@@ -828,18 +487,17 @@ export default function PerheAppPrototypePage() {
             setMongoRevision(1)
             pushDbFeedEntry('200', 'HYDRATED', docKey, inst, 1, ms)
           } else {
+            setProfile(baseDefault)
             const initRes = await fetch('/api/family-profile', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId, profile: resolvedProfile }),
+              body: JSON.stringify({ userId, profile: baseDefault }),
             })
             if (initRes.ok) {
               const initData = await initRes.json()
               const initInst = initData?.document?.instanceId || inst
               setMongoInstanceLabel(initInst)
-              if (initData?.document?.updatedAt) {
-                setMongoUpdatedAt(initData.document.updatedAt)
-              }
+              if (initData?.document?.updatedAt) setMongoUpdatedAt(initData.document.updatedAt)
               const ms = Math.max(
                 1,
                 Math.round(
@@ -853,13 +511,12 @@ export default function PerheAppPrototypePage() {
         }
       } catch {
         if (!cancelled) {
+          setProfile(baseDefault)
           setDbSyncStatus('error')
-          pushDbFeedEntry('503', 'STORE_OFFLINE', docKey, 'fallback-localStorage', 0)
+          pushDbFeedEntry('503', 'STORE_OFFLINE', docKey, 'local-memory', 0)
         }
       } finally {
-        if (!cancelled) {
-          setIsHydrated(true)
-        }
+        if (!cancelled) setIsHydrated(true)
       }
     }
 
@@ -869,24 +526,24 @@ export default function PerheAppPrototypePage() {
     }
   }, [currentUser])
 
-  // Tallennetaan kirjautuneen käyttäjän sovellustila localStorageen
   useEffect(() => {
     if (!isHydrated || !currentUser || typeof window === 'undefined') return
     try {
-      const payload: PersistedProtoState = {
-        profile,
+      const payload: PersistedSessionState = {
         attendingIds,
         dismissedIds,
         matchedIds,
         messages,
       }
-      window.localStorage.setItem(`${STORAGE_PREFIX}${currentUser.id}`, JSON.stringify(payload))
+      window.localStorage.setItem(
+        `${SESSION_STORAGE_PREFIX}${currentUser.id}`,
+        JSON.stringify(payload),
+      )
     } catch {
-      // Ohitetaan kiintiö- tai yksityisen selaustilan virheet
+      // Ohitetaan kiintiövirheet
     }
-  }, [isHydrated, currentUser, profile, attendingIds, dismissedIds, matchedIds, messages])
+  }, [isHydrated, currentUser, attendingIds, dismissedIds, matchedIds, messages])
 
-  // Tallennetaan kirjautuneen Google-käyttäjän profiili ja jäsentiedot instanssikantaan
   useEffect(() => {
     if (!isHydrated || !currentUser) return
     if (skipNextDbSaveRef.current) {
@@ -915,9 +572,7 @@ export default function PerheAppPrototypePage() {
             const data = await res.json()
             const inst = data?.document?.instanceId || mongoInstanceLabel || 'instance'
             setMongoInstanceLabel(inst)
-            if (data?.document?.updatedAt) {
-              setMongoUpdatedAt(data.document.updatedAt)
-            }
+            if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
             setMongoRevision((prev) => {
               const nextRev = prev + 1
               pushDbFeedEntry('201', 'UPSERT_OK', docKey, inst, nextRev, ms)
@@ -950,88 +605,86 @@ export default function PerheAppPrototypePage() {
     }
   }, [isHydrated, currentUser, profile, mongoInstanceLabel, mongoRevision])
 
-  const resetAllDemoState = async () => {
-    if (!currentUser) return
-    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
-    const userId = currentUser.id
-    const docKey = `family-${userId}`
-    const resetProfile = buildDefaultProfileForGoogleUser(currentUser)
-
-    skipNextDbSaveRef.current = true
-    setProfile(resetProfile)
+  const resetTransientDemoData = () => {
     setDismissedIds([])
     setMatchedIds([])
     setAttendingIds(INITIAL_ATTENDING_IDS)
     setMessages({})
     setLatestMatch(null)
     setChatTarget(null)
-    setEditingChildId(null)
-    setEditingRelativeId(null)
-    setInviteParentName('')
-    setInviteParentEmail('')
-    setInviteError('')
-    setChildError('')
-    setInviteBanner(null)
-    setPreviewInviteId(null)
-    setProfileSubView('main')
+    setMapFocusCoords(null)
     setDemoSelections([
-      { id: `rst-${Date.now()}`, time: nowClock(), action: 'DEMO_RESET', detail: userId },
+      {
+        id: `rst-${Date.now()}`,
+        time: nowClock(),
+        action: 'TRANSIENT_RESET',
+        detail: 'no_db_write (swipes/matches/chat cleared)',
+      },
     ])
 
-    if (typeof window !== 'undefined') {
+    if (currentUser && typeof window !== 'undefined') {
       try {
-        window.localStorage.removeItem(`${STORAGE_PREFIX}${userId}`)
+        window.localStorage.removeItem(`${SESSION_STORAGE_PREFIX}${currentUser.id}`)
       } catch {
         // Ohitetaan virheet
       }
     }
-    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
-    try {
-      const res = await fetch('/api/family-profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, profile: resetProfile }),
-      })
-      const ms = Math.max(
-        1,
-        Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0),
-      )
-      const inst = mongoInstanceLabel || 'instance'
-      if (res.ok) {
-        const data = await res.json()
-        if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
-      }
-      setMongoRevision((prev) => {
-        const nextRev = prev + 1
-        pushDbFeedEntry('205', 'RESET_OK', docKey, inst, nextRev, ms)
-        return nextRev
-      })
-      setDbSyncStatus('saved')
-    } catch {
-      setDbSyncStatus('error')
-    }
+
+    if (transientToastTimerRef.current) clearTimeout(transientToastTimerRef.current)
+    setTransientResetToast(true)
+    transientToastTimerRef.current = setTimeout(() => setTransientResetToast(false), 2500)
   }
 
-  const filteredDeck = DEMO_FAMILIES.filter((fam) => {
-    if (!profile.privacy.discoverable) return false
-    if (dismissedIds.includes(fam.id) || matchedIds.includes(fam.id)) return false
-    if (fam.distanceKm > profile.filters.maxDistanceKm) return false
-    if (profile.filters.targetCity !== 'Kaikki PKS' && fam.city !== profile.filters.targetCity) {
-      return false
+  // Suodatetaan ja järjestetään tapahtumat etäisyyden (lähimmästä kauimpaan) ja kaupungin mukaan
+  const filteredSortedEvents = events
+    .map((evt) => ({
+      ...evt,
+      distanceKm: calcDistanceKm(profile.homeCoords, evt.coords),
+    }))
+    .filter((evt) => {
+      if (evt.distanceKm > profile.filters.maxDistanceKm) return false
+      if (
+        profile.filters.targetCity !== 'Kaikki PKS' &&
+        evt.city.toLowerCase() !== profile.filters.targetCity.toLowerCase()
+      ) {
+        return false
+      }
+      return true
+    })
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+
+  // Lasketaan etäisyys ja dynaaminen match-prosentti jokaiselle perheelle
+  const familiesWithDistance = DEMO_FAMILIES.map((fam) => {
+    const distanceKm = calcDistanceKm(profile.homeCoords, fam.coords)
+    const match = calcFamilyMatch(profile, fam, distanceKm, attendingIds)
+    return {
+      ...fam,
+      distanceKm,
+      match,
     }
-    if (profile.filters.targetAgeGroups.length > 0) {
-      const hasMatchingAge = fam.ageGroups.some((g) =>
-        profile.filters.targetAgeGroups.includes(g),
-      )
-      if (!hasMatchingAge) return false
-    }
-    return true
   })
 
-  const currentCard = filteredDeck[0]
-  const matchedFamilies = DEMO_FAMILIES.filter((f) => matchedIds.includes(f.id))
+  const filteredDeck = familiesWithDistance
+    .filter((fam) => {
+      if (!profile.privacy.discoverable) return false
+      if (dismissedIds.includes(fam.id) || matchedIds.includes(fam.id)) return false
+      if (fam.distanceKm > profile.filters.maxDistanceKm) return false
+      if (profile.filters.targetCity !== 'Kaikki PKS' && fam.city !== profile.filters.targetCity) {
+        return false
+      }
+      if (profile.filters.targetAgeGroups.length > 0) {
+        const hasMatchingAge = fam.ageGroups.some((g) =>
+          profile.filters.targetAgeGroups.includes(g),
+        )
+        if (!hasMatchingAge) return false
+      }
+      return true
+    })
+    .sort((a, b) => b.match.percent - a.match.percent)
 
-  // Toisen vanhemman kutsulogiikka (demo)
+  const currentCard = filteredDeck[0]
+  const matchedFamilies = familiesWithDistance.filter((f) => matchedIds.includes(f.id))
+
   const sendCoParentInvite = () => {
     const email = inviteParentEmail.trim().toLowerCase()
     const name = inviteParentName.trim() || 'Toinen vanhempi'
@@ -1055,10 +708,7 @@ export default function PerheAppPrototypePage() {
       inviteCode: generateInviteCode(),
     }
 
-    setProfile((prev) => ({
-      ...prev,
-      coParents: [...prev.coParents, newInvite],
-    }))
+    setProfile((prev) => ({ ...prev, coParents: [...prev.coParents, newInvite] }))
     setInviteParentName('')
     setInviteParentEmail('')
     setPreviewInviteId(newInvite.id)
@@ -1115,27 +765,6 @@ export default function PerheAppPrototypePage() {
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
     setCopiedInviteId(invite.id)
     copiedTimerRef.current = setTimeout(() => setCopiedInviteId(null), 2500)
-  }
-
-  // Profiilin ja perheenjäsenten muokkausfunktiot
-  const toggleInterest = (tag: string) => {
-    setProfile((prev) => ({
-      ...prev,
-      interests: prev.interests.includes(tag)
-        ? prev.interests.filter((t) => t !== tag)
-        : [...prev.interests, tag],
-    }))
-    recordDemoSelection('TAG_TOGGLE', `#${tag}`)
-  }
-
-  const addCustomTag = () => {
-    const clean = customTag.trim().replace(/^#/, '')
-    if (!clean) return
-    if (!profile.interests.includes(clean)) {
-      setProfile((prev) => ({ ...prev, interests: [...prev.interests, clean] }))
-    }
-    recordDemoSelection('TAG_ADD', `#${clean}`)
-    setCustomTag('')
   }
 
   const addChild = () => {
@@ -1225,22 +854,6 @@ export default function PerheAppPrototypePage() {
     }))
   }
 
-  const toggleFilterAgeGroup = (group: string) => {
-    setProfile((prev) => {
-      const exists = prev.filters.targetAgeGroups.includes(group)
-      return {
-        ...prev,
-        filters: {
-          ...prev.filters,
-          targetAgeGroups: exists
-            ? prev.filters.targetAgeGroups.filter((g) => g !== group)
-            : [...prev.filters.targetAgeGroups, group],
-        },
-      }
-    })
-    recordDemoSelection('AGE_FILTER', group)
-  }
-
   const saveProfileFeedback = async () => {
     if (!currentUser) return
     const userId = currentUser.id
@@ -1292,7 +905,7 @@ export default function PerheAppPrototypePage() {
     if (liked) {
       setMatchedIds((prev) => [...prev, currentCard.id])
       setLatestMatch(currentCard)
-      recordDemoSelection('SWIPE_LIKE', `${currentCard.id} (MATCH)`)
+      recordDemoSelection('SWIPE_LIKE', `${currentCard.id} (MATCH ${currentCard.match.percent}%)`)
     } else {
       setDismissedIds((prev) => [...prev, currentCard.id])
       recordDemoSelection('SWIPE_PASS', currentCard.id)
@@ -1316,111 +929,10 @@ export default function PerheAppPrototypePage() {
     recordDemoSelection('MAP_FOCUS', label)
   }
 
-  // Kartan alustus
-  useEffect(() => {
-    if (!currentUser || activeTab !== 'map' || typeof window === 'undefined') return
-    setMapError(false)
-
-    const initLeaflet = () => {
-      const L = (window as unknown as { L?: LeafletGlobal }).L
-      if (!L || !mapContainerRef.current) {
-        setMapError(true)
-        return
-      }
-
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove()
-        mapInstanceRef.current = null
-      }
-
-      const map = L.map(mapContainerRef.current, { zoomSnap: 0.25 })
-      mapInstanceRef.current = map
-
-      L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-        { attribution: '© Esri / OSM', maxZoom: 19 },
-      ).addTo(map)
-
-      if (mapFocusCoords) {
-        map.setView(mapFocusCoords, 14)
-      } else {
-        map.fitBounds(L.latLngBounds([60.115, 24.52], [60.325, 25.18]), { padding: [16, 16] })
-      }
-
-      INITIAL_EVENTS.forEach((evt) => {
-        const isGoing = attendingIds.includes(evt.id)
-        L.circleMarker(evt.coords, {
-          radius: 10,
-          fillColor: '#2563eb',
-          color: '#fff',
-          weight: 2.5,
-          fillOpacity: 0.95,
-        })
-          .addTo(map)
-          .bindPopup(
-            `<strong>📅 ${evt.title}</strong><br/>${evt.venue}<br/>${
-              isGoing ? '✅ Olet menossa mukaan' : evt.time
-            }`,
-          )
-      })
-
-      matchedFamilies.forEach((fam) => {
-        const eventNote =
-          profile.privacy.shareEventsWithMatches && fam.attendingEventId
-            ? `<br/><span style="font-size:11px;color:#059669;">Tapahtuma: ${
-                INITIAL_EVENTS.find((e) => e.id === fam.attendingEventId)?.title || ''
-              }</span>`
-            : ''
-
-        const relativesNote =
-          profile.privacy.showCloseRelativesInMatches &&
-          fam.hasCloseRelatives &&
-          fam.closeRelativesSummary
-            ? `<br/><span style="font-size:11px;color:#475569;">🫂 Läheiset: ${fam.closeRelativesSummary}</span>`
-            : ''
-
-        L.circleMarker(fam.coords, {
-          radius: 11,
-          fillColor: '#059669',
-          color: '#fff',
-          weight: 2.5,
-          fillOpacity: 0.95,
-        })
-          .addTo(map)
-          .bindPopup(
-            `<strong>🤝 ${fam.name}</strong><br/>${fam.area} (${fam.childrenAges})${eventNote}${relativesNote}`,
-          )
-      })
-    }
-
-    if ((window as unknown as { L?: LeafletGlobal }).L) {
-      initLeaflet()
-      return
-    }
-
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link')
-      link.id = 'leaflet-css'
-      link.rel = 'stylesheet'
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-      document.head.appendChild(link)
-    }
-
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-    script.async = true
-    script.onload = initLeaflet
-    script.onerror = () => setMapError(true)
-    document.body.appendChild(script)
-  }, [
-    currentUser,
-    activeTab,
-    attendingIds,
-    matchedIds,
-    mapFocusCoords,
-    profile.privacy.shareEventsWithMatches,
-    profile.privacy.showCloseRelativesInMatches,
-  ])
+  const handleResetMapBounds = useCallback(() => {
+    setMapFocusCoords(null)
+    recordDemoSelection('MAP_HOME_ZOOM', 'PKS_DEFAULT_BOUNDS')
+  }, [recordDemoSelection])
 
   const totalParentsCount = 1 + profile.coParents.length
   const activePreviewInvite = profile.coParents.find((p) => p.id === previewInviteId) ?? null
@@ -1428,9 +940,6 @@ export default function PerheAppPrototypePage() {
 
   return (
     <div className="min-h-dvh bg-zinc-900 sm:py-5 sm:px-4 flex justify-center items-center">
-      {/* DYNAAMINEN LAITEKEHYS:
-          - Kapea ikkuna (<640px): Iso >6" älypuhelin (max-w-[430px], täysi korkeus h-dvh)
-          - Leveämpi ikkuna (>=640px): Modernin huipputabletin resoluutio (max-w-4xl / 896px) */}
       <div className="w-full max-w-[430px] sm:max-w-4xl bg-slate-50 h-dvh sm:h-[92dvh] sm:max-h-[1180px] flex flex-col shadow-2xl border-x sm:border-[3px] border-slate-800 sm:rounded-[2rem] relative overflow-hidden transition-all duration-300">
         {authStatus === 'loading' ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-2 text-xs text-slate-600">
@@ -1438,7 +947,6 @@ export default function PerheAppPrototypePage() {
             <p>Tarkistetaan Google-kirjautumista...</p>
           </div>
         ) : authStatus === 'unauthenticated' || !currentUser ? (
-          /* AITO GOOGLE OAUTH -KIRJAUTUMISNÄKYMÄ (KUTEN GATHEREVENTS) */
           <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col justify-center">
             <div className="max-w-md mx-auto w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-lg space-y-6 text-center">
               <div className="space-y-2">
@@ -1449,8 +957,8 @@ export default function PerheAppPrototypePage() {
                   Perhe<span className="text-emerald-600">Piiri</span>
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  Kirjaudu sisään omalla Google-tililläsi, niin näet tapahtumat, suodattimet,
-                  perheenjäsenet ja oman profiilidokumenttisi omilla tiedoillasi.
+                  Kirjaudu sisään omalla Google-tililläsi, niin asetat oman kotiseudun, hallitset
+                  omia perheenjäseniä ja tallennat tietosi omaan profiiliisi.
                 </p>
               </div>
 
@@ -1485,22 +993,15 @@ export default function PerheAppPrototypePage() {
                   />
                 </svg>
                 <span>
-                  {authRedirecting ? 'Siirrytään Google-kirjautumiseen...' : 'Kirjaudu Google-tilillä'}
+                  {authRedirecting
+                    ? 'Siirrytään Google-kirjautumiseen...'
+                    : 'Kirjaudu Google-tilillä'}
                 </span>
               </button>
-
-              <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
-                <p>Käyttää projektin olemassa olevaa `/api/auth/signin/google`-reittiä.</p>
-                <p className="font-mono text-[10px] text-slate-400">
-                  callback: /api/auth/callback/google
-                </p>
-              </div>
             </div>
           </div>
         ) : (
-          /* KIRJAUTUNUT SOVELLUSNÄKYMÄ */
           <>
-            {/* YLÄPALKKI */}
             <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -1521,8 +1022,8 @@ export default function PerheAppPrototypePage() {
                   </span>
                 </div>
                 <p className="text-[11px] sm:text-xs text-slate-500 truncate">
-                  📍 {profile.filters.targetCity} • max {profile.filters.maxDistanceKm} km •{' '}
-                  {currentUser.email}
+                  🟠 {profile.homeCity} ({profile.area}) • haku max {profile.filters.maxDistanceKm}{' '}
+                  km
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -1545,14 +1046,12 @@ export default function PerheAppPrototypePage() {
                   disabled={authRedirecting}
                   onClick={() => void signOutGoogleSession()}
                   className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
-                  title="Kirjaudu ulos Google-tililtä"
                 >
                   Ulos
                 </button>
               </div>
             </header>
 
-            {/* MATCH-PONNAHDUSILMOITUS */}
             {latestMatch && (
               <div className="bg-emerald-600 text-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
                 <div className="text-xs sm:text-sm">
@@ -1582,91 +1081,152 @@ export default function PerheAppPrototypePage() {
               </div>
             )}
 
-            {/* PÄÄSISÄLTÖALUE */}
             <main className="flex-1 overflow-y-auto">
-              {/* 1. TAPAHTUMAT */}
               {activeTab === 'events' && (
                 <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h2 className="text-sm sm:text-base font-bold text-slate-800">
-                        Lähialueen tapahtumat
+                        Lähialueen tapahtumat (lähin ensin)
                       </h2>
                       <p className="text-[11px] text-slate-500">
-                        Profiili: <strong>{profile.familyName}</strong> ({profile.filters.targetCity})
+                        Koti: <strong>{profile.area}</strong> • Suodatin:{' '}
+                        <strong>{profile.filters.targetCity}</strong> ≤{' '}
+                        <strong>{profile.filters.maxDistanceKm} km</strong> • Lähde:{' '}
+                        <span
+                          className={`font-semibold ${
+                            eventFeedStatus === 'live-api' ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
+                        >
+                          {eventFeedStatus === 'loading'
+                            ? 'Ladataan Karon feediä...'
+                            : eventFeedStatus === 'live-api'
+                              ? 'Karon tapahtumafeedi (Live)'
+                              : 'Paikallinen varadata'}
+                        </span>
                       </p>
                     </div>
-                    <span className="text-xs text-slate-500">{INITIAL_EVENTS.length} menoa</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-slate-500">
+                        {filteredSortedEvents.length}/{events.length}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={eventFeedStatus === 'loading'}
+                        onClick={() => void loadEventsFeed(true)}
+                        className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors disabled:opacity-50"
+                      >
+                        {eventFeedStatus === 'loading' ? '↻ Ladataan...' : '↻ Päivitä'}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    {INITIAL_EVENTS.map((evt) => {
-                      const isGoing = attendingIds.includes(evt.id)
-                      const matchedGoing = profile.privacy.shareEventsWithMatches
-                        ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
-                        : []
+                  {filteredSortedEvents.length === 0 ? (
+                    <div className="bg-white rounded-2xl p-7 text-center border border-slate-200 space-y-3">
+                      <p className="text-2xl">📍</p>
+                      <h3 className="font-bold text-sm text-slate-900">
+                        Ei tapahtumia valituilla suodattimilla
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Hakualueena on <strong>{profile.filters.targetCity}</strong> ja
+                        enimmäisetäisyys <strong>{profile.filters.maxDistanceKm} km</strong> kotoa.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('profile')
+                          setProfileSubView('main')
+                        }}
+                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                      >
+                        Muokkaa hakufilttereitä
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      {filteredSortedEvents.map((evt) => {
+                        const isGoing = attendingIds.includes(evt.id)
+                        const matchedGoing = profile.privacy.shareEventsWithMatches
+                          ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
+                          : []
 
-                      return (
-                        <div
-                          key={evt.id}
-                          className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2.5"
-                        >
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-start gap-2">
-                              <div>
-                                <span className="text-[11px] font-semibold text-blue-600 uppercase">
-                                  {evt.city} • {evt.ageGroup}
+                        return (
+                          <div
+                            key={evt.id}
+                            className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2.5"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-start gap-2">
+                                <div>
+                                  <span className="text-[11px] font-semibold text-blue-600 uppercase">
+                                    {evt.city} • {evt.ageGroup} • {evt.distanceKm} km kotoa
+                                  </span>
+                                  <h3 className="text-base font-bold text-slate-900 leading-snug">
+                                    {evt.title}
+                                  </h3>
+                                </div>
+                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-medium shrink-0">
+                                  {evt.price}
                                 </span>
-                                <h3 className="text-base font-bold text-slate-900 leading-snug">
-                                  {evt.title}
-                                </h3>
                               </div>
-                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-medium shrink-0">
-                                {evt.price}
-                              </span>
+
+                              <p className="text-xs text-slate-600">
+                                📍 {evt.venue} <br />
+                                🕒 {evt.time}
+                              </p>
+
+                              {evt.description && (
+                                <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                                  {evt.description}
+                                </p>
+                              )}
+
+                              {matchedGoing.length > 0 && (
+                                <div className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                                  🤝 Mukana osumistasi:{' '}
+                                  <strong>{matchedGoing.map((m) => m.name).join(', ')}</strong>
+                                </div>
+                              )}
                             </div>
 
-                            <p className="text-xs text-slate-600">
-                              📍 {evt.venue} <br />
-                              🕒 {evt.time}
-                            </p>
-
-                            {matchedGoing.length > 0 && (
-                              <div className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
-                                🤝 Mukana osumistasi:{' '}
-                                <strong>{matchedGoing.map((m) => m.name).join(', ')}</strong>
-                              </div>
-                            )}
+                            <div className="pt-1 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleEventAttendance(evt.id)}
+                                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${
+                                  isGoing
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-900 text-white hover:bg-slate-800'
+                                }`}
+                              >
+                                {isGoing ? '✓ Menossa mukaan' : '+ Menossa mukaan'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openOnMap(evt.coords, evt.id)}
+                                className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
+                              >
+                                Kartalla
+                              </button>
+                              {evt.url && (
+                                <a
+                                  href={evt.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"
+                                >
+                                  Lisätiedot ↗
+                                </a>
+                              )}
+                            </div>
                           </div>
-
-                          <div className="pt-1 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleEventAttendance(evt.id)}
-                              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${
-                                isGoing
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-slate-900 text-white hover:bg-slate-800'
-                              }`}
-                            >
-                              {isGoing ? '✓ Menossa mukaan' : '+ Menossa mukaan'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openOnMap(evt.coords, evt.id)}
-                              className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
-                            >
-                              Kartalla
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* 2. PERHEET */}
               {activeTab === 'families' && (
                 <div className="p-4 sm:p-6 space-y-4">
                   <div className="grid grid-cols-2 sm:hidden bg-slate-200 p-1 rounded-xl text-xs font-bold">
@@ -1713,9 +1273,14 @@ export default function PerheAppPrototypePage() {
                           <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white">
                             <div className="flex justify-between items-center text-xs opacity-90 mb-1">
                               <span>📍 {currentCard.area}</span>
-                              <span>{currentCard.distanceKm} km päässä</span>
+                              <span>{currentCard.distanceKm} km kotoa</span>
                             </div>
-                            <h2 className="text-2xl font-extrabold">{currentCard.name}</h2>
+                            <div className="flex items-start justify-between gap-3">
+                              <h2 className="text-2xl font-extrabold">{currentCard.name}</h2>
+                              <span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-xs font-extrabold shadow-sm shrink-0">
+                                {currentCard.match.percent} % match
+                              </span>
+                            </div>
                             <p className="text-sm mt-1 font-medium">
                               👶 Lapset: {currentCard.childrenAges}
                             </p>
@@ -1729,12 +1294,39 @@ export default function PerheAppPrototypePage() {
                           </div>
 
                           <div className="p-5 space-y-4">
+                            <div className="grid grid-cols-4 gap-1.5 text-center bg-slate-50 border border-slate-200 rounded-xl p-2 text-[10px]">
+                              <div>
+                                <div className="font-extrabold text-emerald-700">
+                                  {currentCard.match.interestsPts}/40
+                                </div>
+                                <div className="text-slate-500">Tägit</div>
+                              </div>
+                              <div>
+                                <div className="font-extrabold text-emerald-700">
+                                  {currentCard.match.distancePts}/30
+                                </div>
+                                <div className="text-slate-500">Etäisyys</div>
+                              </div>
+                              <div>
+                                <div className="font-extrabold text-emerald-700">
+                                  {currentCard.match.agePts}/20
+                                </div>
+                                <div className="text-slate-500">Ikäryhmä</div>
+                              </div>
+                              <div>
+                                <div className="font-extrabold text-emerald-700">
+                                  {currentCard.match.eventPts}/10
+                                </div>
+                                <div className="text-slate-500">Meno</div>
+                              </div>
+                            </div>
+
                             <p className="text-sm text-slate-700 leading-relaxed">
                               {currentCard.bio}
                             </p>
 
                             {(() => {
-                              const sharedEvt = INITIAL_EVENTS.find(
+                              const sharedEvt = events.find(
                                 (e) => e.id === currentCard.attendingEventId,
                               )
                               if (!sharedEvt) return null
@@ -1802,8 +1394,8 @@ export default function PerheAppPrototypePage() {
                               : 'Profiilisi haku on piilotettu'}
                           </h3>
                           <p className="text-xs text-slate-500">
-                            Suodatin ({profile.filters.targetCity} ≤{profile.filters.maxDistanceKm}{' '}
-                            km) perustuu profiiliin <strong>{profile.familyName}</strong>.
+                            Etäisyydet lasketaan kotiseudustasi <strong>{profile.area}</strong> (max{' '}
+                            {profile.filters.maxDistanceKm} km).
                           </p>
                           <div className="flex flex-wrap justify-center gap-2 pt-1">
                             <button
@@ -1814,7 +1406,7 @@ export default function PerheAppPrototypePage() {
                               }}
                               className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-800 text-xs font-bold"
                             >
-                              Muokkaa filttereitä
+                              Muokkaa kotiseutua & filttereitä
                             </button>
                             <button
                               type="button"
@@ -1842,8 +1434,7 @@ export default function PerheAppPrototypePage() {
                         {matchedFamilies.length === 0 ? (
                           <div className="bg-white rounded-2xl p-6 text-center border border-slate-200">
                             <p className="text-xs text-slate-500">
-                              Ei vielä osumia profiilille {profile.familyName}. Selaa perheitä ja
-                              paina Verkostoidu!
+                              Ei vielä osumia. Selaa perheitä ja paina Verkostoidu!
                             </p>
                           </div>
                         ) : (
@@ -1853,9 +1444,14 @@ export default function PerheAppPrototypePage() {
                               className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-3"
                             >
                               <div>
-                                <h3 className="font-bold text-sm text-slate-900">{fam.name}</h3>
+                                <div className="flex items-center gap-1.5">
+                                  <h3 className="font-bold text-sm text-slate-900">{fam.name}</h3>
+                                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                    {fam.match.percent} %
+                                  </span>
+                                </div>
                                 <p className="text-xs text-slate-500">
-                                  {fam.area} • {fam.childrenAges}
+                                  {fam.area} ({fam.distanceKm} km) • {fam.childrenAges}
                                 </p>
                                 {profile.privacy.showCloseRelativesInMatches &&
                                   fam.hasCloseRelatives &&
@@ -1890,339 +1486,41 @@ export default function PerheAppPrototypePage() {
                 </div>
               )}
 
-              {/* 3. KARTTA */}
               {activeTab === 'map' && (
-                <div className="h-full flex flex-col relative">
-                  {mapError ? (
-                    <div className="flex-1 flex items-center justify-center p-6 text-center text-xs text-slate-600 bg-slate-100">
-                      Karttakirjaston lataus ei onnistunut. Tarkista verkkoyhteys ja avaa kartta
-                      uudelleen.
-                    </div>
-                  ) : (
-                    <div ref={mapContainerRef} className="flex-1 w-full" />
-                  )}
-                  <div className="bg-white border-t border-slate-200 px-4 sm:px-6 py-2.5 flex items-center justify-between text-xs shrink-0">
-                    <div className="flex gap-3 font-medium text-slate-700">
-                      <span>🔵 Tapahtumat ({INITIAL_EVENTS.length})</span>
-                      <span>🟢 Osumat ({matchedFamilies.length})</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMapFocusCoords(null)
-                        recordDemoSelection('MAP_FOCUS', 'PKS_BOUNDS')
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 font-semibold text-slate-800"
-                    >
-                      Koko PKS
-                    </button>
-                  </div>
-                </div>
+                <PksMapView
+                  events={filteredSortedEvents}
+                  attendingIds={attendingIds}
+                  matchedFamilies={matchedFamilies}
+                  homeCoords={profile.homeCoords}
+                  homeLabel={`${profile.area}, ${profile.homeCity}`}
+                  familyName={profile.familyName}
+                  shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
+                  showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
+                  focusCoords={mapFocusCoords}
+                  onResetBounds={handleResetMapBounds}
+                />
               )}
 
-              {/* 4. PROFIILI (PÄÄNÄKYMÄ) */}
               {activeTab === 'profile' && profileSubView === 'main' && (
-                <div className="p-4 sm:p-6 space-y-4 pb-8">
-                  <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-2xl px-4 py-2.5 border border-slate-200">
-                    <div className="text-xs min-w-0">
-                      <span className="font-bold text-slate-900">
-                        Google-tili: {currentUser.displayName}
-                      </span>
-                      <span className="ml-2 text-slate-500 font-mono text-[11px]">
-                        (_id: family-{currentUser.id})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setProfileSubView('store_inspector')}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-950 hover:bg-indigo-900 text-cyan-300 font-mono text-[11px] font-bold transition-colors"
-                      >
-                        Kanta & feedi ({dbFeedLog.length}) →
-                      </button>
-                      <button
-                        type="button"
-                        disabled={authRedirecting}
-                        onClick={() => void signOutGoogleSession()}
-                        className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
-                      >
-                        Kirjaudu ulos
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-                    <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                          1. Perheen perustiedot
-                        </h2>
-                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                          Julkinen kortti
-                        </span>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Perheen näyttönimi
-                        </label>
-                        <input
-                          value={profile.familyName}
-                          onChange={(e) => setProfile({ ...profile, familyName: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Asuinalue / kaupunginosa
-                        </label>
-                        <input
-                          value={profile.area}
-                          onChange={(e) => setProfile({ ...profile, area: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Lyhyt esittely muille perheille
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={profile.bio}
-                          onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
-                        />
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">Perheen jäsenet</p>
-                          <p className="text-[11px] text-slate-500">
-                            {totalParentsCount} vanhempaa • {profile.children.length} lasta •{' '}
-                            {profile.closeRelatives.length} läheistä
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setProfileSubView('members')}
-                          className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shrink-0 hover:bg-slate-800"
-                        >
-                          Jäsenet →
-                        </button>
-                      </div>
-                    </section>
-
-                    <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                      <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                        2. Kiinnostuksen kohteet (Tägit)
-                      </h2>
-                      <p className="text-[11px] text-slate-500">
-                        Yhteiset tägit korostuvat automaattisesti muiden perheiden korteissa.
-                      </p>
-
-                      <div className="flex flex-wrap gap-1.5">
-                        {Array.from(new Set([...AVAILABLE_TAGS, ...profile.interests])).map(
-                          (tag) => {
-                            const selected = profile.interests.includes(tag)
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() => toggleInterest(tag)}
-                                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-                                  selected
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                              >
-                                #{tag}
-                              </button>
-                            )
-                          },
-                        )}
-                      </div>
-
-                      <div className="flex gap-1.5 pt-1">
-                        <input
-                          value={customTag}
-                          onChange={(e) => setCustomTag(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && addCustomTag()}
-                          placeholder="Oma tägi (esim. Retkeily)..."
-                          className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={addCustomTag}
-                          className="px-3 py-1.5 rounded-xl bg-slate-800 text-white text-xs font-bold"
-                        >
-                          Lisää
-                        </button>
-                      </div>
-                    </section>
-
-                    <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                          3. Hakufiltterit (Perheet-pakka)
-                        </h2>
-                        <span className="text-xs font-bold text-emerald-700">
-                          {filteredDeck.length} sopivaa
-                        </span>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                          <span>Enimmäisetäisyys</span>
-                          <span>{profile.filters.maxDistanceKm} km</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={2}
-                          max={30}
-                          value={profile.filters.maxDistanceKm}
-                          onChange={(e) => {
-                            const km = Number(e.target.value)
-                            setProfile({
-                              ...profile,
-                              filters: { ...profile.filters, maxDistanceKm: km },
-                            })
-                            recordDemoSelection('RADIUS_FILTER', `${km}km`)
-                          }}
-                          className="w-full accent-emerald-600"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Kaupunki / alue
-                        </label>
-                        <select
-                          value={profile.filters.targetCity}
-                          onChange={(e) => {
-                            const city = e.target.value
-                            setProfile({
-                              ...profile,
-                              filters: { ...profile.filters, targetCity: city },
-                            })
-                            recordDemoSelection('CITY_FILTER', city)
-                          }}
-                          className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-medium"
-                        >
-                          <option value="Kaikki PKS">Kaikki pääkaupunkiseutu</option>
-                          <option value="Espoo">Espoo</option>
-                          <option value="Helsinki">Helsinki</option>
-                          <option value="Kauniainen">Kauniainen</option>
-                          <option value="Vantaa">Vantaa</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">
-                          Toivottu lasten ikähaarukka
-                        </label>
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {AGE_GROUP_OPTIONS.map((group) => {
-                            const active = profile.filters.targetAgeGroups.includes(group)
-                            return (
-                              <button
-                                key={group}
-                                type="button"
-                                onClick={() => toggleFilterAgeGroup(group)}
-                                className={`py-1.5 rounded-xl text-xs font-bold border ${
-                                  active
-                                    ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
-                                    : 'bg-white border-slate-200 text-slate-500'
-                                }`}
-                              >
-                                {group}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                      <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                        4. Tietosuoja ja näkyvyys
-                      </h2>
-
-                      <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
-                        <span>Profiili näkyvissä lähialueen haussa</span>
-                        <input
-                          type="checkbox"
-                          checked={profile.privacy.discoverable}
-                          onChange={(e) =>
-                            setProfile({
-                              ...profile,
-                              privacy: { ...profile.privacy, discoverable: e.target.checked },
-                            })
-                          }
-                          className="accent-emerald-600 w-4 h-4"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
-                        <span>Näytä tapahtumat osumaperheille</span>
-                        <input
-                          type="checkbox"
-                          checked={profile.privacy.shareEventsWithMatches}
-                          onChange={(e) =>
-                            setProfile({
-                              ...profile,
-                              privacy: {
-                                ...profile.privacy,
-                                shareEventsWithMatches: e.target.checked,
-                              },
-                            })
-                          }
-                          className="accent-emerald-600 w-4 h-4"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
-                        <span>Näytä läheiset mätseissä ja haussa</span>
-                        <input
-                          type="checkbox"
-                          checked={profile.privacy.showCloseRelativesInMatches}
-                          onChange={(e) =>
-                            setProfile({
-                              ...profile,
-                              privacy: {
-                                ...profile.privacy,
-                                showCloseRelativesInMatches: e.target.checked,
-                              },
-                            })
-                          }
-                          className="accent-emerald-600 w-4 h-4"
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => void saveProfileFeedback()}
-                        className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
-                      >
-                        {profileSavedToast
-                          ? `✓ 201 COMMITTED (family-${currentUser.id})`
-                          : 'Tallenna profiili ja suodattimet'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => void resetAllDemoState()}
-                        className="w-full py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-50"
-                      >
-                        Palauta käyttäjän {currentUser.displayName} oletustiedot
-                      </button>
-                    </section>
-                  </div>
-                </div>
+                <ProfileSettingsPanel
+                  currentUser={currentUser}
+                  profile={profile}
+                  onChangeProfile={setProfile}
+                  totalParentsCount={totalParentsCount}
+                  filteredDeckCount={filteredDeck.length}
+                  dbFeedCount={dbFeedLog.length}
+                  profileSavedToast={profileSavedToast}
+                  transientResetToast={transientResetToast}
+                  authRedirecting={authRedirecting}
+                  onOpenMembers={() => setProfileSubView('members')}
+                  onOpenStoreInspector={() => setProfileSubView('store_inspector')}
+                  onSaveProfile={() => void saveProfileFeedback()}
+                  onResetTransientData={resetTransientDemoData}
+                  onSignOut={() => void signOutGoogleSession()}
+                  onLogSelection={recordDemoSelection}
+                />
               )}
 
-              {/* 4B. PERHEEN JÄSENTEN NÄKYMÄ */}
               {activeTab === 'profile' && profileSubView === 'members' && (
                 <div className="p-4 sm:p-6 space-y-4 pb-8">
                   <div className="flex items-center justify-between">
@@ -2249,7 +1547,6 @@ export default function PerheAppPrototypePage() {
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-                    {/* 1. Vanhemmat & toisen vanhemman sähköpostikutsu */}
                     <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                       <div className="flex items-center justify-between">
                         <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
@@ -2345,7 +1642,7 @@ export default function PerheAppPrototypePage() {
                           <input
                             value={inviteParentName}
                             onChange={(e) => setInviteParentName(e.target.value)}
-                            placeholder="Nimi / rooli (esim. Mikko / Puoliso)"
+                            placeholder="Nimi / rooli (esim. Puoliso)"
                             className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
                           />
                           <div className="flex gap-1.5">
@@ -2376,7 +1673,6 @@ export default function PerheAppPrototypePage() {
                     </section>
 
                     <div className="space-y-4">
-                      {/* 2. Lapset-osio */}
                       <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                         <div className="flex items-center justify-between">
                           <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
@@ -2388,7 +1684,9 @@ export default function PerheAppPrototypePage() {
                         </div>
 
                         {profile.children.length === 0 ? (
-                          <p className="text-xs text-slate-500">Ei lisättyjä lapsia.</p>
+                          <p className="text-xs text-slate-500">
+                            Ei vielä lisättyjä lapsia. Lisää omat lapsesi alta.
+                          </p>
                         ) : (
                           <div className="space-y-2">
                             {profile.children.map((child) => {
@@ -2504,7 +1802,6 @@ export default function PerheAppPrototypePage() {
                         )}
                       </section>
 
-                      {/* 3. Läheiset-osio */}
                       <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                         <div className="flex items-center justify-between gap-2">
                           <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
@@ -2547,7 +1844,7 @@ export default function PerheAppPrototypePage() {
                         </label>
 
                         {profile.closeRelatives.length === 0 ? (
-                          <p className="text-xs text-slate-500">Ei lisättyjä läheisiä.</p>
+                          <p className="text-xs text-slate-500">Ei vielä lisättyjä läheisiä.</p>
                         ) : (
                           <div className="space-y-2">
                             {profile.closeRelatives.map((rel) => {
@@ -2658,7 +1955,6 @@ export default function PerheAppPrototypePage() {
                 </div>
               )}
 
-              {/* 4C. ERILLINEN KANTA- JA DATANÄYTTÖ */}
               {activeTab === 'profile' && profileSubView === 'store_inspector' && (
                 <div className="p-4 sm:p-6 space-y-4 pb-8 bg-gradient-to-b from-indigo-950 via-slate-950 to-purple-950 min-h-full text-indigo-50">
                   <div className="flex items-center justify-between gap-2">
@@ -2746,7 +2042,9 @@ export default function PerheAppPrototypePage() {
                             googleEmail: currentUser.email,
                             updatedAt: mongoUpdatedAt || null,
                             familyName: profile.familyName,
+                            homeCity: profile.homeCity,
                             area: profile.area,
+                            homeCoords: profile.homeCoords,
                             coParents: profile.coParents,
                             children: profile.children,
                             closeRelatives: profile.closeRelatives,
@@ -2764,7 +2062,6 @@ export default function PerheAppPrototypePage() {
               )}
             </main>
 
-            {/* KUTSU- JA LINKKIESIKATSELUMODAALI */}
             {activePreviewInvite && (
               <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end sm:items-center sm:justify-center sm:p-4">
                 <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
@@ -2831,7 +2128,6 @@ export default function PerheAppPrototypePage() {
               </div>
             )}
 
-            {/* PIKAVIESTIMODAALI */}
             {chatTarget && (
               <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end sm:items-center sm:justify-center sm:p-4">
                 <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
@@ -2907,7 +2203,6 @@ export default function PerheAppPrototypePage() {
               </div>
             )}
 
-            {/* KIINTEÄ ALAPALKKINAVIGAATIO */}
             <nav className="bg-white border-t border-slate-200 grid grid-cols-4 py-2 shrink-0">
               {[
                 { key: 'events', icon: '📅', label: 'Tapahtumat' },
@@ -2939,7 +2234,6 @@ export default function PerheAppPrototypePage() {
         )}
       </div>
 
-      {/* KELLUVA 1: DEMOAAMISVALINTOJEN SEURANTA (NO_DB_PII) */}
       {showDemoMonitor && (
         <FloatingDockWindow
           title={currentUser ? `DEMO_SEURANTA (${currentUser.id})` : 'DEMO_SEURANTA'}
@@ -2954,10 +2248,51 @@ export default function PerheAppPrototypePage() {
             <span>
               evt:{attendingIds.length} match:{matchedIds.length} skip:{dismissedIds.length}
             </span>
-            <span className="text-cyan-400">
-              {profile.filters.targetCity} ≤{profile.filters.maxDistanceKm}km
+            <span className="text-orange-400">
+              🟠 {profile.homeCity} ≤{profile.filters.maxDistanceKm}km
             </span>
           </div>
+
+          <div
+            className={`rounded-lg px-2 py-1.5 border font-mono text-[10px] space-y-1 ${
+              eventFeedStatus === 'live-api'
+                ? 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300'
+                : eventFeedStatus === 'loading'
+                  ? 'bg-zinc-900 border-zinc-700 text-zinc-300'
+                  : 'bg-rose-950/60 border-rose-700/50 text-rose-300'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold">/api/events</span>
+              <div className="flex items-center gap-1.5">
+                <span>
+                  {eventFeedStatus === 'loading'
+                    ? 'LOADING...'
+                    : eventFeedDebug.httpStatus
+                      ? `HTTP ${eventFeedDebug.httpStatus}`
+                      : 'NET_ERR'}
+                </span>
+                <button
+                  type="button"
+                  disabled={eventFeedStatus === 'loading'}
+                  onClick={() => void loadEventsFeed(true)}
+                  className="px-1.5 py-0.5 rounded bg-black/40 hover:bg-black/70 text-[9px] font-bold text-amber-300 disabled:opacity-50"
+                >
+                  ↻ Päivitä
+                </button>
+              </div>
+            </div>
+            {eventFeedDebug.errorDetail ? (
+              <p className="text-[9px] text-rose-200 break-words">{eventFeedDebug.errorDetail}</p>
+            ) : (
+              eventFeedStatus === 'live-api' && (
+                <p className="text-[9px] text-emerald-200">
+                  OK • {eventFeedDebug.count} tapahtumaa feedistä
+                </p>
+              )
+            )}
+          </div>
+
           <div className="bg-zinc-900 rounded-lg px-2 py-1.5 border border-zinc-800 font-mono text-[10px] text-zinc-200 truncate">
             {demoSelections[0]
               ? `[${demoSelections[0].time}] ${demoSelections[0].action}: ${demoSelections[0].detail}`
@@ -2975,7 +2310,6 @@ export default function PerheAppPrototypePage() {
         </FloatingDockWindow>
       )}
 
-      {/* KELLUVA 2: KANTAFEEDI & NÖRTTIHUUMORI */}
       {showNerdDbFloat && (
         <FloatingDockWindow
           title={`FILE_MONGO // REV #${mongoRevision}`}

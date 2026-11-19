@@ -7,6 +7,7 @@ export interface CoParentItem {
   email: string
   status: 'pending' | 'accepted'
   invitedAt: string
+  inviteCode: string
 }
 
 export interface ChildItem {
@@ -23,7 +24,9 @@ export interface CloseRelativeItem {
 
 export interface UserProfileState {
   familyName: string
+  homeCity: string
   area: string
+  homeCoords: [number, number]
   bio: string
   coParents: CoParentItem[]
   children: ChildItem[]
@@ -43,6 +46,7 @@ export interface UserProfileState {
 
 export interface FamilyProfileDocument {
   _id: string
+  userId: string
   instanceId: string
   profile: UserProfileState
   updatedAt: string
@@ -62,6 +66,11 @@ function resolveInstanceId(): string {
     process.env.HOSTNAME ||
     'default-instance'
   return raw.replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+function sanitizeUserId(raw?: string | null): string {
+  const clean = (raw || 'default').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_')
+  return clean || 'default'
 }
 
 export function getMongoStorePath(): string {
@@ -103,40 +112,38 @@ async function writeDatabaseAtomic(filePath: string, db: MongoFileDatabase): Pro
   await fs.rename(tempPath, filePath)
 }
 
-export async function findFamilyProfileDoc(): Promise<FamilyProfileDocument | null> {
+export async function findFamilyProfileDoc(
+  rawUserId?: string | null,
+): Promise<FamilyProfileDocument | null> {
+  const userId = sanitizeUserId(rawUserId)
+  const docId = `family-${userId}`
   const instanceId = resolveInstanceId()
   const filePath = getMongoStorePath()
   const db = await readDatabase(filePath, instanceId)
-  return db.collections.family_profiles.find((doc) => doc._id === 'own-family') ?? null
+  return db.collections.family_profiles.find((doc) => doc._id === docId) ?? null
 }
 
 export async function upsertFamilyProfileDoc(
   profile: UserProfileState,
+  rawUserId?: string | null,
 ): Promise<FamilyProfileDocument> {
+  const userId = sanitizeUserId(rawUserId)
+  const docId = `family-${userId}`
   const instanceId = resolveInstanceId()
   const filePath = getMongoStorePath()
   const db = await readDatabase(filePath, instanceId)
 
   const doc: FamilyProfileDocument = {
-    _id: 'own-family',
+    _id: docId,
+    userId,
     instanceId,
     profile,
     updatedAt: new Date().toISOString(),
   }
 
-  const others = db.collections.family_profiles.filter((d) => d._id !== 'own-family')
+  const others = db.collections.family_profiles.filter((d) => d._id !== docId)
   db.collections.family_profiles = [doc, ...others]
 
   await writeDatabaseAtomic(filePath, db)
   return doc
-}
-
-export async function deleteFamilyProfileDoc(): Promise<void> {
-  const instanceId = resolveInstanceId()
-  const filePath = getMongoStorePath()
-  const db = await readDatabase(filePath, instanceId)
-  db.collections.family_profiles = db.collections.family_profiles.filter(
-    (d) => d._id !== 'own-family',
-  )
-  await writeDatabaseAtomic(filePath, db)
 }
