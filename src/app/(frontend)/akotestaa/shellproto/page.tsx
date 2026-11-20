@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchKaroEventsFeed } from './eventFeedClient'
+import { buildGoogleCalendarUrl } from './googleCalendar'
 import { PksMapView } from './PksMapView'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import {
@@ -36,6 +37,119 @@ import {
   TabKey,
   UserProfileState,
 } from './protoData'
+
+type EventAgeQuickFilter = 'all' | '0-3' | '4-6' | '7-12' | 'all-ages'
+
+const DEFAULT_PKS_COORDS: [number, number] = [60.2055, 24.6559]
+
+const KNOWN_PKS_PLACE_COORDS: { match: string; coords: [number, number] }[] = [
+  { match: 'oodi', coords: [60.1737, 24.9382] },
+  { match: 'kiasma', coords: [60.1718, 24.9369] },
+  { match: 'pasila', coords: [60.1986, 24.9333] },
+  { match: 'kallio', coords: [60.1841, 24.9502] },
+  { match: 'töölö', coords: [60.1815, 24.9225] },
+  { match: 'leppävaara', coords: [60.2188, 24.8124] },
+  { match: 'tapiola', coords: [60.1756, 24.8045] },
+  { match: 'matinkylä', coords: [60.1583, 24.7376] },
+  { match: 'kauniainen', coords: [60.2134, 24.7267] },
+  { match: 'tikkurila', coords: [60.2934, 25.041] },
+  { match: 'myyrmäki', coords: [60.2602, 24.8548] },
+  { match: 'jumbo', coords: [60.2927, 24.9653] },
+  { match: 'espoo', coords: [60.2055, 24.6559] },
+  { match: 'vantaa', coords: [60.2934, 25.0378] },
+  { match: 'helsinki', coords: [60.1699, 24.9384] },
+]
+
+function resolveCoordsTuple(
+  coords: unknown,
+  fallback: [number, number] = DEFAULT_PKS_COORDS,
+): [number, number] {
+  if (
+    Array.isArray(coords) &&
+    coords.length >= 2 &&
+    typeof coords[0] === 'number' &&
+    Number.isFinite(coords[0]) &&
+    typeof coords[1] === 'number' &&
+    Number.isFinite(coords[1])
+  ) {
+    return [coords[0], coords[1]]
+  }
+  return fallback
+}
+
+function resolveEventCoords(
+  evt: FamilyEvent,
+  fallbackCoords: [number, number],
+): { coords: [number, number]; hasExactCoords: boolean } {
+  if (
+    Array.isArray(evt?.coords) &&
+    evt.coords.length >= 2 &&
+    typeof evt.coords[0] === 'number' &&
+    Number.isFinite(evt.coords[0]) &&
+    typeof evt.coords[1] === 'number' &&
+    Number.isFinite(evt.coords[1])
+  ) {
+    return { coords: [evt.coords[0], evt.coords[1]], hasExactCoords: true }
+  }
+
+  const placeText = `${evt?.venue ?? ''} ${evt?.city ?? ''} ${evt?.title ?? ''}`.toLowerCase()
+  const hit = KNOWN_PKS_PLACE_COORDS.find((item) => placeText.includes(item.match))
+  if (hit) {
+    return { coords: hit.coords, hasExactCoords: false }
+  }
+
+  return { coords: resolveCoordsTuple(fallbackCoords, DEFAULT_PKS_COORDS), hasExactCoords: false }
+}
+
+const EVENT_AGE_QUICK_FILTERS: { id: EventAgeQuickFilter; label: string }[] = [
+  { id: 'all', label: 'Kaikki iät' },
+  { id: '0-3', label: '0–3 v' },
+  { id: '4-6', label: '4–6 v' },
+  { id: '7-12', label: '7–12 v' },
+  { id: 'all-ages', label: 'Koko perhe' },
+]
+
+function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQuickFilter): boolean {
+  if (filter === 'all') return true
+  const normalized = (ageGroup || '').toLowerCase().trim()
+
+  if (
+    !normalized ||
+    normalized.includes('kaikki ikäryhmät') ||
+    normalized.includes('koko perhe') ||
+    normalized.includes('kaikenikäis')
+  ) {
+    return filter === 'all-ages'
+  }
+
+  if (filter === 'all-ages') {
+    return false
+  }
+
+  const [bucketMin, bucketMax] =
+    filter === '0-3' ? [0, 3] : filter === '4-6' ? [4, 6] : [7, 12]
+
+  const rangeMatch = normalized.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/)
+  if (rangeMatch) {
+    const min = Number(rangeMatch[1])
+    const max = Number(rangeMatch[2])
+    return min <= bucketMax && max >= bucketMin
+  }
+
+  const underMatch = normalized.match(/alle\s+(\d{1,2})/)
+  if (underMatch) {
+    const max = Number(underMatch[1])
+    return 0 <= bucketMax && max >= bucketMin
+  }
+
+  const plusMatch = normalized.match(/(\d{1,2})\s*\+/)
+  if (plusMatch) {
+    const min = Number(plusMatch[1])
+    return min <= bucketMax
+  }
+
+  return false
+}
 
 function loadTransientSession(userId: string): PersistedSessionState | null {
   if (typeof window === 'undefined') return null
@@ -170,6 +284,8 @@ export default function PerheAppPrototypePage() {
   const [profile, setProfile] = useState<UserProfileState>(BASE_DEFAULT_PROFILE)
 
   const [events, setEvents] = useState<FamilyEvent[]>(INITIAL_EVENTS)
+  const [eventAgeFilter, setEventAgeFilter] = useState<EventAgeQuickFilter>('all')
+  const [eventSearchQuery, setEventSearchQuery] = useState<string>('')
   const [eventFeedStatus, setEventFeedStatus] = useState<'loading' | 'live-api' | 'fallback'>(
     'loading',
   )
@@ -206,7 +322,7 @@ export default function PerheAppPrototypePage() {
   const [dbFloatPos, setDbFloatPos] = useState<FloatingPos | null>(null)
 
   const [demoSelections, setDemoSelections] = useState<DemoSelectionEvent[]>([
-    { id: 'init-1', time: nowClock(), action: 'OAUTH_CHECK', detail: 'checking /api/auth/session' },
+    { id: 'init-1', time: '--.--.--', action: 'OAUTH_CHECK', detail: 'checking /api/auth/session' },
   ])
 
   const [editingChildId, setEditingChildId] = useState<string | null>(null)
@@ -249,19 +365,37 @@ export default function PerheAppPrototypePage() {
   const loadEventsFeed = useCallback(
     async (manual = false) => {
       setEventFeedStatus('loading')
-      const result = await fetchKaroEventsFeed('/api/events')
-      setEvents(result.events)
-      setEventFeedStatus(result.sourceStatus)
-      setEventFeedDebug({
-        httpStatus: result.httpStatus,
-        errorDetail: result.errorDetail,
-        count: result.rawCount,
-      })
-      const statusStr = result.httpStatus ? `HTTP ${result.httpStatus}` : 'NET_ERR'
-      const detailStr = result.errorDetail
-        ? `${statusStr} • ${result.errorDetail}`
-        : `${statusStr} • ${result.sourceStatus} (${result.rawCount} items)`
-      recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', detailStr)
+      try {
+        const result = await fetchKaroEventsFeed('/api/events')
+        const nextEvents = Array.isArray(result?.events)
+          ? result.events
+          : Array.isArray(result)
+            ? (result as unknown as FamilyEvent[])
+            : INITIAL_EVENTS
+
+        setEvents(nextEvents.length > 0 ? nextEvents : INITIAL_EVENTS)
+        setEventFeedStatus(result?.sourceStatus === 'live-api' ? 'live-api' : 'fallback')
+        setEventFeedDebug({
+          httpStatus: typeof result?.httpStatus === 'number' ? result.httpStatus : 200,
+          errorDetail: result?.errorDetail,
+          count: typeof result?.rawCount === 'number' ? result.rawCount : nextEvents.length,
+        })
+        const statusStr = result?.httpStatus ? `HTTP ${result.httpStatus}` : 'LOCAL_FALLBACK'
+        const detailStr = result?.errorDetail
+          ? `${statusStr} • ${result.errorDetail}`
+          : `${statusStr} • ${result?.sourceStatus || 'fallback'} (${nextEvents.length} items)`
+        recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', detailStr)
+      } catch (err) {
+        setEvents(INITIAL_EVENTS)
+        setEventFeedStatus('fallback')
+        const errMsg = err instanceof Error ? err.message : 'fetch_failed'
+        setEventFeedDebug({
+          httpStatus: null,
+          errorDetail: errMsg,
+          count: INITIAL_EVENTS.length,
+        })
+        recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', `FALLBACK • ${errMsg}`)
+      }
     },
     [recordDemoSelection],
   )
@@ -613,6 +747,8 @@ export default function PerheAppPrototypePage() {
     setLatestMatch(null)
     setChatTarget(null)
     setMapFocusCoords(null)
+    setEventAgeFilter('all')
+    setEventSearchQuery('')
     setDemoSelections([
       {
         id: `rst-${Date.now()}`,
@@ -635,17 +771,24 @@ export default function PerheAppPrototypePage() {
     transientToastTimerRef.current = setTimeout(() => setTransientResetToast(false), 2500)
   }
 
-  // Suodatetaan ja järjestetään tapahtumat etäisyyden (lähimmästä kauimpaan) ja kaupungin mukaan
-  const filteredSortedEvents = events
-    .map((evt) => ({
-      ...evt,
-      distanceKm: calcDistanceKm(profile.homeCoords, evt.coords),
-    }))
+  const safeEvents = Array.isArray(events) ? events : INITIAL_EVENTS
+  const safeHomeCoords = resolveCoordsTuple(profile?.homeCoords, DEFAULT_PKS_COORDS)
+
+  const baseAreaSortedEvents = safeEvents
+    .map((evt) => {
+      const resolved = resolveEventCoords(evt, safeHomeCoords)
+      return {
+        ...evt,
+        coords: resolved.coords,
+        hasExactCoords: resolved.hasExactCoords,
+        distanceKm: calcDistanceKm(safeHomeCoords, resolved.coords),
+      }
+    })
     .filter((evt) => {
       if (evt.distanceKm > profile.filters.maxDistanceKm) return false
       if (
         profile.filters.targetCity !== 'Kaikki PKS' &&
-        evt.city.toLowerCase() !== profile.filters.targetCity.toLowerCase()
+        (evt.city || '').toLowerCase() !== profile.filters.targetCity.toLowerCase()
       ) {
         return false
       }
@@ -653,12 +796,39 @@ export default function PerheAppPrototypePage() {
     })
     .sort((a, b) => a.distanceKm - b.distanceKm)
 
-  // Lasketaan etäisyys ja dynaaminen match-prosentti jokaiselle perheelle
+  const normalizedEventQuery = eventSearchQuery.trim().toLowerCase()
+  const filteredSortedEvents = baseAreaSortedEvents.filter((evt) => {
+    if (!matchesEventAgeFilter(evt.ageGroup, eventAgeFilter)) {
+      return false
+    }
+    if (normalizedEventQuery) {
+      const haystack = [
+        evt.title,
+        evt.venue,
+        evt.city,
+        evt.ageGroup,
+        evt.price,
+        evt.description ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      if (!haystack.includes(normalizedEventQuery)) {
+        return false
+      }
+    }
+    return true
+  })
+
+  const hasActiveQuickEventFilter =
+    eventAgeFilter !== 'all' || normalizedEventQuery.length > 0
+
   const familiesWithDistance = DEMO_FAMILIES.map((fam) => {
-    const distanceKm = calcDistanceKm(profile.homeCoords, fam.coords)
-    const match = calcFamilyMatch(profile, fam, distanceKm, attendingIds)
+    const famCoords = resolveCoordsTuple(fam?.coords, safeHomeCoords)
+    const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
+    const match = calcFamilyMatch(profile, { ...fam, coords: famCoords }, distanceKm, attendingIds)
     return {
       ...fam,
+      coords: famCoords,
       distanceKm,
       match,
     }
@@ -924,7 +1094,7 @@ export default function PerheAppPrototypePage() {
   }
 
   const openOnMap = (coords: [number, number], label = 'coords') => {
-    setMapFocusCoords(coords)
+    setMapFocusCoords(resolveCoordsTuple(coords, safeHomeCoords))
     setActiveTab('map')
     recordDemoSelection('MAP_FOCUS', label)
   }
@@ -1108,7 +1278,7 @@ export default function PerheAppPrototypePage() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-slate-500">
-                        {filteredSortedEvents.length}/{events.length}
+                        {filteredSortedEvents.length}/{baseAreaSortedEvents.length}
                       </span>
                       <button
                         type="button"
@@ -1121,6 +1291,58 @@ export default function PerheAppPrototypePage() {
                     </div>
                   </div>
 
+                  {/* Kevyt pikasuodatinpalkki: ikähaarukka + tekstihaku */}
+                  <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {EVENT_AGE_QUICK_FILTERS.map((item) => {
+                          const active = eventAgeFilter === item.id
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                setEventAgeFilter(item.id)
+                                recordDemoSelection('EVENTS_AGE_FILTER', item.id)
+                              }}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
+                                active
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="search"
+                          value={eventSearchQuery}
+                          onChange={(e) => setEventSearchQuery(e.target.value)}
+                          placeholder="Hae tapahtumaa tai paikkaa..."
+                          aria-label="Hae tapahtumaa tai paikkaa"
+                          className="w-full sm:w-52 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
+                        />
+                        {hasActiveQuickEventFilter && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEventAgeFilter('all')
+                              setEventSearchQuery('')
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-700 shrink-0"
+                            title="Tyhjennä ikä- ja hakusuodatin"
+                          >
+                            Tyhjennä
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {filteredSortedEvents.length === 0 ? (
                     <div className="bg-white rounded-2xl p-7 text-center border border-slate-200 space-y-3">
                       <p className="text-2xl">📍</p>
@@ -1128,19 +1350,34 @@ export default function PerheAppPrototypePage() {
                         Ei tapahtumia valituilla suodattimilla
                       </h3>
                       <p className="text-xs text-slate-500">
-                        Hakualueena on <strong>{profile.filters.targetCity}</strong> ja
-                        enimmäisetäisyys <strong>{profile.filters.maxDistanceKm} km</strong> kotoa.
+                        {hasActiveQuickEventFilter
+                          ? 'Kokeile tyhjentää ikähaarukka- tai hakusuodatin, tai tarkista profiilin etäisyysraja.'
+                          : `Hakualueena on ${profile.filters.targetCity} ja enimmäisetäisyys ${profile.filters.maxDistanceKm} km kotoa.`}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('profile')
-                          setProfileSubView('main')
-                        }}
-                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-                      >
-                        Muokkaa hakufilttereitä
-                      </button>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {hasActiveQuickEventFilter && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEventAgeFilter('all')
+                              setEventSearchQuery('')
+                            }}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
+                          >
+                            Tyhjennä ikä- ja hakusuodatin
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('profile')
+                            setProfileSubView('main')
+                          }}
+                          className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                        >
+                          Muokkaa aluefilttereitä
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -1149,6 +1386,7 @@ export default function PerheAppPrototypePage() {
                         const matchedGoing = profile.privacy.shareEventsWithMatches
                           ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
                           : []
+                        const gcalUrl = buildGoogleCalendarUrl(evt)
 
                         return (
                           <div
@@ -1157,10 +1395,16 @@ export default function PerheAppPrototypePage() {
                           >
                             <div className="space-y-2">
                               <div className="flex justify-between items-start gap-2">
-                                <div>
-                                  <span className="text-[11px] font-semibold text-blue-600 uppercase">
-                                    {evt.city} • {evt.ageGroup} • {evt.distanceKm} km kotoa
-                                  </span>
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="text-[11px] font-semibold text-blue-600 uppercase">
+                                      {evt.city} • {evt.hasExactCoords ? '' : '~'}
+                                      {evt.distanceKm} km kotoa
+                                    </span>
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                                      👶 {evt.ageGroup || 'Kaikki ikäryhmät'}
+                                    </span>
+                                  </div>
                                   <h3 className="text-base font-bold text-slate-900 leading-snug">
                                     {evt.title}
                                   </h3>
@@ -1171,7 +1415,7 @@ export default function PerheAppPrototypePage() {
                               </div>
 
                               <p className="text-xs text-slate-600">
-                                📍 {evt.venue} <br />
+                                📍 {evt.venue || evt.city} <br />
                                 🕒 {evt.time}
                               </p>
 
@@ -1189,11 +1433,11 @@ export default function PerheAppPrototypePage() {
                               )}
                             </div>
 
-                            <div className="pt-1 flex gap-2">
+                            <div className="pt-1 flex flex-wrap gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => toggleEventAttendance(evt.id)}
-                                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${
+                                className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-bold transition-colors ${
                                   isGoing
                                     ? 'bg-emerald-600 text-white'
                                     : 'bg-slate-900 text-white hover:bg-slate-800'
@@ -1201,6 +1445,16 @@ export default function PerheAppPrototypePage() {
                               >
                                 {isGoing ? '✓ Menossa mukaan' : '+ Menossa mukaan'}
                               </button>
+                              <a
+                                href={gcalUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => recordDemoSelection('GCAL_EXPORT', evt.id)}
+                                className="px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-bold hover:bg-emerald-100 transition-colors"
+                                title="Lisää tapahtuma Google Kalenteriin"
+                              >
+                                📅 Kalenteriin
+                              </a>
                               <button
                                 type="button"
                                 onClick={() => openOnMap(evt.coords, evt.id)}
@@ -1326,7 +1580,7 @@ export default function PerheAppPrototypePage() {
                             </p>
 
                             {(() => {
-                              const sharedEvt = events.find(
+                              const sharedEvt = safeEvents.find(
                                 (e) => e.id === currentCard.attendingEventId,
                               )
                               if (!sharedEvt) return null
@@ -1488,10 +1742,10 @@ export default function PerheAppPrototypePage() {
 
               {activeTab === 'map' && (
                 <PksMapView
-                  events={filteredSortedEvents}
+                  events={baseAreaSortedEvents}
                   attendingIds={attendingIds}
                   matchedFamilies={matchedFamilies}
-                  homeCoords={profile.homeCoords}
+                  homeCoords={safeHomeCoords}
                   homeLabel={`${profile.area}, ${profile.homeCity}`}
                   familyName={profile.familyName}
                   shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
@@ -2044,7 +2298,7 @@ export default function PerheAppPrototypePage() {
                             familyName: profile.familyName,
                             homeCity: profile.homeCity,
                             area: profile.area,
-                            homeCoords: profile.homeCoords,
+                            homeCoords: safeHomeCoords,
                             coParents: profile.coParents,
                             children: profile.children,
                             closeRelatives: profile.closeRelatives,

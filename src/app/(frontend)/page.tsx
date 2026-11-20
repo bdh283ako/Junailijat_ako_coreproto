@@ -1,5 +1,5 @@
-import { GatherHome } from '@/components/GatherHome'
+import { redirect } from 'next/navigation'
 
 export default function HomePage() {
-  return <GatherHome />
+  redirect('/akotestaa/shellproto')
 }

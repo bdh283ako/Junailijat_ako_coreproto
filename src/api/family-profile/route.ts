@@ -1,56 +1,118 @@
 import { NextRequest, NextResponse } from 'next/server'
-import {
-  deleteFamilyProfileDoc,
-  findFamilyProfileDoc,
-  upsertFamilyProfileDoc,
-  UserProfileState,
-} from '@/lib/localMongoStore'
 
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  try {
-    const doc = await findFamilyProfileDoc()
-    return NextResponse.json({ ok: true, document: doc })
-  } catch (error) {
-    console.error('GET /api/family-profile failed:', error)
-    return NextResponse.json(
-      { ok: false, error: 'Tiedostopohjaisen Mongo-kannan luku epäonnistui' },
-      { status: 500 },
-    )
-  }
+export interface StoredFamilyProfileRecord {
+  userId: string
+  instanceId: string
+  updatedAt: string
+  profile: Record<string, unknown>
 }
 
-export async function PUT(request: NextRequest) {
-  try {
-    const body = (await request.json()) as { profile?: UserProfileState }
-    if (!body?.profile) {
-      return NextResponse.json(
-        { ok: false, error: 'Profiilidata puuttuu pyynnöstä' },
-        { status: 400 },
-      )
-    }
-
-    const doc = await upsertFamilyProfileDoc(body.profile)
-    return NextResponse.json({ ok: true, document: doc })
-  } catch (error) {
-    console.error('PUT /api/family-profile failed:', error)
-    return NextResponse.json(
-      { ok: false, error: 'Tiedostopohjaisen Mongo-kannan tallennus epäonnistui' },
-      { status: 500 },
-    )
-  }
+declare global {
+  // Säilytetään demoprofiilit palvelinprosessin yli dev- ja preview-ajossa
+  var __perhePiiriDemoProfiles: Map<string, StoredFamilyProfileRecord> | undefined
 }
 
-export async function DELETE() {
-  try {
-    await deleteFamilyProfileDoc()
-    return NextResponse.json({ ok: true })
-  } catch (error) {
-    console.error('DELETE /api/family-profile failed:', error)
+const profileStore =
+  globalThis.__perhePiiriDemoProfiles ??
+  (globalThis.__perhePiiriDemoProfiles = new Map<string, StoredFamilyProfileRecord>())
+
+const INSTANCE_ID =
+  process.env.DEMO_INSTANCE_ID?.trim() ||
+  process.env.VERCEL_REGION?.trim() ||
+  'figma-demo-local'
+
+function sanitizeUserId(raw: string | null | undefined): string {
+  const cleaned = (raw ?? '').trim().toLowerCase()
+  if (!cleaned) return 'demo_user'
+  return cleaned.replace(/[^a-z0-9_@-]+/g, '_').slice(0, 80) || 'demo_user'
+}
+
+export async function GET(req: NextRequest) {
+  const userId = sanitizeUserId(req.nextUrl.searchParams.get('userId'))
+  const existing = profileStore.get(userId)
+
+  if (!existing) {
     return NextResponse.json(
-      { ok: false, error: 'Tiedostopohjaisen Mongo-kannan tyhjennys epäonnistui' },
-      { status: 500 },
+      {
+        ok: true,
+        userId,
+        instanceId: INSTANCE_ID,
+        document: null,
+      },
+      { status: 200 },
     )
   }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      userId,
+      instanceId: existing.instanceId,
+      document: existing,
+    },
+    { status: 200 },
+  )
+}
+
+export async function PUT(req: NextRequest) {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: 'Virheellinen JSON-runko.' },
+      { status: 400 },
+    )
+  }
+
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json(
+      { ok: false, error: 'Pyynnön rungon täytyy olla objekti.' },
+      { status: 400 },
+    )
+  }
+
+  const payload = body as {
+    userId?: unknown
+    profile?: unknown
+  }
+
+  const userId = sanitizeUserId(
+    typeof payload.userId === 'string' ? payload.userId : undefined,
+  )
+
+  if (!payload.profile || typeof payload.profile !== 'object' || Array.isArray(payload.profile)) {
+    return NextResponse.json(
+      { ok: false, error: 'Puuttuva tai virheellinen profile-objekti.' },
+      { status: 400 },
+    )
+  }
+
+  const updatedAt = new Date().toISOString()
+  const previous = profileStore.get(userId)
+
+  const nextRecord: StoredFamilyProfileRecord = {
+    userId,
+    instanceId: INSTANCE_ID,
+    updatedAt,
+    profile: {
+      ...(previous?.profile ?? {}),
+      ...(payload.profile as Record<string, unknown>),
+    },
+  }
+
+  profileStore.set(userId, nextRecord)
+
+  return NextResponse.json(
+    {
+      ok: true,
+      userId,
+      instanceId: INSTANCE_ID,
+      document: nextRecord,
+    },
+    { status: 201 },
+  )
 }
