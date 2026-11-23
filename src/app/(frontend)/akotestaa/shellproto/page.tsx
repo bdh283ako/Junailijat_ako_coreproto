@@ -1,12 +1,17 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CommunityHubPanel, type HubSection } from './CommunityHubPanel'
 import { fetchKaroEventsFeed } from './eventFeedClient'
 import { buildGoogleCalendarUrl } from './googleCalendar'
+import {
+  DEFAULT_PKS_COORDS,
+  resolveCoordsTuple,
+  resolveEventsForMap,
+} from './mapGeoResolver'
 import { PksMapView } from './PksMapView'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import {
-  AGE_GROUP_OPTIONS,
   AuthenticatedGoogleUser,
   BASE_DEFAULT_PROFILE,
   buildInitialProfileForGoogleUser,
@@ -25,6 +30,7 @@ import {
   FamilyProfile,
   FloatingPos,
   generateInviteCode,
+  inferAgeGroupsFromChildren,
   INITIAL_ATTENDING_IDS,
   INITIAL_EVENTS,
   NERD_DB_QUIPS,
@@ -40,65 +46,9 @@ import {
 
 type EventAgeQuickFilter = 'all' | '0-3' | '4-6' | '7-12' | 'all-ages'
 
-const DEFAULT_PKS_COORDS: [number, number] = [60.2055, 24.6559]
-
-const KNOWN_PKS_PLACE_COORDS: { match: string; coords: [number, number] }[] = [
-  { match: 'oodi', coords: [60.1737, 24.9382] },
-  { match: 'kiasma', coords: [60.1718, 24.9369] },
-  { match: 'pasila', coords: [60.1986, 24.9333] },
-  { match: 'kallio', coords: [60.1841, 24.9502] },
-  { match: 'töölö', coords: [60.1815, 24.9225] },
-  { match: 'leppävaara', coords: [60.2188, 24.8124] },
-  { match: 'tapiola', coords: [60.1756, 24.8045] },
-  { match: 'matinkylä', coords: [60.1583, 24.7376] },
-  { match: 'kauniainen', coords: [60.2134, 24.7267] },
-  { match: 'tikkurila', coords: [60.2934, 25.041] },
-  { match: 'myyrmäki', coords: [60.2602, 24.8548] },
-  { match: 'jumbo', coords: [60.2927, 24.9653] },
-  { match: 'espoo', coords: [60.2055, 24.6559] },
-  { match: 'vantaa', coords: [60.2934, 25.0378] },
-  { match: 'helsinki', coords: [60.1699, 24.9384] },
-]
-
-function resolveCoordsTuple(
-  coords: unknown,
-  fallback: [number, number] = DEFAULT_PKS_COORDS,
-): [number, number] {
-  if (
-    Array.isArray(coords) &&
-    coords.length >= 2 &&
-    typeof coords[0] === 'number' &&
-    Number.isFinite(coords[0]) &&
-    typeof coords[1] === 'number' &&
-    Number.isFinite(coords[1])
-  ) {
-    return [coords[0], coords[1]]
-  }
-  return fallback
-}
-
-function resolveEventCoords(
-  evt: FamilyEvent,
-  fallbackCoords: [number, number],
-): { coords: [number, number]; hasExactCoords: boolean } {
-  if (
-    Array.isArray(evt?.coords) &&
-    evt.coords.length >= 2 &&
-    typeof evt.coords[0] === 'number' &&
-    Number.isFinite(evt.coords[0]) &&
-    typeof evt.coords[1] === 'number' &&
-    Number.isFinite(evt.coords[1])
-  ) {
-    return { coords: [evt.coords[0], evt.coords[1]], hasExactCoords: true }
-  }
-
-  const placeText = `${evt?.venue ?? ''} ${evt?.city ?? ''} ${evt?.title ?? ''}`.toLowerCase()
-  const hit = KNOWN_PKS_PLACE_COORDS.find((item) => placeText.includes(item.match))
-  if (hit) {
-    return { coords: hit.coords, hasExactCoords: false }
-  }
-
-  return { coords: resolveCoordsTuple(fallbackCoords, DEFAULT_PKS_COORDS), hasExactCoords: false }
+type FeedSourcesMeta = {
+  karoCount: number
+  linkedEventsCount: number
 }
 
 const EVENT_AGE_QUICK_FILTERS: { id: EventAgeQuickFilter; label: string }[] = [
@@ -117,38 +67,88 @@ function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQui
     !normalized ||
     normalized.includes('kaikki ikäryhmät') ||
     normalized.includes('koko perhe') ||
-    normalized.includes('kaikenikäis')
+    normalized.includes('kaikenikäis') ||
+    normalized.includes('all ages')
   ) {
     return filter === 'all-ages'
   }
 
-  if (filter === 'all-ages') {
-    return false
-  }
+  if (filter === 'all-ages') return false
 
   const [bucketMin, bucketMax] =
     filter === '0-3' ? [0, 3] : filter === '4-6' ? [4, 6] : [7, 12]
 
   const rangeMatch = normalized.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/)
   if (rangeMatch) {
-    const min = Number(rangeMatch[1])
-    const max = Number(rangeMatch[2])
-    return min <= bucketMax && max >= bucketMin
+    return Number(rangeMatch[1]) <= bucketMax && Number(rangeMatch[2]) >= bucketMin
   }
 
   const underMatch = normalized.match(/alle\s+(\d{1,2})/)
   if (underMatch) {
-    const max = Number(underMatch[1])
-    return 0 <= bucketMax && max >= bucketMin
+    return Number(underMatch[1]) >= bucketMin
   }
 
   const plusMatch = normalized.match(/(\d{1,2})\s*\+/)
   if (plusMatch) {
-    const min = Number(plusMatch[1])
-    return min <= bucketMax
+    return Number(plusMatch[1]) <= bucketMax
   }
 
   return false
+}
+
+function getSourceStatusBadge(
+  status: 'loading' | 'live-api' | 'fallback',
+  sources: FeedSourcesMeta | null,
+) {
+  if (status === 'loading') {
+    return {
+      label: 'Ladataan tapahtumalähteitä...',
+      className: 'bg-slate-100 text-slate-700 border-slate-200',
+      dotClass: 'bg-slate-400 animate-pulse',
+    }
+  }
+
+  if (status === 'fallback' || !sources) {
+    return {
+      label: 'Demo-varadata (0 live-lähdettä)',
+      className: 'bg-rose-50 text-rose-700 border-rose-200',
+      dotClass: 'bg-rose-500',
+    }
+  }
+
+  const activeSourceCount = [
+    sources.karoCount > 0,
+    sources.linkedEventsCount > 0,
+  ].filter(Boolean).length
+
+  const summaryParts = [
+    sources.linkedEventsCount > 0
+      ? `Linked Events PKS (${sources.linkedEventsCount})`
+      : 'Linked Events PKS (0)',
+    sources.karoCount > 0 ? `EventPulse (${sources.karoCount})` : 'EventPulse (0)',
+  ]
+
+  if (activeSourceCount >= 2) {
+    return {
+      label: `Live-lähteet aktiivisia: ${summaryParts.join(' + ')}`,
+      className: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      dotClass: 'bg-emerald-500',
+    }
+  }
+
+  if (activeSourceCount === 1) {
+    return {
+      label: `Osittainen syöte (1/2): ${summaryParts.join(' • ')}`,
+      className: 'bg-amber-50 text-amber-800 border-amber-200',
+      dotClass: 'bg-amber-500',
+    }
+  }
+
+  return {
+    label: 'Demo-varadata (0 tapahtumaa lähteistä)',
+    className: 'bg-amber-50 text-amber-800 border-amber-200',
+    dotClass: 'bg-amber-500',
+  }
 }
 
 function loadTransientSession(userId: string): PersistedSessionState | null {
@@ -214,9 +214,10 @@ function FloatingDockWindow({
     const dy = e.clientY - d.startY
     const maxX = Math.max(8, window.innerWidth - d.boxW - 8)
     const maxY = Math.max(8, window.innerHeight - d.boxH - 8)
-    const nextX = Math.min(maxX, Math.max(8, d.origX + dx))
-    const nextY = Math.min(maxY, Math.max(8, d.origY + dy))
-    onPosChange({ x: nextX, y: nextY })
+    onPosChange({
+      x: Math.min(maxX, Math.max(8, d.origX + dx)),
+      y: Math.min(maxY, Math.max(8, d.origY + dy)),
+    })
   }
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -281,14 +282,21 @@ export default function PerheAppPrototypePage() {
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main')
   const [familySubTab, setFamilySubTab] = useState<'discover' | 'matches'>('discover')
 
+  const [hubInitialSection, setHubInitialSection] = useState<HubSection>('board')
+  const [hubEventId, setHubEventId] = useState<string | null>(null)
+  const [hubDirectTargetId, setHubDirectTargetId] = useState<string | null>(null)
+  const [hubMountKey, setHubMountKey] = useState<number>(0)
+
   const [profile, setProfile] = useState<UserProfileState>(BASE_DEFAULT_PROFILE)
 
   const [events, setEvents] = useState<FamilyEvent[]>(INITIAL_EVENTS)
   const [eventAgeFilter, setEventAgeFilter] = useState<EventAgeQuickFilter>('all')
   const [eventSearchQuery, setEventSearchQuery] = useState<string>('')
+  const [ignoreDefaultPresetTemp, setIgnoreDefaultPresetTemp] = useState(false)
   const [eventFeedStatus, setEventFeedStatus] = useState<'loading' | 'live-api' | 'fallback'>(
     'loading',
   )
+  const [eventFeedSources, setEventFeedSources] = useState<FeedSourcesMeta | null>(null)
   const [eventFeedDebug, setEventFeedDebug] = useState<{
     httpStatus: number | null
     errorDetail?: string
@@ -337,18 +345,26 @@ export default function PerheAppPrototypePage() {
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
   const [matchedIds, setMatchedIds] = useState<string[]>([])
   const [latestMatch, setLatestMatch] = useState<FamilyProfile | null>(null)
-  const [chatTarget, setChatTarget] = useState<FamilyProfile | null>(null)
-  const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState<Record<string, string[]>>({})
   const [mapFocusCoords, setMapFocusCoords] = useState<[number, number] | null>(null)
   const [isHydrated, setIsHydrated] = useState(false)
 
   const skipNextDbSaveRef = useRef(true)
+  const instanceLabelRef = useRef<string>('')
+  const revisionRef = useRef<number>(0)
   const lastQuipIdxRef = useRef<number>(-1)
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transientToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    instanceLabelRef.current = mongoInstanceLabel
+  }, [mongoInstanceLabel])
+
+  useEffect(() => {
+    revisionRef.current = mongoRevision
+  }, [mongoRevision])
 
   const recordDemoSelection = useCallback((action: string, detail: string) => {
     setDemoSelections((prev) => [
@@ -362,6 +378,26 @@ export default function PerheAppPrototypePage() {
     ])
   }, [])
 
+  const openHubChannel = useCallback(
+    (
+      targetSection: HubSection,
+      opts?: { eventId?: string | null; directTargetId?: string | null },
+    ) => {
+      setHubInitialSection(targetSection)
+      setHubEventId(opts?.eventId ?? null)
+      setHubDirectTargetId(opts?.directTargetId ?? null)
+      setHubMountKey((prev) => prev + 1)
+      setActiveTab('hub')
+      recordDemoSelection(
+        'OPEN_HUB',
+        `${targetSection}${opts?.eventId ? `:${opts.eventId}` : ''}${
+          opts?.directTargetId ? `:${opts.directTargetId}` : ''
+        }`,
+      )
+    },
+    [recordDemoSelection],
+  )
+
   const loadEventsFeed = useCallback(
     async (manual = false) => {
       setEventFeedStatus('loading')
@@ -373,7 +409,24 @@ export default function PerheAppPrototypePage() {
             ? (result as unknown as FamilyEvent[])
             : INITIAL_EVENTS
 
+        const rawPayload = result as
+          | {
+              sources?: {
+                karoCount?: number
+                linkedEventsCount?: number
+              }
+            }
+          | undefined
+
+        const parsedSources: FeedSourcesMeta | null = rawPayload?.sources
+          ? {
+              karoCount: Number(rawPayload.sources.karoCount ?? 0),
+              linkedEventsCount: Number(rawPayload.sources.linkedEventsCount ?? 0),
+            }
+          : null
+
         setEvents(nextEvents.length > 0 ? nextEvents : INITIAL_EVENTS)
+        setEventFeedSources(parsedSources)
         setEventFeedStatus(result?.sourceStatus === 'live-api' ? 'live-api' : 'fallback')
         setEventFeedDebug({
           httpStatus: typeof result?.httpStatus === 'number' ? result.httpStatus : 200,
@@ -381,12 +434,16 @@ export default function PerheAppPrototypePage() {
           count: typeof result?.rawCount === 'number' ? result.rawCount : nextEvents.length,
         })
         const statusStr = result?.httpStatus ? `HTTP ${result.httpStatus}` : 'LOCAL_FALLBACK'
+        const sourceSummary = parsedSources
+          ? `LE:${parsedSources.linkedEventsCount} EP:${parsedSources.karoCount}`
+          : `${nextEvents.length} items`
         const detailStr = result?.errorDetail
           ? `${statusStr} • ${result.errorDetail}`
-          : `${statusStr} • ${result?.sourceStatus || 'fallback'} (${nextEvents.length} items)`
+          : `${statusStr} • ${sourceSummary}`
         recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', detailStr)
       } catch (err) {
         setEvents(INITIAL_EVENTS)
+        setEventFeedSources(null)
         setEventFeedStatus('fallback')
         const errMsg = err instanceof Error ? err.message : 'fetch_failed'
         setEventFeedDebug({
@@ -545,26 +602,29 @@ export default function PerheAppPrototypePage() {
     return NERD_DB_QUIPS[idx]
   }
 
-  const pushDbFeedEntry = (
-    statusCode: string,
-    opLabel: string,
-    docKey: string,
-    instanceName: string,
-    rev: number,
-    latencyMs?: number,
-  ) => {
-    const clock = nowClock()
-    const latencySuffix = typeof latencyMs === 'number' ? ` (${latencyMs}ms)` : ''
-    const entry: DbCommitFeedEntry = {
-      id: `db-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      statusCode,
-      terminalLine: `[${statusCode} ${opLabel}] doc:_id=${docKey} -> mongo-${instanceName}.json${latencySuffix}`,
-      diffStamp: `Δ persisted @ ${clock} • rev #${rev} • COMMITTED -> family_profiles (v${rev})`,
-      quip: pickRandomNerdQuip(),
-      revision: rev,
-    }
-    setDbFeedLog((prev) => [entry, ...prev.slice(0, 49)])
-  }
+  const pushDbFeedEntry = useCallback(
+    (
+      statusCode: string,
+      opLabel: string,
+      docKey: string,
+      instanceName: string,
+      rev: number,
+      latencyMs?: number,
+    ) => {
+      const clock = nowClock()
+      const latencySuffix = typeof latencyMs === 'number' ? ` (${latencyMs}ms)` : ''
+      const entry: DbCommitFeedEntry = {
+        id: `db-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        statusCode,
+        terminalLine: `[${statusCode} ${opLabel}] doc:_id=${docKey} -> mongo-${instanceName}.json${latencySuffix}`,
+        diffStamp: `Δ persisted @ ${clock} • rev #${rev} • COMMITTED -> family_profiles (v${rev})`,
+        quip: pickRandomNerdQuip(),
+        revision: rev,
+      }
+      setDbFeedLog((prev) => [entry, ...prev.slice(0, 49)])
+    },
+    [],
+  )
 
   const showTransientBanner = (message: string, ms = 3500) => {
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
@@ -584,6 +644,7 @@ export default function PerheAppPrototypePage() {
   useEffect(() => {
     if (!currentUser) return
     let cancelled = false
+    skipNextDbSaveRef.current = true
 
     const hydrateForGoogleUser = async () => {
       const userId = currentUser.id
@@ -607,7 +668,7 @@ export default function PerheAppPrototypePage() {
         })
         if (res.ok && !cancelled) {
           const data = await res.json()
-          const inst = data?.document?.instanceId || 'default-instance'
+          const inst = data?.document?.instanceId || data?.instanceId || 'default-instance'
           setMongoInstanceLabel(inst)
           if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
 
@@ -629,7 +690,7 @@ export default function PerheAppPrototypePage() {
             })
             if (initRes.ok) {
               const initData = await initRes.json()
-              const initInst = initData?.document?.instanceId || inst
+              const initInst = initData?.document?.instanceId || initData?.instanceId || inst
               setMongoInstanceLabel(initInst)
               if (initData?.document?.updatedAt) setMongoUpdatedAt(initData.document.updatedAt)
               const ms = Math.max(
@@ -658,7 +719,7 @@ export default function PerheAppPrototypePage() {
     return () => {
       cancelled = true
     }
-  }, [currentUser])
+  }, [currentUser, pushDbFeedEntry])
 
   useEffect(() => {
     if (!isHydrated || !currentUser || typeof window === 'undefined') return
@@ -704,14 +765,15 @@ export default function PerheAppPrototypePage() {
           )
           if (res.ok) {
             const data = await res.json()
-            const inst = data?.document?.instanceId || mongoInstanceLabel || 'instance'
+            const inst =
+              data?.document?.instanceId || data?.instanceId || instanceLabelRef.current || 'instance'
+            const nextRev = revisionRef.current + 1
+            revisionRef.current = nextRev
+            instanceLabelRef.current = inst
             setMongoInstanceLabel(inst)
             if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
-            setMongoRevision((prev) => {
-              const nextRev = prev + 1
-              pushDbFeedEntry('201', 'UPSERT_OK', docKey, inst, nextRev, ms)
-              return nextRev
-            })
+            setMongoRevision(nextRev)
+            pushDbFeedEntry('201', 'UPSERT_OK', docKey, inst, nextRev, ms)
             setDbSyncStatus('saved')
           } else {
             setDbSyncStatus('error')
@@ -719,8 +781,8 @@ export default function PerheAppPrototypePage() {
               '500',
               'UPSERT_FAIL',
               docKey,
-              mongoInstanceLabel || 'instance',
-              mongoRevision,
+              instanceLabelRef.current || 'instance',
+              revisionRef.current,
               ms,
             )
           }
@@ -728,16 +790,22 @@ export default function PerheAppPrototypePage() {
       } catch {
         if (!cancelled) {
           setDbSyncStatus('error')
-          pushDbFeedEntry('503', 'IO_ERROR', docKey, mongoInstanceLabel || 'instance', mongoRevision)
+          pushDbFeedEntry(
+            '503',
+            'IO_ERROR',
+            docKey,
+            instanceLabelRef.current || 'instance',
+            revisionRef.current,
+          )
         }
       }
-    }, 250)
+    }, 300)
 
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [isHydrated, currentUser, profile, mongoInstanceLabel, mongoRevision])
+  }, [isHydrated, currentUser, profile, pushDbFeedEntry])
 
   const resetTransientDemoData = () => {
     setDismissedIds([])
@@ -745,10 +813,10 @@ export default function PerheAppPrototypePage() {
     setAttendingIds(INITIAL_ATTENDING_IDS)
     setMessages({})
     setLatestMatch(null)
-    setChatTarget(null)
     setMapFocusCoords(null)
     setEventAgeFilter('all')
     setEventSearchQuery('')
+    setIgnoreDefaultPresetTemp(false)
     setDemoSelections([
       {
         id: `rst-${Date.now()}`,
@@ -774,38 +842,102 @@ export default function PerheAppPrototypePage() {
   const safeEvents = Array.isArray(events) ? events : INITIAL_EVENTS
   const safeHomeCoords = resolveCoordsTuple(profile?.homeCoords, DEFAULT_PKS_COORDS)
 
-  const baseAreaSortedEvents = safeEvents
-    .map((evt) => {
-      const resolved = resolveEventCoords(evt, safeHomeCoords)
-      return {
+  const baseAreaSortedEvents = useMemo(() => {
+    const resolved = resolveEventsForMap(safeEvents, safeHomeCoords)
+    return resolved.all
+      .map(({ event: evt, effectiveCoords, hasExactCoords, precision, district }) => ({
         ...evt,
-        coords: resolved.coords,
-        hasExactCoords: resolved.hasExactCoords,
-        distanceKm: calcDistanceKm(safeHomeCoords, resolved.coords),
-      }
-    })
-    .filter((evt) => {
-      if (evt.distanceKm > profile.filters.maxDistanceKm) return false
-      if (
-        profile.filters.targetCity !== 'Kaikki PKS' &&
-        (evt.city || '').toLowerCase() !== profile.filters.targetCity.toLowerCase()
-      ) {
-        return false
-      }
-      return true
-    })
-    .sort((a, b) => a.distanceKm - b.distanceKm)
+        coords: effectiveCoords,
+        hasExactCoords,
+        precision,
+        district,
+        distanceKm: calcDistanceKm(safeHomeCoords, effectiveCoords),
+      }))
+      .filter((evt) => {
+        if (evt.distanceKm > profile.filters.maxDistanceKm) return false
+        if (
+          profile.filters.targetCity !== 'Kaikki PKS' &&
+          (evt.city || '').toLowerCase() !== profile.filters.targetCity.toLowerCase()
+        ) {
+          return false
+        }
+        return true
+      })
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+  }, [safeEvents, safeHomeCoords, profile.filters.maxDistanceKm, profile.filters.targetCity])
+
+  const activeAgeGroupsForEvents = useMemo(() => {
+    if (!profile.defaultPreset.enabled || ignoreDefaultPresetTemp) return []
+    if (profile.defaultPreset.useChildrenAgeInference && profile.children.length > 0) {
+      return inferAgeGroupsFromChildren(profile.children)
+    }
+    return profile.filters.targetAgeGroups
+  }, [
+    profile.defaultPreset.enabled,
+    profile.defaultPreset.useChildrenAgeInference,
+    profile.children,
+    profile.filters.targetAgeGroups,
+    ignoreDefaultPresetTemp,
+  ])
 
   const normalizedEventQuery = eventSearchQuery.trim().toLowerCase()
+
   const filteredSortedEvents = baseAreaSortedEvents.filter((evt) => {
     if (!matchesEventAgeFilter(evt.ageGroup, eventAgeFilter)) {
       return false
     }
+
+    if (profile.defaultPreset.enabled && !ignoreDefaultPresetTemp) {
+      if (profile.defaultPreset.onlyFreeEvents && !/maksuton|free/i.test(evt.price || '')) {
+        return false
+      }
+      if (
+        profile.defaultPreset.weekendOrEveningFocus &&
+        !/la|su|viikonlop|klo\s*(1[7-9]|2[0-2])|ilta/i.test(`${evt.time || ''} ${evt.title}`)
+      ) {
+        return false
+      }
+      if (activeAgeGroupsForEvents.length > 0) {
+        const evtAgeNorm = (evt.ageGroup || '').toLowerCase()
+        const isGeneral =
+          !evtAgeNorm ||
+          evtAgeNorm.includes('kaikki') ||
+          evtAgeNorm.includes('koko perhe') ||
+          evtAgeNorm.includes('all ages') ||
+          evtAgeNorm.includes('lapset & perheet')
+        const matchesAnyGroup = activeAgeGroupsForEvents.some((g) => {
+          const clean = g.replace('v', '').trim()
+          return evtAgeNorm.includes(clean) || evtAgeNorm.includes(g.toLowerCase())
+        })
+        if (!isGeneral && !matchesAnyGroup) {
+          return false
+        }
+      }
+      if (profile.defaultPreset.favoriteActivities.length > 0) {
+        const evtTagsText = [
+          ...(evt.tags ?? []),
+          ...(evt.keywords ?? []),
+          evt.title,
+          evt.description ?? '',
+        ]
+          .join(' ')
+          .toLowerCase()
+        const matchesActivity = profile.defaultPreset.favoriteActivities.some((act) => {
+          const headWord = act.split('&')[0].trim().toLowerCase()
+          return evtTagsText.includes(headWord) || evtTagsText.includes(act.toLowerCase())
+        })
+        if (!matchesActivity && !/perhe|lapset|satutuokio|vauva/i.test(evtTagsText)) {
+          return false
+        }
+      }
+    }
+
     if (normalizedEventQuery) {
       const haystack = [
         evt.title,
         evt.venue,
         evt.city,
+        evt.district ?? '',
         evt.ageGroup,
         evt.price,
         evt.description ?? '',
@@ -821,6 +953,8 @@ export default function PerheAppPrototypePage() {
 
   const hasActiveQuickEventFilter =
     eventAgeFilter !== 'all' || normalizedEventQuery.length > 0
+
+  const sourceBadge = getSourceStatusBadge(eventFeedStatus, eventFeedSources)
 
   const familiesWithDistance = DEMO_FAMILIES.map((fam) => {
     const famCoords = resolveCoordsTuple(fam?.coords, safeHomeCoords)
@@ -854,6 +988,14 @@ export default function PerheAppPrototypePage() {
 
   const currentCard = filteredDeck[0]
   const matchedFamilies = familiesWithDistance.filter((f) => matchedIds.includes(f.id))
+
+  const syncInferredAges = (prev: UserProfileState, nextChildren: ChildItem[]): string[] => {
+    if (!prev.defaultPreset.useChildrenAgeInference) {
+      return prev.filters.targetAgeGroups
+    }
+    const inferred = inferAgeGroupsFromChildren(nextChildren)
+    return inferred.length > 0 ? inferred : prev.filters.targetAgeGroups
+  }
 
   const sendCoParentInvite = () => {
     const email = inviteParentEmail.trim().toLowerCase()
@@ -944,13 +1086,20 @@ export default function PerheAppPrototypePage() {
       return
     }
     setChildError('')
-    setProfile((prev) => ({
-      ...prev,
-      children: [
+    setProfile((prev) => {
+      const nextChildren = [
         ...prev.children,
         { id: `c-${Date.now()}`, ageLabel: trimmed, group: newChildGroup },
-      ],
-    }))
+      ]
+      return {
+        ...prev,
+        children: nextChildren,
+        filters: {
+          ...prev.filters,
+          targetAgeGroups: syncInferredAges(prev, nextChildren),
+        },
+      }
+    })
     setNewChildAge('')
   }
 
@@ -962,21 +1111,35 @@ export default function PerheAppPrototypePage() {
 
   const saveEditChild = (id: string) => {
     if (!editChildAge.trim()) return
-    setProfile((prev) => ({
-      ...prev,
-      children: prev.children.map((c) =>
+    setProfile((prev) => {
+      const nextChildren = prev.children.map((c) =>
         c.id === id ? { ...c, ageLabel: editChildAge.trim(), group: editChildGroup } : c,
-      ),
-    }))
+      )
+      return {
+        ...prev,
+        children: nextChildren,
+        filters: {
+          ...prev.filters,
+          targetAgeGroups: syncInferredAges(prev, nextChildren),
+        },
+      }
+    })
     setEditingChildId(null)
   }
 
   const removeChild = (id: string) => {
     if (editingChildId === id) setEditingChildId(null)
-    setProfile((prev) => ({
-      ...prev,
-      children: prev.children.filter((c) => c.id !== id),
-    }))
+    setProfile((prev) => {
+      const nextChildren = prev.children.filter((c) => c.id !== id)
+      return {
+        ...prev,
+        children: nextChildren,
+        filters: {
+          ...prev.filters,
+          targetAgeGroups: syncInferredAges(prev, nextChildren),
+        },
+      }
+    })
   }
 
   const addCloseRelative = () => {
@@ -1042,14 +1205,15 @@ export default function PerheAppPrototypePage() {
       )
       if (res.ok) {
         const data = await res.json()
-        const inst = data?.document?.instanceId || mongoInstanceLabel || 'instance'
+        const inst =
+          data?.document?.instanceId || data?.instanceId || instanceLabelRef.current || 'instance'
+        const nextRev = revisionRef.current + 1
+        revisionRef.current = nextRev
+        instanceLabelRef.current = inst
         setMongoInstanceLabel(inst)
         if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
-        setMongoRevision((prev) => {
-          const nextRev = prev + 1
-          pushDbFeedEntry('201', 'MANUAL_FLUSH', docKey, inst, nextRev, ms)
-          return nextRev
-        })
+        setMongoRevision(nextRev)
+        pushDbFeedEntry('201', 'MANUAL_FLUSH', docKey, inst, nextRev, ms)
         setDbSyncStatus('saved')
       } else {
         setDbSyncStatus('error')
@@ -1082,17 +1246,6 @@ export default function PerheAppPrototypePage() {
     }
   }
 
-  const sendQuickMessage = (text?: string) => {
-    if (!chatTarget) return
-    const msg = (text ?? chatInput).trim()
-    if (!msg) return
-    setMessages((prev) => ({
-      ...prev,
-      [chatTarget.id]: [...(prev[chatTarget.id] || []), msg],
-    }))
-    setChatInput('')
-  }
-
   const openOnMap = (coords: [number, number], label = 'coords') => {
     setMapFocusCoords(resolveCoordsTuple(coords, safeHomeCoords))
     setActiveTab('map')
@@ -1101,7 +1254,7 @@ export default function PerheAppPrototypePage() {
 
   const handleResetMapBounds = useCallback(() => {
     setMapFocusCoords(null)
-    recordDemoSelection('MAP_HOME_ZOOM', 'PKS_DEFAULT_BOUNDS')
+    recordDemoSelection('MAP_HOME_ZOOM', 'PKS_SEUTULA_BOUNDS')
   }, [recordDemoSelection])
 
   const totalParentsCount = 1 + profile.coParents.length
@@ -1234,11 +1387,11 @@ export default function PerheAppPrototypePage() {
                     onClick={() => {
                       const target = latestMatch
                       setLatestMatch(null)
-                      setChatTarget(target)
+                      openHubChannel('matches', { directTargetId: target.id })
                     }}
                     className="px-3 py-1.5 bg-white text-emerald-800 rounded-lg text-xs font-bold"
                   >
-                    Viesti
+                    Avaa chat
                   </button>
                   <button
                     type="button"
@@ -1254,27 +1407,39 @@ export default function PerheAppPrototypePage() {
             <main className="flex-1 overflow-y-auto">
               {activeTab === 'events' && (
                 <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="space-y-1">
                       <h2 className="text-sm sm:text-base font-bold text-slate-800">
                         Lähialueen tapahtumat (lähin ensin)
                       </h2>
                       <p className="text-[11px] text-slate-500">
                         Koti: <strong>{profile.area}</strong> • Suodatin:{' '}
                         <strong>{profile.filters.targetCity}</strong> ≤{' '}
-                        <strong>{profile.filters.maxDistanceKm} km</strong> • Lähde:{' '}
-                        <span
-                          className={`font-semibold ${
-                            eventFeedStatus === 'live-api' ? 'text-emerald-700' : 'text-amber-700'
-                          }`}
-                        >
-                          {eventFeedStatus === 'loading'
-                            ? 'Ladataan Karon feediä...'
-                            : eventFeedStatus === 'live-api'
-                              ? 'Karon tapahtumafeedi (Live)'
-                              : 'Paikallinen varadata'}
-                        </span>
+                        <strong>{profile.filters.maxDistanceKm} km</strong>
                       </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${sourceBadge.className}`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${sourceBadge.dotClass}`} />
+                          <span>{sourceBadge.label}</span>
+                        </div>
+                        {profile.defaultPreset.enabled && (
+                          <button
+                            type="button"
+                            onClick={() => setIgnoreDefaultPresetTemp((prev) => !prev)}
+                            className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-colors ${
+                              ignoreDefaultPresetTemp
+                                ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {ignoreDefaultPresetTemp
+                              ? 'Oletusrajaus tauolla • Palauta oletus'
+                              : `Oletusrajaus aktiivinen (${profile.defaultPreset.favoriteActivities.length} aktiviteettia)`}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-slate-500">
@@ -1291,7 +1456,6 @@ export default function PerheAppPrototypePage() {
                     </div>
                   </div>
 
-                  {/* Kevyt pikasuodatinpalkki: ikähaarukka + tekstihaku */}
                   <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -1350,21 +1514,17 @@ export default function PerheAppPrototypePage() {
                         Ei tapahtumia valituilla suodattimilla
                       </h3>
                       <p className="text-xs text-slate-500">
-                        {hasActiveQuickEventFilter
-                          ? 'Kokeile tyhjentää ikähaarukka- tai hakusuodatin, tai tarkista profiilin etäisyysraja.'
-                          : `Hakualueena on ${profile.filters.targetCity} ja enimmäisetäisyys ${profile.filters.maxDistanceKm} km kotoa.`}
+                        Kokeile näyttää kaikki {profile.filters.maxDistanceKm} km:n säteellä olevat
+                        tapahtumat tai muokkaa profiilin oletusrajauksia.
                       </p>
                       <div className="flex flex-wrap justify-center gap-2">
-                        {hasActiveQuickEventFilter && (
+                        {profile.defaultPreset.enabled && !ignoreDefaultPresetTemp && (
                           <button
                             type="button"
-                            onClick={() => {
-                              setEventAgeFilter('all')
-                              setEventSearchQuery('')
-                            }}
+                            onClick={() => setIgnoreDefaultPresetTemp(true)}
                             className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
                           >
-                            Tyhjennä ikä- ja hakusuodatin
+                            Näytä kaikki {profile.filters.maxDistanceKm} km:n säteellä
                           </button>
                         )}
                         <button
@@ -1375,7 +1535,7 @@ export default function PerheAppPrototypePage() {
                           }}
                           className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
                         >
-                          Muokkaa aluefilttereitä
+                          Muokkaa oletusrajauksia
                         </button>
                       </div>
                     </div>
@@ -1398,7 +1558,8 @@ export default function PerheAppPrototypePage() {
                                 <div className="space-y-1">
                                   <div className="flex flex-wrap items-center gap-1.5">
                                     <span className="text-[11px] font-semibold text-blue-600 uppercase">
-                                      {evt.city} • {evt.hasExactCoords ? '' : '~'}
+                                      {evt.district ? `${evt.district} (${evt.city})` : evt.city} •{' '}
+                                      {evt.hasExactCoords ? '' : '~'}
                                       {evt.distanceKm} km kotoa
                                     </span>
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
@@ -1444,6 +1605,14 @@ export default function PerheAppPrototypePage() {
                                 }`}
                               >
                                 {isGoing ? '✓ Menossa mukaan' : '+ Menossa mukaan'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openHubChannel('event_chat', { eventId: evt.id })}
+                                className="px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-xs font-bold hover:bg-amber-100 transition-colors"
+                                title="Keskustele tapahtumaan menossa olevien kanssa (anonyymi oletuksena)"
+                              >
+                                💬 Menossa-chat
                               </button>
                               <a
                                 href={gcalUrl}
@@ -1605,7 +1774,9 @@ export default function PerheAppPrototypePage() {
 
                             <div className="flex flex-wrap gap-1.5">
                               {currentCard.interests.map((tag) => {
-                                const isCommon = profile.interests.includes(tag)
+                                const isCommon =
+                                  profile.defaultPreset.favoriteActivities.includes(tag) ||
+                                  profile.interests.includes(tag)
                                 return (
                                   <span
                                     key={tag}
@@ -1725,7 +1896,9 @@ export default function PerheAppPrototypePage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setChatTarget(fam)}
+                                  onClick={() =>
+                                    openHubChannel('matches', { directTargetId: fam.id })
+                                  }
                                   className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
                                 >
                                   Viesti
@@ -1740,20 +1913,58 @@ export default function PerheAppPrototypePage() {
                 </div>
               )}
 
-              {activeTab === 'map' && (
-                <PksMapView
+              {activeTab === 'hub' && (
+                <CommunityHubPanel
+                  key={hubMountKey}
+                  currentUser={currentUser}
+                  profile={profile}
                   events={baseAreaSortedEvents}
                   attendingIds={attendingIds}
-                  matchedFamilies={matchedFamilies}
-                  homeCoords={safeHomeCoords}
-                  homeLabel={`${profile.area}, ${profile.homeCity}`}
-                  familyName={profile.familyName}
-                  shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
-                  showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
-                  focusCoords={mapFocusCoords}
-                  onResetBounds={handleResetMapBounds}
+                  matchedIds={matchedIds}
+                  allFamilies={familiesWithDistance}
+                  directMessages={messages}
+                  onSendDirectMessage={(familyId, text) => {
+                    setMessages((prev) => ({
+                      ...prev,
+                      [familyId]: [...(prev[familyId] || []), text],
+                    }))
+                    recordDemoSelection('DIRECT_MSG', familyId)
+                  }}
+                  onSwipeMatchFromEvent={(familyId) => {
+                    const fam = familiesWithDistance.find((f) => f.id === familyId)
+                    if (!fam || matchedIds.includes(familyId)) return
+                    setMatchedIds((prev) => [...prev, familyId])
+                    setLatestMatch(fam)
+                    recordDemoSelection('EVENT_MATCH', familyId)
+                  }}
+                  onToggleAttendance={toggleEventAttendance}
+                  initialSection={hubInitialSection}
+                  initialEventId={hubEventId}
+                  initialDirectTargetId={hubDirectTargetId}
                 />
               )}
+
+{activeTab === 'map' && (
+  <PksMapView
+    events={safeEvents}
+    attendingIds={attendingIds}
+    matchedFamilies={matchedFamilies}
+    homeCoords={safeHomeCoords}
+    homeLabel={`${profile.area}, ${profile.homeCity}`}
+    familyName={profile.familyName}
+    shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
+    showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
+    focusCoords={mapFocusCoords}
+    onResetBounds={handleResetMapBounds}
+    selectedCity={profile.filters.targetCity}
+    onChangeSelectedCity={(nextCity) =>
+      setProfile((prev) => ({
+        ...prev,
+        filters: { ...prev.filters, targetCity: nextCity },
+      }))
+    }
+  />
+)}
 
               {activeTab === 'profile' && profileSubView === 'main' && (
                 <ProfileSettingsPanel
@@ -1933,7 +2144,7 @@ export default function PerheAppPrototypePage() {
                             Lapset ({profile.children.length})
                           </h2>
                           <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
-                            Näkyy perhekortissa
+                            Päivittää ikärajaukset
                           </span>
                         </div>
 
@@ -1963,7 +2174,7 @@ export default function PerheAppPrototypePage() {
                                           onChange={(e) => setEditChildGroup(e.target.value)}
                                           className="px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
                                         >
-                                          {AGE_GROUP_OPTIONS.map((g) => (
+                                          {['0-3v', '4-6v', '7-12v', '13+v'].map((g) => (
                                             <option key={g} value={g}>
                                               {g}
                                             </option>
@@ -2037,7 +2248,7 @@ export default function PerheAppPrototypePage() {
                             onChange={(e) => setNewChildGroup(e.target.value)}
                             className="px-2 py-2 rounded-xl border border-slate-300 text-xs bg-white"
                           >
-                            {AGE_GROUP_OPTIONS.map((g) => (
+                            {['0-3v', '4-6v', '7-12v', '13+v'].map((g) => (
                               <option key={g} value={g}>
                                 {g}
                               </option>
@@ -2073,11 +2284,6 @@ export default function PerheAppPrototypePage() {
                               : 'Piilotettu mätseiltä'}
                           </span>
                         </div>
-
-                        <p className="text-[11px] text-slate-500">
-                          Oletuksena läheisiä ei näytetä mätseille. Voit vaihtaa näkyvyyden alta tai
-                          profiilin tietosuoja-asetuksista.
-                        </p>
 
                         <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 cursor-pointer">
                           <span>Näytä läheiset mätseissä ja haussa</span>
@@ -2267,28 +2473,7 @@ export default function PerheAppPrototypePage() {
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 font-mono text-center">
-                        <div className="rounded-xl bg-indigo-950/80 border border-indigo-700/50 p-2">
-                          <div className="text-base font-extrabold text-cyan-300">
-                            {totalParentsCount}
-                          </div>
-                          <div className="text-[10px] text-indigo-300">vanhempaa</div>
-                        </div>
-                        <div className="rounded-xl bg-indigo-950/80 border border-indigo-700/50 p-2">
-                          <div className="text-base font-extrabold text-fuchsia-300">
-                            {profile.children.length}
-                          </div>
-                          <div className="text-[10px] text-indigo-300">lasta</div>
-                        </div>
-                        <div className="rounded-xl bg-indigo-950/80 border border-indigo-700/50 p-2">
-                          <div className="text-base font-extrabold text-amber-300">
-                            {profile.closeRelatives.length}
-                          </div>
-                          <div className="text-[10px] text-indigo-300">läheistä</div>
-                        </div>
-                      </div>
-
-                      <pre className="mt-2 p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 sm:max-h-[360px] leading-relaxed">
+                      <pre className="mt-2 p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 sm:max-h-[420px] leading-relaxed">
                         {JSON.stringify(
                           {
                             _id: `family-${currentUser.id}`,
@@ -2299,6 +2484,8 @@ export default function PerheAppPrototypePage() {
                             homeCity: profile.homeCity,
                             area: profile.area,
                             homeCoords: safeHomeCoords,
+                            onboardingCompleted: profile.onboardingCompleted,
+                            defaultPreset: profile.defaultPreset,
                             coParents: profile.coParents,
                             children: profile.children,
                             closeRelatives: profile.closeRelatives,
@@ -2350,12 +2537,6 @@ export default function PerheAppPrototypePage() {
                     <p className="text-[11px] text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 break-all font-mono">
                       {buildInviteUrl(activePreviewInvite)}
                     </p>
-
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      &ldquo;Sinut on kutsuttu liittymään perheeseen {profile.familyName}{' '}
-                      PerhePiiri-sovelluksessa. Avaa linkki tai syötä koodi{' '}
-                      {activePreviewInvite.inviteCode}.&rdquo;
-                    </p>
                   </div>
 
                   <div className="flex gap-2">
@@ -2382,85 +2563,11 @@ export default function PerheAppPrototypePage() {
               </div>
             )}
 
-            {chatTarget && (
-              <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end sm:items-center sm:justify-center sm:p-4">
-                <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900">💬 {chatTarget.name}</h3>
-                      <p className="text-[11px] text-slate-500">{chatTarget.area}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setChatTarget(null)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 text-xs font-bold"
-                    >
-                      Sulje
-                    </button>
-                  </div>
-
-                  <div className="h-36 sm:h-48 overflow-y-auto space-y-2 bg-slate-50 p-3 rounded-xl text-xs">
-                    {(messages[chatTarget.id] || []).length === 0 ? (
-                      <p className="text-slate-400 text-center pt-10 sm:pt-16">
-                        Aloita keskustelu tai valitse pikaviestiehdotus alta!
-                      </p>
-                    ) : (
-                      (messages[chatTarget.id] || []).map((m, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-emerald-600 text-white px-3 py-2 rounded-2xl rounded-br-none ml-auto max-w-[80%]"
-                        >
-                          {m}
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="flex gap-1.5 overflow-x-auto pb-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        sendQuickMessage('Moikka! Mennäänkö samaan tapahtumaan viikonloppuna?')
-                      }
-                      className="shrink-0 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-medium"
-                    >
-                      👋 Nähdäänkö tapahtumassa?
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        sendQuickMessage('Hei! Meillä on samanikäiset lapset, puistotreffit joskus?')
-                      }
-                      className="shrink-0 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-medium"
-                    >
-                      🛝 Puistotreffit?
-                    </button>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && sendQuickMessage()}
-                      placeholder="Kirjoita viesti..."
-                      className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => sendQuickMessage()}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
-                    >
-                      Lähetä
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <nav className="bg-white border-t border-slate-200 grid grid-cols-4 py-2 shrink-0">
+            <nav className="bg-white border-t border-slate-200 grid grid-cols-5 py-2 shrink-0">
               {[
                 { key: 'events', icon: '📅', label: 'Tapahtumat' },
                 { key: 'families', icon: '🤝', label: 'Perheet' },
+                { key: 'hub', icon: '💬', label: 'Keskustelut' },
                 { key: 'map', icon: '🗺️', label: 'Kartta' },
                 { key: 'profile', icon: '👤', label: 'Profiili' },
               ].map((tab) => {
@@ -2541,7 +2648,8 @@ export default function PerheAppPrototypePage() {
             ) : (
               eventFeedStatus === 'live-api' && (
                 <p className="text-[9px] text-emerald-200">
-                  OK • {eventFeedDebug.count} tapahtumaa feedistä
+                  OK • yht. {eventFeedDebug.count} (LE:{eventFeedSources?.linkedEventsCount ?? 0} |
+                  EP:{eventFeedSources?.karoCount ?? 0})
                 </p>
               )
             )}

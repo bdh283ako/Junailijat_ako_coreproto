@@ -1,16 +1,23 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+const SHELLPROTO_ROUTE_URL = '/api/events'
+const PER_CITY_TARGET = 25
 
 interface DebugEventRow {
   id: string
   title: string
   city?: string
   locationName?: string
+  venue?: string
   startDate?: string
   source?: string
+  tags?: string[]
   coordinates?: { lat: number; lng: number }
+  coords?: [number, number]
   ageRangeLabel?: string
+  ageGroup?: string
 }
 
 interface ApiEventsPayload {
@@ -23,6 +30,12 @@ interface ApiEventsPayload {
   sources?: {
     karoCount?: number
     linkedEventsCount?: number
+    byEndpoint?: {
+      helsinki?: number
+      espoo?: number
+      vantaa?: number
+      kauniainen?: number
+    }
     byCity?: Record<string, number>
   }
 }
@@ -37,8 +50,28 @@ interface ConsoleEntry {
 const KARO_DIRECT_URL =
   'https://eventpulsebyjunailijat.ai.studio/api/events/feed.jsonld'
 
-const LINKED_EVENTS_DIRECT_URL =
-  'https://api.hel.fi/linkedevents/v1/event/?start=today&keyword_OR=yso:p4354,yso:p13050,yso:p4363,yso:p10557,yso:p11017,yso:p2771&include=location,keywords&page_size=15'
+const CITY_LINKED_ENDPOINTS = [
+  {
+    key: 'helsinki' as const,
+    label: 'Helsinki Linked Events',
+    city: 'Helsinki',
+    url: `https://api.hel.fi/linkedevents/v1/event/?format=json&division=kunta:helsinki&include=location,keywords&start=now&sort=start_time&super_event_type=none&page_size=${PER_CITY_TARGET}`,
+  },
+  {
+    key: 'espoo' as const,
+    label: 'Espoo Linked Events',
+    city: 'Espoo',
+    url: `https://api.hel.fi/linkedevents/v1/event/?format=json&division=kunta:espoo&include=location,keywords&start=now&sort=start_time&super_event_type=none&page_size=${PER_CITY_TARGET}`,
+  },
+  {
+    key: 'vantaa' as const,
+    label: 'Vantaa Linked Events',
+    city: 'Vantaa',
+    url: `https://api.hel.fi/linkedevents/v1/event/?format=json&division=kunta:vantaa&include=location,keywords&start=now&sort=start_time&super_event_type=none&page_size=${PER_CITY_TARGET}`,
+  },
+] as const
+
+const KAUNIAINEN_WEB_URL = 'https://www.kauniainen.fi/tapahtumat/'
 
 function nowStamp(): string {
   return new Date().toLocaleTimeString('fi-FI', {
@@ -46,6 +79,87 @@ function nowStamp(): string {
     minute: '2-digit',
     second: '2-digit',
     fractionalSecondDigits: 3,
+  })
+}
+
+function getCoordsTuple(evt: DebugEventRow): [number, number] | null {
+  if (
+    evt.coordinates &&
+    typeof evt.coordinates.lat === 'number' &&
+    typeof evt.coordinates.lng === 'number'
+  ) {
+    return [evt.coordinates.lat, evt.coordinates.lng]
+  }
+  if (
+    Array.isArray(evt.coords) &&
+    typeof evt.coords[0] === 'number' &&
+    typeof evt.coords[1] === 'number'
+  ) {
+    return [evt.coords[0], evt.coords[1]]
+  }
+  return null
+}
+
+function isSameCity(evtCity: string | undefined, targetCity: string): boolean {
+  return (evtCity || '').trim().toLowerCase() === targetCity.trim().toLowerCase()
+}
+
+function matchesCity(evtCity: string | undefined, filter: string): boolean {
+  if (filter === 'all') return true
+  return isSameCity(evtCity, filter)
+}
+
+function pickText(val: unknown): string {
+  if (typeof val === 'string') return val.trim()
+  if (val && typeof val === 'object') {
+    const obj = val as Record<string, unknown>
+    for (const lang of ['fi', 'en', 'sv']) {
+      if (typeof obj[lang] === 'string' && (obj[lang] as string).trim()) {
+        return (obj[lang] as string).trim()
+      }
+    }
+  }
+  return ''
+}
+
+async function fetchCityTopUp(
+  key: 'helsinki' | 'espoo' | 'vantaa',
+  city: string,
+  url: string,
+  limit: number,
+): Promise<DebugEventRow[]> {
+  const res = await fetch(url, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) {
+    throw new Error(`${city} HTTP ${res.status}`)
+  }
+
+  const parsed = (await res.json()) as { data?: Array<Record<string, unknown>> }
+  const rows = Array.isArray(parsed.data) ? parsed.data.slice(0, limit) : []
+
+  return rows.map((item, idx) => {
+    const loc = (item.location as Record<string, unknown> | undefined) ?? {}
+    const pos = (loc.position as { coordinates?: [number, number] } | undefined)?.coordinates
+    const venue = pickText(loc.name) || 'Tuntematon paikka'
+    const resolvedCity = pickText(loc.address_locality) || city
+    const rawId = typeof item.id === 'string' ? item.id : `${key}-${idx}`
+
+    return {
+      id: `debug-topup-${key}-${rawId}`,
+      title: pickText(item.name) || '(Nimetön tapahtuma)',
+      city: resolvedCity,
+      locationName: venue,
+      venue,
+      startDate: typeof item.start_time === 'string' ? item.start_time : '',
+      source: `linked-events-${key}`,
+      tags: [`linked-events-${key}`, 'debug-topup-25'],
+      coordinates:
+        Array.isArray(pos) && typeof pos[1] === 'number' && typeof pos[0] === 'number'
+          ? { lat: pos[1], lng: pos[0] }
+          : undefined,
+    }
   })
 }
 
@@ -62,6 +176,12 @@ export default function EventSourcesDebugPage() {
     isFallback: boolean | null
     karoCount: number
     linkedEventsCount: number
+    byEndpoint: {
+      helsinki: number
+      espoo: number
+      vantaa: number
+      kauniainen: number
+    }
     byCity: Record<string, number>
     warning?: string
   }>({
@@ -70,6 +190,7 @@ export default function EventSourcesDebugPage() {
     isFallback: null,
     karoCount: 0,
     linkedEventsCount: 0,
+    byEndpoint: { helsinki: 0, espoo: 0, vantaa: 0, kauniainen: 0 },
     byCity: {},
   })
 
@@ -96,7 +217,7 @@ export default function EventSourcesDebugPage() {
   const runApiDiagnostics = useCallback(async () => {
     setLoadingApi(true)
     const query = cityFilter !== 'all' ? `?city=${encodeURIComponent(cityFilter)}` : ''
-    const endpoint = `/api/events${query}`
+    const endpoint = `${SHELLPROTO_ROUTE_URL}${query}`
 
     log('INFO', `>>> GET ${endpoint}`)
     const t0 = performance.now()
@@ -125,13 +246,74 @@ export default function EventSourcesDebugPage() {
         return
       }
 
-      const list = Array.isArray(data.events) ? data.events : []
-      const karoCount =
-        data.sources?.karoCount ?? list.filter((e) => (e.source || '').includes('karo')).length
-      const linkedEventsCount =
-        data.sources?.linkedEventsCount ??
-        list.filter((e) => (e.source || '').includes('linked')).length
-      const byCity = data.sources?.byCity ?? {}
+      const rawList = Array.isArray(data.events) ? data.events : []
+      let mergedList = [...rawList]
+
+      const targetCities: Array<{
+        key: 'helsinki' | 'espoo' | 'vantaa'
+        city: string
+        url: string
+      }> =
+        cityFilter === 'all'
+          ? [...CITY_LINKED_ENDPOINTS]
+          : CITY_LINKED_ENDPOINTS.filter((c) => isSameCity(c.city, cityFilter))
+
+      for (const tc of targetCities) {
+        const existingForCity = mergedList.filter((e) => isSameCity(e.city, tc.city))
+        if (existingForCity.length < PER_CITY_TARGET) {
+          try {
+            const topUpRows = await fetchCityTopUp(tc.key, tc.city, tc.url, PER_CITY_TARGET)
+            const otherCitiesRows = mergedList.filter((e) => !isSameCity(e.city, tc.city))
+            const seenIds = new Set(existingForCity.map((e) => e.id))
+            const cappedCityRows = [...existingForCity]
+
+            for (const row of topUpRows) {
+              if (cappedCityRows.length >= PER_CITY_TARGET) break
+              if (!seenIds.has(row.id)) {
+                seenIds.add(row.id)
+                cappedCityRows.push(row)
+              }
+            }
+
+            mergedList = [...otherCitiesRows, ...cappedCityRows]
+            log(
+              'OK',
+              `[Debug top-up] ${tc.city}: näytetään ${cappedCityRows.length} / ${PER_CITY_TARGET} tapahtumaa`,
+            )
+          } catch (topUpErr) {
+            log(
+              'WARN',
+              `[Debug top-up] ${tc.city} täydennys epäonnistui: ${topUpErr instanceof Error ? topUpErr.message : String(topUpErr)}`,
+            )
+          }
+        } else if (existingForCity.length > PER_CITY_TARGET) {
+          const otherCitiesRows = mergedList.filter((e) => !isSameCity(e.city, tc.city))
+          mergedList = [...otherCitiesRows, ...existingForCity.slice(0, PER_CITY_TARGET)]
+        }
+      }
+
+      const list = mergedList.filter((e) => matchesCity(e.city, cityFilter))
+
+      const helCount = list.filter((e) => isSameCity(e.city, 'Helsinki')).length
+      const espCount = list.filter((e) => isSameCity(e.city, 'Espoo')).length
+      const vanCount = list.filter((e) => isSameCity(e.city, 'Vantaa')).length
+      const kauCount = list.filter((e) => isSameCity(e.city, 'Kauniainen')).length
+
+      const karoCount = list.filter((e) => (e.source || '').toLowerCase().includes('karo')).length
+      const linkedEventsCount = helCount + espCount + vanCount + kauCount
+
+      const byEndpoint = {
+        helsinki: helCount,
+        espoo: espCount,
+        vantaa: vanCount,
+        kauniainen: kauCount,
+      }
+
+      const byCity = list.reduce<Record<string, number>>((acc, evt) => {
+        const c = (evt.city || 'Tuntematon').trim() || 'Tuntematon'
+        acc[c] = (acc[c] ?? 0) + 1
+        return acc
+      }, {})
 
       setEvents(list)
       setMeta({
@@ -140,14 +322,18 @@ export default function EventSourcesDebugPage() {
         isFallback: typeof data.isFallback === 'boolean' ? data.isFallback : null,
         karoCount,
         linkedEventsCount,
+        byEndpoint,
         byCity,
         warning: data.warning,
       })
 
-      log('INFO', `isFallback = ${String(data.isFallback)} | total = ${list.length}`)
       log(
         'INFO',
-        `Lähteet: Karo = ${karoCount} kpl | Linked Events = ${linkedEventsCount} kpl`,
+        `isFallback = ${String(data.isFallback)} | total = ${list.length} (apiRaw=${rawList.length})`,
+      )
+      log(
+        'INFO',
+        `Lähteet: Karo = ${karoCount} kpl | Linked+PKS = ${linkedEventsCount} kpl (HEL:${byEndpoint.helsinki}, ESP:${byEndpoint.espoo}, VAN:${byEndpoint.vantaa}, KAU:${byEndpoint.kauniainen})`,
       )
       log('INFO', `Kaupunkijakauma: ${JSON.stringify(byCity)}`)
 
@@ -155,21 +341,16 @@ export default function EventSourcesDebugPage() {
         log('WARN', `API warning: ${data.warning}`)
       }
 
-      const withCoords = list.filter(
-        (e) =>
-          e.coordinates &&
-          typeof e.coordinates.lat === 'number' &&
-          typeof e.coordinates.lng === 'number',
-      ).length
+      const withCoords = list.filter((e) => getCoordsTuple(e) !== null).length
       log('INFO', `Koordinaateilla varustetut tapahtumat: ${withCoords} / ${list.length}`)
 
-      list.slice(0, 6).forEach((evt, idx) => {
-        const coordStr = evt.coordinates
-          ? `[${evt.coordinates.lat.toFixed(4)}, ${evt.coordinates.lng.toFixed(4)}]`
-          : 'NO_COORDS'
+      list.slice(0, 8).forEach((evt, idx) => {
+        const tuple = getCoordsTuple(evt)
+        const coordStr = tuple ? `[${tuple[0].toFixed(4)}, ${tuple[1].toFixed(4)}]` : 'NO_COORDS'
+        const venueLabel = evt.locationName || evt.venue || '-'
         log(
           'INFO',
-          `  #${idx + 1} [${evt.source ?? 'unknown'}] (${evt.city ?? '?'}) "${evt.title}" @ ${evt.locationName ?? '-'} | ${coordStr}`,
+          `  #${idx + 1} [${evt.source ?? 'unknown'}] (${evt.city ?? '?'}) "${evt.title}" @ ${venueLabel} | ${coordStr}`,
         )
       })
     } catch (err) {
@@ -225,7 +406,10 @@ export default function EventSourcesDebugPage() {
               log('INFO', `1. tapahtuman näyte: ${JSON.stringify(graph[0]).slice(0, 320)}`)
             }
           } else {
-            log('WARN', `Karo JSON ei sisältänyt @graph/events/itemListElement-taulukkoa: ${rawText.slice(0, 280)}`)
+            log(
+              'WARN',
+              `Karo JSON ei sisältänyt @graph/events/itemListElement-taulukkoa: ${rawText.slice(0, 280)}`,
+            )
           }
         }
       } catch {
@@ -243,71 +427,95 @@ export default function EventSourcesDebugPage() {
     }
   }, [log])
 
-  const testLinkedEventsDirect = useCallback(async () => {
-    setLoadingLinked(true)
-    log('INFO', `>>> DIRECT GET ${LINKED_EVENTS_DIRECT_URL}`)
-    const t0 = performance.now()
+  const testLinkedEventsDirect = useCallback(
+    async (specificCity?: 'helsinki' | 'espoo' | 'vantaa' | 'kauniainen') => {
+      setLoadingLinked(true)
+      const targets = specificCity
+        ? CITY_LINKED_ENDPOINTS.filter((c) => c.key === specificCity)
+        : CITY_LINKED_ENDPOINTS
 
-    try {
-      const res = await fetch(LINKED_EVENTS_DIRECT_URL, {
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-      })
-      const ms = Math.round(performance.now() - t0)
-      log(res.ok ? 'OK' : 'ERR', `Linked Events HTTP ${res.status} (${ms} ms)`)
+      for (const ep of targets) {
+        log('INFO', `>>> DIRECT GET [${ep.city}] ${ep.url}`)
+        const t0 = performance.now()
+        try {
+          const res = await fetch(ep.url, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+          })
+          const ms = Math.round(performance.now() - t0)
+          log(res.ok ? 'OK' : 'ERR', `[${ep.city}] Linked Events HTTP ${res.status} (${ms} ms)`)
 
-      const rawText = await res.text()
-      log('INFO', `Linked Events payload-koko: ${rawText.length} tavua`)
+          if (!res.ok) continue
 
-      try {
-        const parsed = JSON.parse(rawText) as {
-          meta?: { count?: number }
-          data?: Array<Record<string, unknown>>
+          const parsed = (await res.json()) as {
+            meta?: { count?: number }
+            data?: Array<Record<string, unknown>>
+          }
+          const rows = Array.isArray(parsed.data) ? parsed.data : []
+          log(
+            'OK',
+            `[${ep.city}] palautti ${rows.length} riviä (meta.count = ${parsed.meta?.count ?? '?'})`,
+          )
+
+          rows.slice(0, 3).forEach((item, idx) => {
+            const nameObj = item.name as { fi?: string; en?: string } | undefined
+            const title = nameObj?.fi || nameObj?.en || '(ei otsikkoa)'
+            const loc = item.location as
+              | {
+                  name?: { fi?: string }
+                  address_locality?: { fi?: string }
+                  position?: { coordinates?: [number, number] }
+                }
+              | undefined
+            const city = loc?.address_locality?.fi || ep.city
+            const venue = loc?.name?.fi || '-'
+            const coords = loc?.position?.coordinates
+            const coordText = Array.isArray(coords)
+              ? `[lat:${coords[1]?.toFixed(4)}, lng:${coords[0]?.toFixed(4)}]`
+              : 'NO_COORDS'
+            log('INFO', `  ${ep.city} #${idx + 1}: (${city}) "${title}" @ ${venue} | ${coordText}`)
+          })
+        } catch (err) {
+          const ms = Math.round(performance.now() - t0)
+          log(
+            'ERR',
+            `[${ep.city}] Linked Events verkkovirhe (${ms} ms): ${err instanceof Error ? err.message : String(err)}`,
+          )
         }
-        const rows = Array.isArray(parsed.data) ? parsed.data : []
-        log(
-          'OK',
-          `Linked Events palautti ${rows.length} tapahtumaa (meta.count = ${parsed.meta?.count ?? '?'})`,
-        )
-
-        rows.slice(0, 5).forEach((item, idx) => {
-          const nameObj = item.name as { fi?: string; en?: string } | undefined
-          const title = nameObj?.fi || nameObj?.en || '(ei otsikkoa)'
-          const loc = item.location as
-            | {
-                name?: { fi?: string }
-                address_locality?: { fi?: string }
-                position?: { coordinates?: [number, number] }
-              }
-            | undefined
-          const city = loc?.address_locality?.fi || '?'
-          const venue = loc?.name?.fi || '-'
-          const coords = loc?.position?.coordinates
-          const coordText = Array.isArray(coords)
-            ? `[lat:${coords[1]?.toFixed(4)}, lng:${coords[0]?.toFixed(4)}]`
-            : 'NO_COORDS'
-          log('INFO', `  LE #${idx + 1}: (${city}) "${title}" @ ${venue} | ${coordText}`)
-        })
-      } catch (parseErr) {
-        log(
-          'ERR',
-          `Linked Events JSON.parse epäonnistui: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
-        )
       }
-    } catch (err) {
-      const ms = Math.round(performance.now() - t0)
-      log(
-        'ERR',
-        `Linked Events verkkovirhe (${ms} ms): ${err instanceof Error ? err.message : String(err)}`,
-      )
-    } finally {
+
+      if (!specificCity || specificCity === 'kauniainen') {
+        log('INFO', `>>> DIRECT GET [Kauniainen] ${KAUNIAINEN_WEB_URL}`)
+        const t0 = performance.now()
+        try {
+          const res = await fetch(KAUNIAINEN_WEB_URL, { cache: 'no-store' })
+          const ms = Math.round(performance.now() - t0)
+          const html = await res.text()
+          log(
+            res.ok ? 'OK' : 'WARN',
+            `[Kauniainen] HTTP ${res.status} (${ms} ms) • HTML ${html.length} tavua (selain-CORS voi estää suoran HTML-luvun)`,
+          )
+        } catch (err) {
+          const ms = Math.round(performance.now() - t0)
+          log(
+            'WARN',
+            `[Kauniainen] suora selaintesti (${ms} ms): ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
+
       setLoadingLinked(false)
-    }
-  }, [log])
+    },
+    [log],
+  )
 
   useEffect(() => {
     void runApiDiagnostics()
   }, [runApiDiagnostics])
+
+  const toggleCityFilter = (target: 'Helsinki' | 'Espoo' | 'Vantaa' | 'Kauniainen') => {
+    setCityFilter((prev) => (isSameCity(prev, target) ? 'all' : target))
+  }
 
   const copyConsoleLog = async () => {
     const text = logs.map((l) => `[${l.ts}] [${l.level}] ${l.msg}`).join('\n')
@@ -320,16 +528,74 @@ export default function EventSourcesDebugPage() {
     }
   }
 
-  const karoEvents = events.filter((e) => (e.source || '').includes('karo'))
-  const linkedEvents = events.filter((e) => (e.source || '').includes('linked'))
-  const otherEvents = events.filter(
-    (e) => !(e.source || '').includes('karo') && !(e.source || '').includes('linked'),
+  const karoEvents = useMemo(
+    () => events.filter((e) => (e.source || '').toLowerCase().includes('karo')),
+    [events],
   )
+
+  const linkedEvents = useMemo(
+    () =>
+      events.filter((e) => {
+        const s = (e.source || '').toLowerCase()
+        const tags = (e.tags || []).map((t) => t.toLowerCase())
+        return (
+          s.includes('linked') ||
+          s.includes('kauniainen') ||
+          tags.some((t) => t.includes('linked-events') || t.includes('kauniainen'))
+        )
+      }),
+    [events],
+  )
+
+  const otherEvents = useMemo(
+    () =>
+      events.filter(
+        (e) =>
+          !(e.source || '').toLowerCase().includes('karo') &&
+          !(e.source || '').toLowerCase().includes('linked') &&
+          !(e.source || '').toLowerCase().includes('kauniainen') &&
+          !(e.tags || []).some(
+            (t) => t.toLowerCase().includes('linked-events') || t.toLowerCase().includes('kauniainen'),
+          ),
+      ),
+    [events],
+  )
+
+  const cityFilterButtons: Array<{
+    city: 'Helsinki' | 'Espoo' | 'Vantaa' | 'Kauniainen'
+    count: number
+    activeClass: string
+    idleClass: string
+  }> = [
+    {
+      city: 'Helsinki',
+      count: meta.byEndpoint.helsinki,
+      activeClass: 'bg-blue-700 text-white border-blue-800 ring-2 ring-blue-300',
+      idleClass: 'bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100',
+    },
+    {
+      city: 'Espoo',
+      count: meta.byEndpoint.espoo,
+      activeClass: 'bg-cyan-700 text-white border-cyan-800 ring-2 ring-cyan-300',
+      idleClass: 'bg-cyan-50 text-cyan-900 border-cyan-200 hover:bg-cyan-100',
+    },
+    {
+      city: 'Vantaa',
+      count: meta.byEndpoint.vantaa,
+      activeClass: 'bg-teal-700 text-white border-teal-800 ring-2 ring-teal-300',
+      idleClass: 'bg-teal-50 text-teal-900 border-teal-200 hover:bg-teal-100',
+    },
+    {
+      city: 'Kauniainen',
+      count: meta.byEndpoint.kauniainen,
+      activeClass: 'bg-amber-600 text-white border-amber-700 ring-2 ring-amber-300',
+      idleClass: 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100',
+    },
+  ]
 
   return (
     <main className="min-h-dvh bg-slate-100 text-slate-900 p-4 sm:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
-        {/* Ylätunniste ja testipainikkeet */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -337,8 +603,12 @@ export default function EventSourcesDebugPage() {
                 Tapahtumalähteiden Debug-testisivu
               </h1>
               <p className="text-xs text-slate-500">
-                Testaa sekä oman <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">/api/events</code>{' '}
-                -reitin että suorat raakakutsut Karon JSON-LD-feediin ja Helsingin Linked Events -rajapintaan.
+                Testaa{' '}
+                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">
+                  {SHELLPROTO_ROUTE_URL}
+                </code>{' '}
+                -reitin ja varmistaa debug-näkymässä 25 tapahtumaa Helsingistä, Espoosta ja
+                Vantaalta.
               </p>
             </div>
 
@@ -351,17 +621,18 @@ export default function EventSourcesDebugPage() {
               <option value="Helsinki">Helsinki</option>
               <option value="Espoo">Espoo</option>
               <option value="Vantaa">Vantaa</option>
+              <option value="Kauniainen">Kauniainen</option>
             </select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
             <button
               type="button"
               disabled={loadingApi}
               onClick={() => void runApiDiagnostics()}
               className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold disabled:opacity-50"
             >
-              {loadingApi ? 'Haetaan /api/events...' : '↻ Aja /api/events'}
+              {loadingApi ? `Haetaan ${SHELLPROTO_ROUTE_URL}...` : `↻ Aja ${SHELLPROTO_ROUTE_URL}`}
             </button>
 
             <button
@@ -379,17 +650,32 @@ export default function EventSourcesDebugPage() {
               onClick={() => void testLinkedEventsDirect()}
               className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
             >
-              {loadingLinked ? 'Haetaan Linked Events...' : 'Testaa Linked Events suoraan'}
+              {loadingLinked ? 'Haetaan Linked Events...' : 'Testaa kaikki Linked Events'}
             </button>
+
+            <div className="flex flex-wrap items-center gap-1 ml-auto">
+              {(['helsinki', 'espoo', 'vantaa', 'kauniainen'] as const).map((cKey) => (
+                <button
+                  key={cKey}
+                  type="button"
+                  disabled={loadingLinked}
+                  onClick={() => void testLinkedEventsDirect(cKey)}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-200 text-[11px] font-mono font-bold text-slate-800 capitalize disabled:opacity-50"
+                >
+                  {cKey}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Yhteenvetokortit per lähde */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-white rounded-2xl p-4 border border-slate-200">
             <div className="text-[11px] font-bold text-slate-500 uppercase">Karon JSON-LD</div>
             <div className="text-2xl font-extrabold text-indigo-700 mt-1">{meta.karoCount}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">tapahtumaa (/api/events)</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              tapahtumaa ({SHELLPROTO_ROUTE_URL})
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl p-4 border border-slate-200">
@@ -397,7 +683,10 @@ export default function EventSourcesDebugPage() {
             <div className="text-2xl font-extrabold text-emerald-700 mt-1">
               {meta.linkedEventsCount}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">tapahtumaa (/api/events)</div>
+            <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+              H:{meta.byEndpoint.helsinki} • E:{meta.byEndpoint.espoo} • V:{meta.byEndpoint.vantaa}{' '}
+              • K:{meta.byEndpoint.kauniainen}
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl p-4 border border-slate-200">
@@ -425,7 +714,42 @@ export default function EventSourcesDebugPage() {
           </div>
         </div>
 
-        {/* Musta Debug Console -ikkuna */}
+        {/* Kaupunkikohtaiset syötteet filtterinappeina */}
+        <section className="bg-white rounded-2xl p-3.5 border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="font-bold text-slate-800">
+            Kaupunkifiltteri (klikkaa kaupunkia):
+          </div>
+          <div className="flex flex-wrap items-center gap-2 font-mono">
+            <button
+              type="button"
+              onClick={() => setCityFilter('all')}
+              className={`px-2.5 py-1 rounded-lg border font-bold transition ${
+                cityFilter === 'all'
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+              }`}
+            >
+              Kaikki: {events.length}
+            </button>
+
+            {cityFilterButtons.map((btn) => {
+              const isSelected = isSameCity(cityFilter, btn.city)
+              return (
+                <button
+                  key={btn.city}
+                  type="button"
+                  onClick={() => toggleCityFilter(btn.city)}
+                  className={`px-2.5 py-1 rounded-lg border font-bold transition ${
+                    isSelected ? btn.activeClass : btn.idleClass
+                  }`}
+                >
+                  {btn.city}: {btn.count}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
         <section className="rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-lg">
           <div className="bg-zinc-900 px-4 py-2.5 border-b border-zinc-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -479,7 +803,6 @@ export default function EventSourcesDebugPage() {
           </div>
         </section>
 
-        {/* Tapahtumat listattuna lähteittäin */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
           <SourceListCard
             title="1. Karon JSON-LD -feedi"
@@ -488,7 +811,7 @@ export default function EventSourcesDebugPage() {
             emptyText="Ei tapahtumia Karon feedistä."
           />
           <SourceListCard
-            title="2. Linked Events (PKS)"
+            title="2. Linked Events & PKS"
             badgeClass="bg-emerald-100 text-emerald-800"
             items={linkedEvents}
             emptyText="Ei tapahtumia Linked Events -rajapinnasta."
@@ -529,25 +852,27 @@ function SourceListCard({
         <p className="text-xs text-slate-400 py-4 text-center">{emptyText}</p>
       ) : (
         <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-          {items.map((evt) => (
-            <div
-              key={evt.id}
-              className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1"
-            >
-              <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-slate-500">
-                <span>{evt.city || 'Ei kaupunkia'}</span>
-                <span>
-                  {evt.coordinates
-                    ? `${evt.coordinates.lat.toFixed(3)}, ${evt.coordinates.lng.toFixed(3)}`
-                    : 'ei koord.'}
-                </span>
+          {items.map((evt) => {
+            const coords = getCoordsTuple(evt)
+            return (
+              <div
+                key={evt.id}
+                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1"
+              >
+                <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-slate-500">
+                  <span>{evt.city || 'Ei kaupunkia'}</span>
+                  <span>
+                    {coords ? `${coords[0].toFixed(3)}, ${coords[1].toFixed(3)}` : 'ei koord.'}
+                  </span>
+                </div>
+                <p className="font-bold text-slate-900 leading-snug">{evt.title}</p>
+                <p className="text-[11px] text-slate-600">
+                  📍 {evt.locationName || evt.venue || 'Tuntematon paikka'} • 👶{' '}
+                  {evt.ageRangeLabel || evt.ageGroup || '-'}
+                </p>
               </div>
-              <p className="font-bold text-slate-900 leading-snug">{evt.title}</p>
-              <p className="text-[11px] text-slate-600">
-                📍 {evt.locationName || 'Tuntematon paikka'} • 👶 {evt.ageRangeLabel || '-'}
-              </p>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </section>

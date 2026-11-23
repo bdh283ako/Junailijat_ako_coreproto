@@ -5,6 +5,29 @@ export interface EventCoordinates {
   lng: number
 }
 
+export interface LahellaFeedDebug {
+  configured?: boolean
+  url?: string
+  status?: number | null
+  error?: string
+  rawItems?: number
+}
+
+export interface KaroFeedDebug {
+  url?: string
+  status?: number | null
+  error?: string
+  rawItems?: number
+}
+
+export interface EventFeedSourcesMeta {
+  karoCount: number
+  lahellaCount: number
+  linkedEventsCount: number
+  byEndpoint?: Record<string, number>
+  byCity?: Record<string, number>
+}
+
 export interface NormalizedEvent {
   id: string
   title: string
@@ -20,6 +43,7 @@ export interface NormalizedEvent {
   ageRangeLabel: string // esim. "2–6 v" tai "Kaikki ikäryhmät"
   tags: string[]
   source: string
+  priceLabel?: string
 }
 
 export interface FetchEventsOptions {
@@ -35,10 +59,9 @@ export interface FetchEventsResult {
   isFallback: boolean
   httpStatus?: number | null
   error?: string
-  sources?: {
-    karoCount: number
-    linkedEventsCount: number
-  }
+  sources?: EventFeedSourcesMeta
+  lahellaDebug?: LahellaFeedDebug
+  karoDebug?: KaroFeedDebug
 }
 
 export interface KaroEventsFeedResult {
@@ -47,10 +70,9 @@ export interface KaroEventsFeedResult {
   httpStatus: number | null
   errorDetail?: string
   rawCount: number
-  sources?: {
-    karoCount: number
-    linkedEventsCount: number
-  }
+  sources?: EventFeedSourcesMeta
+  lahellaDebug?: LahellaFeedDebug
+  karoDebug?: KaroFeedDebug
 }
 
 export const DEFAULT_FEED_URL =
@@ -454,6 +476,7 @@ export function normalizeRawEvent(
 
   const id = buildStableId(rawEvent, title, startDate, locationName)
   const resolvedSource = asNonEmptyString(rawEvent.source) ?? sourceLabel
+  const priceLabel = asNonEmptyString(rawEvent.price)
 
   return {
     id,
@@ -470,6 +493,7 @@ export function normalizeRawEvent(
     ageRangeLabel,
     tags: cleanedTags,
     source: resolvedSource,
+    priceLabel,
   }
 }
 
@@ -531,11 +555,48 @@ export async function fetchNormalizedEvents(
     const payloadWarning =
       isRecord(payload) ? asNonEmptyString(payload.warning) : undefined
 
-    const payloadSources =
+    const payloadSources: EventFeedSourcesMeta | undefined =
       isRecord(payload) && isRecord(payload.sources)
         ? {
             karoCount: asFiniteNumber(payload.sources.karoCount) ?? 0,
+            lahellaCount: asFiniteNumber(payload.sources.lahellaCount) ?? 0,
             linkedEventsCount: asFiniteNumber(payload.sources.linkedEventsCount) ?? 0,
+            byEndpoint: isRecord(payload.sources.byEndpoint)
+              ? (payload.sources.byEndpoint as Record<string, number>)
+              : undefined,
+            byCity: isRecord(payload.sources.byCity)
+              ? (payload.sources.byCity as Record<string, number>)
+              : undefined,
+          }
+        : undefined
+
+    const payloadLahellaDebug: LahellaFeedDebug | undefined =
+      isRecord(payload) && isRecord(payload.lahellaDebug)
+        ? {
+            configured:
+              typeof payload.lahellaDebug.configured === 'boolean'
+                ? payload.lahellaDebug.configured
+                : undefined,
+            url: asNonEmptyString(payload.lahellaDebug.url),
+            status:
+              payload.lahellaDebug.status === null
+                ? null
+                : asFiniteNumber(payload.lahellaDebug.status),
+            error: asNonEmptyString(payload.lahellaDebug.error),
+            rawItems: asFiniteNumber(payload.lahellaDebug.rawItems),
+          }
+        : undefined
+
+    const payloadKaroDebug: KaroFeedDebug | undefined =
+      isRecord(payload) && isRecord(payload.karoDebug)
+        ? {
+            url: asNonEmptyString(payload.karoDebug.url),
+            status:
+              payload.karoDebug.status === null
+                ? null
+                : asFiniteNumber(payload.karoDebug.status),
+            error: asNonEmptyString(payload.karoDebug.error),
+            rawItems: asFiniteNumber(payload.karoDebug.rawItems),
           }
         : undefined
 
@@ -547,6 +608,8 @@ export async function fetchNormalizedEvents(
       httpStatus: response.status,
       error: payloadWarning,
       sources: payloadSources,
+      lahellaDebug: payloadLahellaDebug,
+      karoDebug: payloadKaroDebug,
     }
   } catch (err) {
     const message =
@@ -593,7 +656,9 @@ function formatEventTime(startIso?: string, endIso?: string): string {
 }
 
 function toFamilyEvent(evt: NormalizedEvent): FamilyEvent {
-  const isFree = evt.tags.some((t) => t.toLowerCase().includes('maksuton'))
+  const isFree =
+    evt.tags.some((t) => t.toLowerCase().includes('maksuton')) ||
+    (evt.priceLabel ? /maksuton|free/i.test(evt.priceLabel) : false)
   const coordsTuple: [number, number] | undefined = evt.coordinates
     ? [evt.coordinates.lat, evt.coordinates.lng]
     : undefined
@@ -603,12 +668,15 @@ function toFamilyEvent(evt: NormalizedEvent): FamilyEvent {
     title: evt.title,
     city: evt.city || 'Helsinki',
     venue: evt.locationName || evt.address || 'Pääkaupunkiseutu',
+    address: evt.address,
     time: formatEventTime(evt.startDate, evt.endDate),
     ageGroup: evt.ageRangeLabel || 'Lapset & perheet',
-    price: isFree ? 'Maksuton' : 'Katso tiedot',
+    price: evt.priceLabel || (isFree ? 'Maksuton' : 'Katso tiedot'),
     coords: coordsTuple as [number, number],
     url: evt.url,
     description: evt.description,
+    tags: evt.tags,
+    keywords: evt.tags,
   }
 }
 
@@ -636,5 +704,7 @@ export async function fetchKaroEventsFeed(
     errorDetail: result.error,
     rawCount: mapped.length,
     sources: result.sources,
+    lahellaDebug: result.lahellaDebug,
+    karoDebug: result.karoDebug,
   }
 }

@@ -1,12 +1,28 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
-import { FamilyEvent, FamilyProfile, PKS_DEFAULT_BOUNDS } from './protoData'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  calcDistanceKm,
+  FamilyEvent,
+  FamilyProfile,
+  PKS_MLL_FAMILY_CAFES,
+} from './protoData'
+import {
+  DEFAULT_PKS_COORDS,
+  resolveEventsForMap,
+  type CityOnlyGroup,
+} from './mapGeoResolver'
 
 interface LeafletCircleMarker {
   addTo: (map: LeafletMapInstance) => LeafletCircleMarker
   bindPopup: (html: string) => LeafletCircleMarker
   on: (event: string, handler: () => void) => LeafletCircleMarker
+}
+
+interface LeafletDivIconMarker {
+  addTo: (map: LeafletMapInstance) => LeafletDivIconMarker
+  bindPopup: (html: string) => LeafletDivIconMarker
+  on: (event: string, handler: () => void) => LeafletDivIconMarker
 }
 
 interface LeafletMapInstance {
@@ -22,6 +38,16 @@ interface LeafletGlobal {
     options?: { attribution?: string; maxZoom?: number },
   ) => { addTo: (map: LeafletMapInstance) => void }
   latLngBounds: (sw: [number, number], ne: [number, number]) => unknown
+  divIcon: (options: {
+    className?: string
+    html: string
+    iconSize?: [number, number]
+    iconAnchor?: [number, number]
+  }) => unknown
+  marker: (
+    coords: [number, number],
+    options?: { icon?: unknown },
+  ) => LeafletDivIconMarker
   circleMarker: (
     coords: [number, number],
     options: {
@@ -34,8 +60,14 @@ interface LeafletGlobal {
   ) => LeafletCircleMarker
 }
 
+type MapEventRecord = FamilyEvent & {
+  locationName?: string
+  startDate?: string
+  coordinates?: unknown
+}
+
 interface PksMapViewProps {
-  events: FamilyEvent[]
+  events: MapEventRecord[]
   attendingIds: string[]
   matchedFamilies: FamilyProfile[]
   homeCoords: [number, number]
@@ -45,6 +77,23 @@ interface PksMapViewProps {
   showCloseRelativesInMatches: boolean
   focusCoords: [number, number] | null
   onResetBounds: () => void
+  selectedCity?: string
+  onChangeSelectedCity?: (city: string) => void
+}
+
+const PKS_SEUTULA_BOUNDS: [[number, number], [number, number]] = [
+  [60.135, 24.585],
+  [60.345, 25.165],
+]
+
+const MAX_MAP_EVENT_PINS = 25
+
+function getEventVenueLabel(evt: MapEventRecord): string {
+  return evt.locationName || evt.venue || evt.address || evt.city
+}
+
+function getEventTimeLabel(evt: MapEventRecord): string {
+  return evt.time || evt.startDate || ''
 }
 
 export function PksMapView({
@@ -58,10 +107,112 @@ export function PksMapView({
   showCloseRelativesInMatches,
   focusCoords,
   onResetBounds,
+  selectedCity,
+  onChangeSelectedCity,
 }: PksMapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<LeafletMapInstance | null>(null)
   const [mapError, setMapError] = useState(false)
+  const [selectedCityGroup, setSelectedCityGroup] = useState<CityOnlyGroup<MapEventRecord> | null>(
+    null,
+  )
+
+  // Geneerinen kaupunkifiltteri (synkronoitu profiilin filtterin kanssa tai paikallinen)
+  const [internalCityFilter, setInternalCityFilter] = useState<string>('Kaikki PKS')
+  const activeCityFilter = selectedCity ?? internalCityFilter
+
+  const handleCityChange = (nextCity: string) => {
+    setInternalCityFilter(nextCity)
+    setListPage(1)
+    setSelectedCityGroup(null)
+    onChangeSelectedCity?.(nextCity)
+  }
+
+  // MLL-perhekahvilat: oletuksena pois päältä, tottelee geneeristä kaupunkifiltteriä
+  const [showMllCafes, setShowMllCafes] = useState(false)
+
+  // Kartan alla olevan listan sivutus (25 tai 50 kpl / sivu)
+  const [listPageSize, setListPageSize] = useState<25 | 50>(25)
+  const [listPage, setListPage] = useState<number>(1)
+
+  const safeHome = homeCoords || DEFAULT_PKS_COORDS
+
+  // Kaikki valitun kaupungin tapahtumat lähimmästä kauimpaan (ei katkaistu 25:een)
+  const cityFilteredAllEvents = useMemo(() => {
+    const resolved = resolveEventsForMap(events, safeHome)
+    return resolved.all
+      .map(({ event: evt, effectiveCoords, hasExactCoords, district }) => ({
+        ...evt,
+        coords: effectiveCoords,
+        hasExactCoords,
+        district,
+        distanceKm: calcDistanceKm(safeHome, effectiveCoords),
+      }))
+      .filter((evt) => {
+        if (activeCityFilter === 'Kaikki PKS') return true
+        return (evt.city || '').toLowerCase() === activeCityFilter.toLowerCase()
+      })
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+  }, [events, safeHome, activeCityFilter])
+
+// Kartalle piirretään enintään 25 lähintä tapahtumaa PER KAUPUNKI
+  const mapCappedEvents = useMemo(() => {
+    const perCityCount = new Map<string, number>()
+    const result: typeof cityFilteredAllEvents = []
+
+    for (const evt of cityFilteredAllEvents) {
+      const cityKey = (evt.city || 'Muu').toLowerCase()
+      const current = perCityCount.get(cityKey) ?? 0
+      if (current < MAX_MAP_EVENT_PINS) {
+        perCityCount.set(cityKey, current + 1)
+        result.push(evt)
+      }
+    }
+    return result
+  }, [cityFilteredAllEvents])
+
+  const resolvedMap = useMemo(
+    () => resolveEventsForMap(mapCappedEvents, safeHome),
+    [mapCappedEvents, safeHome],
+  )
+
+  // MLL-perhekahvilat näytetään vain jos oma filtterikytkin on päällä + rajataan geneerisellä kaupunkifiltterillä
+  const visibleMllCafes = useMemo(() => {
+    if (!showMllCafes) return []
+    return PKS_MLL_FAMILY_CAFES.map((cafe) => ({
+      ...cafe,
+      distanceKm: calcDistanceKm(safeHome, cafe.coords),
+    }))
+      .filter(
+        (cafe) =>
+          activeCityFilter === 'Kaikki PKS' ||
+          cafe.city.toLowerCase() === activeCityFilter.toLowerCase(),
+      )
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+  }, [showMllCafes, activeCityFilter, safeHome])
+
+  const visibleMatchedFamilies = useMemo(() => {
+    if (activeCityFilter === 'Kaikki PKS') return matchedFamilies
+    return matchedFamilies.filter(
+      (f) => f.city.toLowerCase() === activeCityFilter.toLowerCase(),
+    )
+  }, [matchedFamilies, activeCityFilter])
+
+  // Sivutuslaskenta kartan alla olevalle listalle
+  const totalListPages = Math.max(1, Math.ceil(cityFilteredAllEvents.length / listPageSize))
+  const safeListPage = Math.min(listPage, totalListPages)
+  const paginatedBottomEvents = useMemo(() => {
+    const startIdx = (safeListPage - 1) * listPageSize
+    return cityFilteredAllEvents.slice(startIdx, startIdx + listPageSize)
+  }, [cityFilteredAllEvents, safeListPage, listPageSize])
+
+  const eventTitleById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const evt of events) {
+      map.set(evt.id, evt.title)
+    }
+    return map
+  }, [events])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -87,18 +238,19 @@ export function PksMapView({
         { attribution: '© Esri / OSM', maxZoom: 19 },
       ).addTo(map)
 
-      const defaultBounds = L.latLngBounds(PKS_DEFAULT_BOUNDS[0], PKS_DEFAULT_BOUNDS[1])
+      const defaultBounds = L.latLngBounds(PKS_SEUTULA_BOUNDS[0], PKS_SEUTULA_BOUNDS[1])
 
       if (focusCoords) {
         map.setView(focusCoords, 14)
       } else {
-        map.fitBounds(defaultBounds, { padding: [16, 16] })
+        map.fitBounds(defaultBounds, { padding: [12, 12] })
       }
 
-      L.circleMarker(homeCoords, {
+      // Oma koti: oranssi
+      L.circleMarker(safeHome, {
         radius: 12,
         fillColor: '#f97316',
-        color: '#fff',
+        color: '#ffffff',
         weight: 3,
         fillOpacity: 0.98,
       })
@@ -107,12 +259,44 @@ export function PksMapView({
           `<strong>🟠 Oma koti (${familyName})</strong><br/>${homeLabel}<br/><span style="font-size:11px;color:#ea580c;">Klikkaus zoomaa oletusnäkymään</span>`,
         )
         .on('click', () => {
-          map.fitBounds(defaultBounds, { padding: [16, 16] })
+          map.fitBounds(defaultBounds, { padding: [12, 12] })
           onResetBounds()
         })
 
-      events.forEach((evt) => {
+      // 1. Tarkka karttasijainti: vahva syvä sininen (#1d4ed8) (max 25 yhteensä kartalla)
+      resolvedMap.exactPins.forEach(({ event: evt, plotCoords }) => {
+        if (!plotCoords) return
         const isGoing = attendingIds.includes(evt.id)
+        const venueText = getEventVenueLabel(evt)
+        const timeText = getEventTimeLabel(evt)
+        const descHtml = evt.description
+          ? `<br/><span style="font-size:11px;color:#475569;">${evt.description}</span>`
+          : ''
+        const linkHtml = evt.url
+          ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#1d4ed8;text-decoration:underline;">Lisätiedot ↗</a>`
+          : ''
+
+        L.circleMarker(plotCoords, {
+          radius: 9.5,
+          fillColor: '#1d4ed8',
+          color: '#1e3a8a',
+          weight: 2.5,
+          fillOpacity: 0.96,
+        })
+          .addTo(map)
+          .bindPopup(
+            `<span style="font-size:10px;font-weight:700;color:#1d4ed8;">TARKKA SIJAINTI (${evt.city})</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
+              isGoing ? '✅ Olet menossa mukaan' : timeText
+            }${descHtml}${linkHtml}`,
+          )
+      })
+
+      // 2. Kaupunginosa / tunnettu alue: vaaleansininen (#93c5fd)
+      resolvedMap.districtPins.forEach(({ event: evt, district, city, plotCoords }) => {
+        if (!plotCoords) return
+        const isGoing = attendingIds.includes(evt.id)
+        const venueText = getEventVenueLabel(evt)
+        const timeText = getEventTimeLabel(evt)
         const descHtml = evt.description
           ? `<br/><span style="font-size:11px;color:#475569;">${evt.description}</span>`
           : ''
@@ -120,27 +304,69 @@ export function PksMapView({
           ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#2563eb;text-decoration:underline;">Lisätiedot ↗</a>`
           : ''
 
-        L.circleMarker(evt.coords, {
-          radius: 10,
-          fillColor: '#2563eb',
-          color: '#fff',
-          weight: 2.5,
-          fillOpacity: 0.95,
+        L.circleMarker(plotCoords, {
+          radius: 8.5,
+          fillColor: '#93c5fd',
+          color: '#2563eb',
+          weight: 2,
+          fillOpacity: 0.9,
         })
           .addTo(map)
           .bindPopup(
-            `<strong>📅 ${evt.title}</strong><br/>${evt.venue}<br/>${
-              isGoing ? '✅ Olet menossa mukaan' : evt.time
+            `<span style="font-size:10px;font-weight:700;color:#2563eb;">ALUE: ${district || city}</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
+              isGoing ? '✅ Olet menossa mukaan' : timeText
             }${descHtml}${linkHtml}`,
           )
       })
 
-      matchedFamilies.forEach((fam) => {
+      // 3. Vain kaupunki: sininen kaupunkilistamarkkeri
+      resolvedMap.cityGroups.forEach((group) => {
+        const badgeIcon = L.divIcon({
+          className: 'perhepiiri-city-list-badge',
+          html: `<div style="background:#eff6ff;color:#1e3a8a;border:2px solid #2563eb;border-radius:9999px;padding:3px 8px;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,0.18);white-space:nowrap;cursor:pointer;">${group.city}: ${group.items.length} (lista)</div>`,
+          iconSize: [112, 24],
+          iconAnchor: [56, 12],
+        })
+
+        L.marker(group.coords, { icon: badgeIcon })
+          .addTo(map)
+          .bindPopup(
+            `<strong>${group.city} — ${group.items.length} tapahtumaa</strong><br/><span style="font-size:11px;color:#475569;">Vain kaupunkitieto (ei tarkkaa osoitetta tai kaupunginosaa).</span>`,
+          )
+          .on('click', () => {
+            setSelectedCityGroup(group)
+          })
+      })
+
+      // 4. MLL-perhekahvilat: violetti (#7c3aed) — vain kun filtteri on päällä
+      if (showMllCafes) {
+        visibleMllCafes.forEach((cafe) => {
+          const linkHtml = cafe.url
+            ? `<br/><a href="${cafe.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#6d28d9;text-decoration:underline;">Yhdistyksen sivu ↗</a>`
+            : ''
+
+          L.circleMarker(cafe.coords, {
+            radius: 9,
+            fillColor: '#7c3aed',
+            color: '#4c1d95',
+            weight: 2.5,
+            fillOpacity: 0.94,
+          })
+            .addTo(map)
+            .bindPopup(
+              `<span style="font-size:10px;font-weight:700;color:#6d28d9;">MLL-PERHEKAHVILA (${cafe.city})</span><br/><strong>☕ ${cafe.name}</strong><br/>${cafe.venue}, ${cafe.address}<br/><span style="font-size:11px;color:#475569;">🕒 ${cafe.schedule} • ${cafe.ageGroup} (${cafe.distanceKm} km)</span>${linkHtml}`,
+            )
+        })
+      }
+
+      // Perheosumat: vihreä (#059669)
+      visibleMatchedFamilies.forEach((fam) => {
+        const linkedTitle = fam.attendingEventId
+          ? eventTitleById.get(fam.attendingEventId) || ''
+          : ''
         const eventNote =
-          shareEventsWithMatches && fam.attendingEventId
-            ? `<br/><span style="font-size:11px;color:#059669;">Tapahtuma: ${
-                events.find((e) => e.id === fam.attendingEventId)?.title || ''
-              }</span>`
+          shareEventsWithMatches && linkedTitle
+            ? `<br/><span style="font-size:11px;color:#059669;">Tapahtuma: ${linkedTitle}</span>`
             : ''
 
         const relativesNote =
@@ -151,9 +377,9 @@ export function PksMapView({
         L.circleMarker(fam.coords, {
           radius: 11,
           fillColor: '#059669',
-          color: '#fff',
+          color: '#ffffff',
           weight: 2.5,
-          fillOpacity: 0.95,
+          fillOpacity: 0.96,
         })
           .addTo(map)
           .bindPopup(
@@ -182,10 +408,13 @@ export function PksMapView({
     script.onerror = () => setMapError(true)
     document.body.appendChild(script)
   }, [
-    events,
+    resolvedMap,
+    visibleMllCafes,
+    showMllCafes,
+    eventTitleById,
     attendingIds,
-    matchedFamilies,
-    homeCoords,
+    visibleMatchedFamilies,
+    safeHome,
     homeLabel,
     familyName,
     shareEventsWithMatches,
@@ -195,27 +424,229 @@ export function PksMapView({
   ])
 
   return (
-    <div className="h-full flex flex-col relative">
-      {mapError ? (
-        <div className="flex-1 flex items-center justify-center p-6 text-center text-xs text-slate-600 bg-slate-100">
-          Karttakirjaston lataus ei onnistunut. Tarkista verkkoyhteys ja avaa kartta uudelleen.
+    <div className="h-full flex flex-col relative bg-slate-50">
+      <div className="flex-none h-[52%] sm:h-[54%] sm:max-h-[480px] flex flex-col min-h-[240px] border-b border-slate-200 bg-white">
+        {mapError ? (
+          <div className="flex-1 flex items-center justify-center p-6 text-center text-xs text-slate-600 bg-slate-100">
+            Karttakirjaston lataus ei onnistunut. Tarkista verkkoyhteys ja avaa kartta uudelleen.
+          </div>
+        ) : (
+          <div ref={mapContainerRef} className="flex-1 w-full min-h-[200px]" />
+        )}
+
+        {/* Geneerinen kaupunkifiltteri + karttaselitteet + MLL-kahviloiden erillinen kytkin */}
+        <div className="bg-white border-t border-slate-200 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+          <div className="flex flex-wrap items-center gap-2 font-medium text-slate-700">
+            {/* Geneerinen kaupunkivalitsin */}
+            <label className="inline-flex items-center gap-1.5 font-bold text-slate-800">
+              <span>Kaupunki:</span>
+              <select
+                value={activeCityFilter}
+                onChange={(e) => handleCityChange(e.target.value)}
+                aria-label="Kaupunkifiltteri"
+                className="px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 font-bold text-xs"
+              >
+                {['Kaikki PKS', 'Espoo', 'Helsinki', 'Vantaa', 'Kauniainen'].map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <span>🟠 Koti</span>
+            <span
+              className="inline-flex items-center gap-1"
+              title="Kartalle piirretään enintään 25 lähintä tapahtumaa"
+            >
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-700 border border-blue-900 inline-block" />
+              Kartalla ({mapCappedEvents.length}/{cityFilteredAllEvents.length})
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-300 border border-blue-600 inline-block" />
+              Alue ({resolvedMap.stats.districtCount})
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedCityGroup((prev) => (prev ? null : resolvedMap.cityGroups[0] ?? null))
+              }
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-blue-600 bg-blue-50 text-blue-900 font-bold hover:bg-blue-100"
+            >
+              Kaupunkilista ({resolvedMap.stats.cityOnlyCount})
+            </button>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 border border-white inline-block" />
+              Osumat ({visibleMatchedFamilies.length})
+            </span>
+
+            {/* MLL-perhekahviloiden oma kytkin (oletuksena pois päältä) */}
+            <button
+              type="button"
+              onClick={() => setShowMllCafes((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border font-bold transition-colors ${
+                showMllCafes
+                  ? 'bg-violet-600 text-white border-violet-800'
+                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <span
+                className={`w-2.5 h-2.5 rounded-full inline-block ${
+                  showMllCafes ? 'bg-white' : 'bg-violet-600'
+                }`}
+              />
+              ☕ MLL-kahvilat {showMllCafes ? `(${visibleMllCafes.length})` : '(pois)'}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={onResetBounds}
+            className="px-2.5 py-1 rounded-lg bg-slate-100 font-semibold text-slate-800 shrink-0"
+          >
+            Koko PKS
+          </button>
         </div>
-      ) : (
-        <div ref={mapContainerRef} className="flex-1 w-full" />
+      </div>
+
+      {selectedCityGroup && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 sm:px-6 py-3 text-xs max-h-44 overflow-y-auto shrink-0">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="font-bold text-blue-950">
+              {selectedCityGroup.city} — vain kaupunkitason tapahtumat ({selectedCityGroup.items.length})
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedCityGroup(null)}
+              className="px-2 py-0.5 rounded bg-white border border-blue-300 text-blue-900 font-semibold"
+            >
+              Sulje lista
+            </button>
+          </div>
+          <ul className="space-y-1">
+            {selectedCityGroup.items.map(({ event: item }) => {
+              const itemVenue = getEventVenueLabel(item)
+              const itemTime = getEventTimeLabel(item)
+              return (
+                <li
+                  key={item.id}
+                  className="bg-white rounded-lg px-2.5 py-1.5 border border-blue-100 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900 truncate">{item.title}</div>
+                    <div className="text-[11px] text-slate-500 truncate">
+                      {itemVenue} {itemTime ? `• ${itemTime}` : ''}
+                    </div>
+                  </div>
+                  {item.url && (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-blue-700 font-bold underline"
+                    >
+                      Avaa ↗
+                    </a>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
-      <div className="bg-white border-t border-slate-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-2 text-xs shrink-0">
-        <div className="flex flex-wrap gap-3 font-medium text-slate-700">
-          <span>🟠 Oma koti</span>
-          <span>🔵 Tapahtumat ({events.length})</span>
-          <span>🟢 Osumat ({matchedFamilies.length})</span>
+
+      {/* Kartan alla oleva sivutettu listaus (25 tai 50 erissä kaikki valitun kaupungin tapahtumat) */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="font-bold text-slate-800">
+            Tapahtumalista ({activeCityFilter}): {cityFilteredAllEvents.length} kpl{' '}
+            <span className="font-normal text-slate-500">
+              (kartalla max {MAX_MAP_EVENT_PINS} lähintä)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-500">Eräkoko:</span>
+            {([25, 50] as const).map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => {
+                  setListPageSize(size)
+                  setListPage(1)
+                }}
+                className={`px-2 py-0.5 rounded-md font-bold text-[11px] border ${
+                  listPageSize === size
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                {size} / sivu
+              </button>
+            ))}
+
+            {totalListPages > 1 && (
+              <div className="flex items-center gap-1.5 ml-1">
+                <button
+                  type="button"
+                  disabled={safeListPage <= 1}
+                  onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                  className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-700 font-semibold disabled:opacity-40"
+                >
+                  ←
+                </button>
+                <span className="font-mono text-[11px] text-slate-700">
+                  {safeListPage}/{totalListPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safeListPage >= totalListPages}
+                  onClick={() => setListPage((p) => Math.min(totalListPages, p + 1))}
+                  className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-700 font-semibold disabled:opacity-40"
+                >
+                  →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onResetBounds}
-          className="px-2.5 py-1 rounded-lg bg-slate-100 font-semibold text-slate-800 shrink-0"
-        >
-          Koko PKS
-        </button>
+
+        {paginatedBottomEvents.length === 0 ? (
+          <div className="bg-white rounded-xl p-4 border border-slate-200 text-xs text-slate-500 text-center">
+            Ei tapahtumia valitussa kaupungissa ({activeCityFilter}).
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {paginatedBottomEvents.map((evt) => (
+              <div
+                key={evt.id}
+                className="bg-white rounded-xl p-2.5 border border-slate-200 flex items-start justify-between gap-2 text-xs"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-[10px] font-bold text-blue-700 uppercase">
+                    {evt.district ? `${evt.district} (${evt.city})` : evt.city} •{' '}
+                    {evt.hasExactCoords ? '' : '~'}
+                    {evt.distanceKm} km • {evt.ageGroup}
+                  </div>
+                  <div className="font-bold text-slate-900 truncate">{evt.title}</div>
+                  <div className="text-[11px] text-slate-500 truncate">
+                    {getEventVenueLabel(evt)} • {getEventTimeLabel(evt)}
+                  </div>
+                </div>
+                {evt.url && (
+                  <a
+                    href={evt.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold text-[11px] hover:bg-blue-100"
+                  >
+                    Avaa ↗
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
