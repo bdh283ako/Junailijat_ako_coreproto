@@ -159,6 +159,7 @@ export interface Config {
   collections: {
     admins: Admin;
     users: User;
+    'family-matches': FamilyMatch;
     media: Media;
     folders: Folder;
     tags: Tag;
@@ -172,6 +173,7 @@ export interface Config {
   collectionsSelect: {
     admins: AdminsSelect<false> | AdminsSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
+    'family-matches': FamilyMatchesSelect<false> | FamilyMatchesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     folders: FoldersSelect<false> | FoldersSelect<true>;
     tags: TagsSelect<false> | TagsSelect<true>;
@@ -319,6 +321,19 @@ export interface User {
   updatedAt: string;
   createdAt: string;
   collection: 'users';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the definition "family-matches".
+ */
+export interface FamilyMatch {
+  id: string;
+  fromFamily: string | User;
+  toFamily: string | User;
+  status: 'liked' | 'passed' | 'matched';
+  updatedAt: string;
+  createdAt: string;
+  collection: 'family-matches';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -592,6 +607,17 @@ export interface UsersSelect<T extends boolean = true> {
   familyProfile?: T;
   createdBy?: T;
   updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the definition "family-matches".
+ */
+export interface FamilyMatchesSelect<T extends boolean = true> {
+  fromFamily?: T;
+  toFamily?: T;
+  status?: T;
   updatedAt?: T;
   createdAt?: T;
 }

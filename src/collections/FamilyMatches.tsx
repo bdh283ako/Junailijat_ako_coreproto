@@ -1,4 +1,4 @@
-import { CollectionConfig } from 'payload/types'
+import type { CollectionConfig } from 'payload'
 
 export const FamilyMatches: CollectionConfig = {
   slug: 'family-matches',
@@ -14,13 +14,13 @@ export const FamilyMatches: CollectionConfig = {
     {
       name: 'fromFamily',
       type: 'relationship',
-      relationTo: 'families', // Viittaus perheprofiilien kokoelmaan
+      relationTo: 'users',
       required: true,
     },
     {
       name: 'toFamily',
       type: 'relationship',
-      relationTo: 'families',
+      relationTo: 'users',
       required: true,
     },
     {
