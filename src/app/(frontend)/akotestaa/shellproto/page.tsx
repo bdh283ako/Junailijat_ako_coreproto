@@ -1,9 +1,14 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CommunityHubPanel, type HubSection } from './CommunityHubPanel'
-import { fetchKaroEventsFeed } from './eventFeedClient'
-import { buildGoogleCalendarUrl } from './googleCalendar'
+import {
+  DebugMonitorPanels,
+  type FeedSourcesMeta,
+} from './DebugMonitorPanels'
+import { EventsTabPanel, type EventAgeQuickFilter } from './EventsTabPanel'
+import { FamiliesTabPanel, type FamilySubTab } from './FamiliesTabPanel'
+import { FamilyMembersPanel } from './FamilyMembersPanel'
 import {
   DEFAULT_PKS_COORDS,
   resolveCoordsTuple,
@@ -11,53 +16,29 @@ import {
 } from './mapGeoResolver'
 import { PksMapView } from './PksMapView'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
+import { StoreInspectorPanel } from './StoreInspectorPanel'
+import { useEventsFeed, type EventFeedStatus } from './useEventsFeed'
+import { useFamilyProfileSync } from './useFamilyProfileSync'
+import { useGoogleSession } from './useGoogleSession'
 import {
-  AuthenticatedGoogleUser,
-  BASE_DEFAULT_PROFILE,
-  buildInitialProfileForGoogleUser,
   buildInviteUrl,
   calcDistanceKm,
   calcFamilyMatch,
   ChildItem,
   CloseRelativeItem,
   CoParentItem,
-  DbCommitFeedEntry,
-  DbSyncStatus,
   DEMO_FAMILIES,
   DemoSelectionEvent,
-  emailToUserId,
-  FamilyEvent,
   FamilyProfile,
   FloatingPos,
   generateInviteCode,
   inferAgeGroupsFromChildren,
-  INITIAL_ATTENDING_IDS,
   INITIAL_EVENTS,
-  NERD_DB_QUIPS,
-  normalizeProfile,
   nowClock,
-  PersistedSessionState,
   ProfileSubView,
-  RELATIVE_ROLES,
-  SESSION_STORAGE_PREFIX,
   TabKey,
   UserProfileState,
 } from './protoData'
-
-type EventAgeQuickFilter = 'all' | '0-3' | '4-6' | '7-12' | 'all-ages'
-
-type FeedSourcesMeta = {
-  karoCount: number
-  linkedEventsCount: number
-}
-
-const EVENT_AGE_QUICK_FILTERS: { id: EventAgeQuickFilter; label: string }[] = [
-  { id: 'all', label: 'Kaikki iät' },
-  { id: '0-3', label: '0–3 v' },
-  { id: '4-6', label: '4–6 v' },
-  { id: '7-12', label: '7–12 v' },
-  { id: 'all-ages', label: 'Koko perhe' },
-]
 
 function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQuickFilter): boolean {
   if (filter === 'all') return true
@@ -97,7 +78,7 @@ function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQui
 }
 
 function getSourceStatusBadge(
-  status: 'loading' | 'live-api' | 'fallback',
+  status: EventFeedStatus,
   sources: FeedSourcesMeta | null,
 ) {
   if (status === 'loading') {
@@ -151,157 +132,19 @@ function getSourceStatusBadge(
   }
 }
 
-function loadTransientSession(userId: string): PersistedSessionState | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(`${SESSION_STORAGE_PREFIX}${userId}`)
-    if (!raw) return null
-    return JSON.parse(raw) as PersistedSessionState
-  } catch {
-    return null
-  }
-}
-
-function FloatingDockWindow({
-  title,
-  badge,
-  pos,
-  onPosChange,
-  onClose,
-  headerToneClass,
-  borderToneClass,
-  children,
-}: {
-  title: string
-  badge: string
-  pos: FloatingPos | null
-  onPosChange: (next: FloatingPos) => void
-  onClose: () => void
-  headerToneClass: string
-  borderToneClass: string
-  children: React.ReactNode
-}) {
-  const dragStateRef = useRef<{
-    startX: number
-    startY: number
-    origX: number
-    origY: number
-    boxW: number
-    boxH: number
-  } | null>(null)
-  const cardRef = useRef<HTMLDivElement>(null)
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button')) return
-    const rect = cardRef.current?.getBoundingClientRect()
-    const currentX = pos ? pos.x : rect ? rect.left : 16
-    const currentY = pos ? pos.y : rect ? rect.top : 16
-    dragStateRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      origX: currentX,
-      origY: currentY,
-      boxW: rect ? rect.width : 300,
-      boxH: rect ? rect.height : 180,
-    }
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = dragStateRef.current
-    if (!d || typeof window === 'undefined') return
-    const dx = e.clientX - d.startX
-    const dy = e.clientY - d.startY
-    const maxX = Math.max(8, window.innerWidth - d.boxW - 8)
-    const maxY = Math.max(8, window.innerHeight - d.boxH - 8)
-    onPosChange({
-      x: Math.min(maxX, Math.max(8, d.origX + dx)),
-      y: Math.min(maxY, Math.max(8, d.origY + dy)),
-    })
-  }
-
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragStateRef.current) {
-      dragStateRef.current = null
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId)
-      } catch {
-        // Ohitetaan jos capture ei ollut aktiivinen
-      }
-    }
-  }
-
-  return (
-    <div
-      ref={cardRef}
-      style={
-        pos
-          ? { position: 'fixed', left: `${pos.x}px`, top: `${pos.y}px`, right: 'auto' }
-          : undefined
-      }
-      className={`fixed right-3 z-40 w-[290px] sm:w-[320px] rounded-2xl shadow-2xl border ${borderToneClass} bg-zinc-950/95 text-zinc-100 overflow-hidden backdrop-blur-sm`}
-    >
-      <div
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        className={`${headerToneClass} px-3 py-2 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing select-none touch-none border-b border-white/10`}
-      >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px] opacity-75">⠿</span>
-          <span className="font-mono text-[10px] font-bold tracking-wider truncate">{title}</span>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-black/35 text-zinc-200">
-            {badge}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-1.5 py-0.5 rounded bg-black/35 hover:bg-black/60 text-[10px] font-bold"
-            aria-label="Piilota paneeli"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-      <div className="p-3 space-y-2">{children}</div>
-    </div>
-  )
-}
-
 export default function PerheAppPrototypePage() {
-  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>(
-    'loading',
-  )
-  const [currentUser, setCurrentUser] = useState<AuthenticatedGoogleUser | null>(null)
-  const [authRedirecting, setAuthRedirecting] = useState(false)
-  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null)
-
   const [activeTab, setActiveTab] = useState<TabKey>('events')
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main')
-  const [familySubTab, setFamilySubTab] = useState<'discover' | 'matches'>('discover')
+  const [familySubTab, setFamilySubTab] = useState<FamilySubTab>('discover')
 
   const [hubInitialSection, setHubInitialSection] = useState<HubSection>('board')
   const [hubEventId, setHubEventId] = useState<string | null>(null)
   const [hubDirectTargetId, setHubDirectTargetId] = useState<string | null>(null)
   const [hubMountKey, setHubMountKey] = useState<number>(0)
 
-  const [profile, setProfile] = useState<UserProfileState>(BASE_DEFAULT_PROFILE)
-
-  const [events, setEvents] = useState<FamilyEvent[]>(INITIAL_EVENTS)
   const [eventAgeFilter, setEventAgeFilter] = useState<EventAgeQuickFilter>('all')
   const [eventSearchQuery, setEventSearchQuery] = useState<string>('')
   const [ignoreDefaultPresetTemp, setIgnoreDefaultPresetTemp] = useState(false)
-  const [eventFeedStatus, setEventFeedStatus] = useState<'loading' | 'live-api' | 'fallback'>(
-    'loading',
-  )
-  const [eventFeedSources, setEventFeedSources] = useState<FeedSourcesMeta | null>(null)
-  const [eventFeedDebug, setEventFeedDebug] = useState<{
-    httpStatus: number | null
-    errorDetail?: string
-    count: number
-  }>({ httpStatus: null, count: 0 })
 
   const [inviteParentName, setInviteParentName] = useState('')
   const [inviteParentEmail, setInviteParentEmail] = useState('')
@@ -316,13 +159,7 @@ export default function PerheAppPrototypePage() {
   const [newRelativeRole, setNewRelativeRole] = useState('Isovanhempi')
   const [newRelativeNote, setNewRelativeNote] = useState('')
 
-  const [profileSavedToast, setProfileSavedToast] = useState(false)
   const [transientResetToast, setTransientResetToast] = useState(false)
-  const [dbSyncStatus, setDbSyncStatus] = useState<DbSyncStatus>('idle')
-  const [mongoInstanceLabel, setMongoInstanceLabel] = useState<string>('')
-  const [mongoUpdatedAt, setMongoUpdatedAt] = useState<string>('')
-  const [mongoRevision, setMongoRevision] = useState<number>(0)
-  const [dbFeedLog, setDbFeedLog] = useState<DbCommitFeedEntry[]>([])
 
   const [showDemoMonitor, setShowDemoMonitor] = useState(true)
   const [showNerdDbFloat, setShowNerdDbFloat] = useState(true)
@@ -341,30 +178,12 @@ export default function PerheAppPrototypePage() {
   const [editRelativeRole, setEditRelativeRole] = useState('Isovanhempi')
   const [editRelativeNote, setEditRelativeNote] = useState('')
 
-  const [attendingIds, setAttendingIds] = useState<string[]>(INITIAL_ATTENDING_IDS)
-  const [dismissedIds, setDismissedIds] = useState<string[]>([])
-  const [matchedIds, setMatchedIds] = useState<string[]>([])
   const [latestMatch, setLatestMatch] = useState<FamilyProfile | null>(null)
-  const [messages, setMessages] = useState<Record<string, string[]>>({})
   const [mapFocusCoords, setMapFocusCoords] = useState<[number, number] | null>(null)
-  const [isHydrated, setIsHydrated] = useState(false)
 
-  const skipNextDbSaveRef = useRef(true)
-  const instanceLabelRef = useRef<string>('')
-  const revisionRef = useRef<number>(0)
-  const lastQuipIdxRef = useRef<number>(-1)
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transientToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    instanceLabelRef.current = mongoInstanceLabel
-  }, [mongoInstanceLabel])
-
-  useEffect(() => {
-    revisionRef.current = mongoRevision
-  }, [mongoRevision])
 
   const recordDemoSelection = useCallback((action: string, detail: string) => {
     setDemoSelections((prev) => [
@@ -377,6 +196,44 @@ export default function PerheAppPrototypePage() {
       ...prev.slice(0, 14),
     ])
   }, [])
+
+  const {
+    authStatus,
+    currentUser,
+    authRedirecting,
+    authErrorMessage,
+    startGoogleSignIn,
+    signOutGoogleSession,
+  } = useGoogleSession({ onLogSelection: recordDemoSelection })
+
+  const {
+    profile,
+    setProfile,
+    profileSavedToast,
+    dbSyncStatus,
+    mongoInstanceLabel,
+    mongoUpdatedAt,
+    mongoRevision,
+    dbFeedLog,
+    attendingIds,
+    setAttendingIds,
+    dismissedIds,
+    setDismissedIds,
+    matchedIds,
+    setMatchedIds,
+    messages,
+    setMessages,
+    saveProfileFeedback,
+    resetTransientData,
+  } = useFamilyProfileSync({ currentUser })
+
+  const {
+    events,
+    eventFeedStatus,
+    eventFeedSources,
+    eventFeedDebug,
+    loadEventsFeed,
+  } = useEventsFeed({ onLogSelection: recordDemoSelection })
 
   const openHubChannel = useCallback(
     (
@@ -398,233 +255,11 @@ export default function PerheAppPrototypePage() {
     [recordDemoSelection],
   )
 
-  const loadEventsFeed = useCallback(
-    async (manual = false) => {
-      setEventFeedStatus('loading')
-      try {
-        const result = await fetchKaroEventsFeed('/api/events')
-        const nextEvents = Array.isArray(result?.events)
-          ? result.events
-          : Array.isArray(result)
-            ? (result as unknown as FamilyEvent[])
-            : INITIAL_EVENTS
-
-        const rawPayload = result as
-          | {
-              sources?: {
-                karoCount?: number
-                linkedEventsCount?: number
-              }
-            }
-          | undefined
-
-        const parsedSources: FeedSourcesMeta | null = rawPayload?.sources
-          ? {
-              karoCount: Number(rawPayload.sources.karoCount ?? 0),
-              linkedEventsCount: Number(rawPayload.sources.linkedEventsCount ?? 0),
-            }
-          : null
-
-        setEvents(nextEvents.length > 0 ? nextEvents : INITIAL_EVENTS)
-        setEventFeedSources(parsedSources)
-        setEventFeedStatus(result?.sourceStatus === 'live-api' ? 'live-api' : 'fallback')
-        setEventFeedDebug({
-          httpStatus: typeof result?.httpStatus === 'number' ? result.httpStatus : 200,
-          errorDetail: result?.errorDetail,
-          count: typeof result?.rawCount === 'number' ? result.rawCount : nextEvents.length,
-        })
-        const statusStr = result?.httpStatus ? `HTTP ${result.httpStatus}` : 'LOCAL_FALLBACK'
-        const sourceSummary = parsedSources
-          ? `LE:${parsedSources.linkedEventsCount} EP:${parsedSources.karoCount}`
-          : `${nextEvents.length} items`
-        const detailStr = result?.errorDetail
-          ? `${statusStr} • ${result.errorDetail}`
-          : `${statusStr} • ${sourceSummary}`
-        recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', detailStr)
-      } catch (err) {
-        setEvents(INITIAL_EVENTS)
-        setEventFeedSources(null)
-        setEventFeedStatus('fallback')
-        const errMsg = err instanceof Error ? err.message : 'fetch_failed'
-        setEventFeedDebug({
-          httpStatus: null,
-          errorDetail: errMsg,
-          count: INITIAL_EVENTS.length,
-        })
-        recordDemoSelection(manual ? 'EVENTS_REFRESH' : 'EVENTS_API', `FALLBACK • ${errMsg}`)
-      }
-    },
-    [recordDemoSelection],
-  )
-
-  useEffect(() => {
-    void loadEventsFeed(false)
-  }, [loadEventsFeed])
-
   useEffect(() => {
     if (typeof window === 'undefined') return
     setDemoFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 24 })
     setDbFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 268 })
-
-    const params = new URLSearchParams(window.location.search)
-    const errParam = params.get('error')
-    if (errParam) {
-      setAuthErrorMessage(
-        `Google-kirjautuminen keskeytyi (${errParam}). Tarkista OAuth-asetukset tai yritä uudelleen.`,
-      )
-    }
-
-    let cancelled = false
-    const checkGoogleSession = async () => {
-      try {
-        const res = await fetch('/api/auth/session', { cache: 'no-store' })
-        if (!res.ok) {
-          if (!cancelled) {
-            setAuthStatus('unauthenticated')
-            recordDemoSelection('OAUTH_SESSION', `none (HTTP ${res.status})`)
-          }
-          return
-        }
-        const session = (await res.json()) as {
-          user?: { name?: string | null; email?: string | null; image?: string | null }
-        } | null
-
-        if (!cancelled) {
-          if (session?.user?.email) {
-            const email = session.user.email
-            const displayName = session.user.name || email.split('@')[0] || 'Google-käyttäjä'
-            const googleUser: AuthenticatedGoogleUser = {
-              id: emailToUserId(email),
-              displayName,
-              email,
-              avatarUrl: session.user.image || undefined,
-            }
-            setCurrentUser(googleUser)
-            setAuthStatus('authenticated')
-            recordDemoSelection('GOOGLE_OAUTH_OK', googleUser.id)
-          } else {
-            setAuthStatus('unauthenticated')
-            recordDemoSelection('OAUTH_SESSION', 'unauthenticated')
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setAuthStatus('unauthenticated')
-          recordDemoSelection('OAUTH_SESSION', 'endpoint_unreachable')
-        }
-      }
-    }
-
-    void checkGoogleSession()
-    return () => {
-      cancelled = true
-    }
-  }, [recordDemoSelection])
-
-  const startGoogleSignIn = async () => {
-    if (typeof window === 'undefined') return
-    setAuthRedirecting(true)
-    setAuthErrorMessage(null)
-    recordDemoSelection('GOOGLE_SIGNIN_START', '/api/auth/signin/google')
-    const callbackUrl = `${window.location.origin}${window.location.pathname}`
-
-    try {
-      const csrfRes = await fetch('/api/auth/csrf', { cache: 'no-store' })
-      if (csrfRes.ok) {
-        const csrfData = (await csrfRes.json()) as { csrfToken?: string }
-        if (csrfData?.csrfToken) {
-          const form = document.createElement('form')
-          form.method = 'POST'
-          form.action = '/api/auth/signin/google'
-          const csrfInput = document.createElement('input')
-          csrfInput.type = 'hidden'
-          csrfInput.name = 'csrfToken'
-          csrfInput.value = csrfData.csrfToken
-          form.appendChild(csrfInput)
-          const cbInput = document.createElement('input')
-          cbInput.type = 'hidden'
-          cbInput.name = 'callbackUrl'
-          cbInput.value = callbackUrl
-          form.appendChild(cbInput)
-          document.body.appendChild(form)
-          form.submit()
-          return
-        }
-      }
-    } catch {
-      // Fallback
-    }
-    window.location.href = `/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`
-  }
-
-  const signOutGoogleSession = async () => {
-    if (typeof window === 'undefined') return
-    setAuthRedirecting(true)
-    recordDemoSelection('GOOGLE_SIGNOUT', currentUser?.id || 'session')
-    const callbackUrl = `${window.location.origin}${window.location.pathname}`
-
-    try {
-      const csrfRes = await fetch('/api/auth/csrf', { cache: 'no-store' })
-      if (csrfRes.ok) {
-        const csrfData = (await csrfRes.json()) as { csrfToken?: string }
-        if (csrfData?.csrfToken) {
-          const form = document.createElement('form')
-          form.method = 'POST'
-          form.action = '/api/auth/signout'
-          const csrfInput = document.createElement('input')
-          csrfInput.type = 'hidden'
-          csrfInput.name = 'csrfToken'
-          csrfInput.value = csrfData.csrfToken
-          form.appendChild(csrfInput)
-          const cbInput = document.createElement('input')
-          cbInput.type = 'hidden'
-          cbInput.name = 'callbackUrl'
-          cbInput.value = callbackUrl
-          form.appendChild(cbInput)
-          document.body.appendChild(form)
-          form.submit()
-          return
-        }
-      }
-    } catch {
-      // Fallback
-    }
-    window.location.href = `/api/auth/signout?callbackUrl=${encodeURIComponent(callbackUrl)}`
-  }
-
-  const pickRandomNerdQuip = (): string => {
-    if (NERD_DB_QUIPS.length === 0) return 'COMMITTED -> family_profiles'
-    let idx = Math.floor(Math.random() * NERD_DB_QUIPS.length)
-    if (NERD_DB_QUIPS.length > 1 && idx === lastQuipIdxRef.current) {
-      idx = (idx + 1) % NERD_DB_QUIPS.length
-    }
-    lastQuipIdxRef.current = idx
-    return NERD_DB_QUIPS[idx]
-  }
-
-  const pushDbFeedEntry = useCallback(
-    (
-      statusCode: string,
-      opLabel: string,
-      docKey: string,
-      instanceName: string,
-      rev: number,
-      latencyMs?: number,
-    ) => {
-      const clock = nowClock()
-      const latencySuffix = typeof latencyMs === 'number' ? ` (${latencyMs}ms)` : ''
-      const entry: DbCommitFeedEntry = {
-        id: `db-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        statusCode,
-        terminalLine: `[${statusCode} ${opLabel}] doc:_id=${docKey} -> mongo-${instanceName}.json${latencySuffix}`,
-        diffStamp: `Δ persisted @ ${clock} • rev #${rev} • COMMITTED -> family_profiles (v${rev})`,
-        quip: pickRandomNerdQuip(),
-        revision: rev,
-      }
-      setDbFeedLog((prev) => [entry, ...prev.slice(0, 49)])
-    },
-    [],
-  )
+  }, [])
 
   const showTransientBanner = (message: string, ms = 3500) => {
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
@@ -635,183 +270,13 @@ export default function PerheAppPrototypePage() {
   useEffect(() => {
     return () => {
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
-      if (savedToastTimerRef.current) clearTimeout(savedToastTimerRef.current)
       if (transientToastTimerRef.current) clearTimeout(transientToastTimerRef.current)
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
     }
   }, [])
 
-  useEffect(() => {
-    if (!currentUser) return
-    let cancelled = false
-    skipNextDbSaveRef.current = true
-
-    const hydrateForGoogleUser = async () => {
-      const userId = currentUser.id
-      const docKey = `family-${userId}`
-      const baseDefault = buildInitialProfileForGoogleUser(currentUser)
-      const transient = loadTransientSession(userId)
-
-      setAttendingIds(
-        Array.isArray(transient?.attendingIds) ? transient.attendingIds : INITIAL_ATTENDING_IDS,
-      )
-      setDismissedIds(Array.isArray(transient?.dismissedIds) ? transient.dismissedIds : [])
-      setMatchedIds(Array.isArray(transient?.matchedIds) ? transient.matchedIds : [])
-      setMessages(
-        transient?.messages && typeof transient.messages === 'object' ? transient.messages : {},
-      )
-
-      const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      try {
-        const res = await fetch(`/api/family-profile?userId=${encodeURIComponent(userId)}`, {
-          cache: 'no-store',
-        })
-        if (res.ok && !cancelled) {
-          const data = await res.json()
-          const inst = data?.document?.instanceId || data?.instanceId || 'default-instance'
-          setMongoInstanceLabel(inst)
-          if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
-
-          if (data?.document?.profile) {
-            const loaded = normalizeProfile(data.document.profile, baseDefault)
-            setProfile(loaded)
-            const ms = Math.max(
-              1,
-              Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0),
-            )
-            setMongoRevision(1)
-            pushDbFeedEntry('200', 'HYDRATED', docKey, inst, 1, ms)
-          } else {
-            setProfile(baseDefault)
-            const initRes = await fetch('/api/family-profile', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId, profile: baseDefault }),
-            })
-            if (initRes.ok) {
-              const initData = await initRes.json()
-              const initInst = initData?.document?.instanceId || initData?.instanceId || inst
-              setMongoInstanceLabel(initInst)
-              if (initData?.document?.updatedAt) setMongoUpdatedAt(initData.document.updatedAt)
-              const ms = Math.max(
-                1,
-                Math.round(
-                  (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0,
-                ),
-              )
-              setMongoRevision(1)
-              pushDbFeedEntry('201', 'CREATED', docKey, initInst, 1, ms)
-            }
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setProfile(baseDefault)
-          setDbSyncStatus('error')
-          pushDbFeedEntry('503', 'STORE_OFFLINE', docKey, 'local-memory', 0)
-        }
-      } finally {
-        if (!cancelled) setIsHydrated(true)
-      }
-    }
-
-    void hydrateForGoogleUser()
-    return () => {
-      cancelled = true
-    }
-  }, [currentUser, pushDbFeedEntry])
-
-  useEffect(() => {
-    if (!isHydrated || !currentUser || typeof window === 'undefined') return
-    try {
-      const payload: PersistedSessionState = {
-        attendingIds,
-        dismissedIds,
-        matchedIds,
-        messages,
-      }
-      window.localStorage.setItem(
-        `${SESSION_STORAGE_PREFIX}${currentUser.id}`,
-        JSON.stringify(payload),
-      )
-    } catch {
-      // Ohitetaan kiintiövirheet
-    }
-  }, [isHydrated, currentUser, attendingIds, dismissedIds, matchedIds, messages])
-
-  useEffect(() => {
-    if (!isHydrated || !currentUser) return
-    if (skipNextDbSaveRef.current) {
-      skipNextDbSaveRef.current = false
-      return
-    }
-
-    let cancelled = false
-    const userId = currentUser.id
-    const docKey = `family-${userId}`
-    const timer = setTimeout(async () => {
-      setDbSyncStatus('saving')
-      const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      try {
-        const res = await fetch('/api/family-profile', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, profile }),
-        })
-        if (!cancelled) {
-          const ms = Math.max(
-            1,
-            Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0),
-          )
-          if (res.ok) {
-            const data = await res.json()
-            const inst =
-              data?.document?.instanceId || data?.instanceId || instanceLabelRef.current || 'instance'
-            const nextRev = revisionRef.current + 1
-            revisionRef.current = nextRev
-            instanceLabelRef.current = inst
-            setMongoInstanceLabel(inst)
-            if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
-            setMongoRevision(nextRev)
-            pushDbFeedEntry('201', 'UPSERT_OK', docKey, inst, nextRev, ms)
-            setDbSyncStatus('saved')
-          } else {
-            setDbSyncStatus('error')
-            pushDbFeedEntry(
-              '500',
-              'UPSERT_FAIL',
-              docKey,
-              instanceLabelRef.current || 'instance',
-              revisionRef.current,
-              ms,
-            )
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setDbSyncStatus('error')
-          pushDbFeedEntry(
-            '503',
-            'IO_ERROR',
-            docKey,
-            instanceLabelRef.current || 'instance',
-            revisionRef.current,
-          )
-        }
-      }
-    }, 300)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [isHydrated, currentUser, profile, pushDbFeedEntry])
-
   const resetTransientDemoData = () => {
-    setDismissedIds([])
-    setMatchedIds([])
-    setAttendingIds(INITIAL_ATTENDING_IDS)
-    setMessages({})
+    resetTransientData()
     setLatestMatch(null)
     setMapFocusCoords(null)
     setEventAgeFilter('all')
@@ -825,14 +290,6 @@ export default function PerheAppPrototypePage() {
         detail: 'no_db_write (swipes/matches/chat cleared)',
       },
     ])
-
-    if (currentUser && typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem(`${SESSION_STORAGE_PREFIX}${currentUser.id}`)
-      } catch {
-        // Ohitetaan virheet
-      }
-    }
 
     if (transientToastTimerRef.current) clearTimeout(transientToastTimerRef.current)
     setTransientResetToast(true)
@@ -1187,45 +644,6 @@ export default function PerheAppPrototypePage() {
     }))
   }
 
-  const saveProfileFeedback = async () => {
-    if (!currentUser) return
-    const userId = currentUser.id
-    const docKey = `family-${userId}`
-    setDbSyncStatus('saving')
-    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
-    try {
-      const res = await fetch('/api/family-profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, profile }),
-      })
-      const ms = Math.max(
-        1,
-        Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0),
-      )
-      if (res.ok) {
-        const data = await res.json()
-        const inst =
-          data?.document?.instanceId || data?.instanceId || instanceLabelRef.current || 'instance'
-        const nextRev = revisionRef.current + 1
-        revisionRef.current = nextRev
-        instanceLabelRef.current = inst
-        setMongoInstanceLabel(inst)
-        if (data?.document?.updatedAt) setMongoUpdatedAt(data.document.updatedAt)
-        setMongoRevision(nextRev)
-        pushDbFeedEntry('201', 'MANUAL_FLUSH', docKey, inst, nextRev, ms)
-        setDbSyncStatus('saved')
-      } else {
-        setDbSyncStatus('error')
-      }
-    } catch {
-      setDbSyncStatus('error')
-    }
-    if (savedToastTimerRef.current) clearTimeout(savedToastTimerRef.current)
-    setProfileSavedToast(true)
-    savedToastTimerRef.current = setTimeout(() => setProfileSavedToast(false), 2000)
-  }
-
   const toggleEventAttendance = (eventId: string) => {
     const nextGoing = !attendingIds.includes(eventId)
     setAttendingIds((prev) =>
@@ -1406,511 +824,67 @@ export default function PerheAppPrototypePage() {
 
             <main className="flex-1 overflow-y-auto">
               {activeTab === 'events' && (
-                <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="space-y-1">
-                      <h2 className="text-sm sm:text-base font-bold text-slate-800">
-                        Lähialueen tapahtumat (lähin ensin)
-                      </h2>
-                      <p className="text-[11px] text-slate-500">
-                        Koti: <strong>{profile.area}</strong> • Suodatin:{' '}
-                        <strong>{profile.filters.targetCity}</strong> ≤{' '}
-                        <strong>{profile.filters.maxDistanceKm} km</strong>
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <div
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${sourceBadge.className}`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${sourceBadge.dotClass}`} />
-                          <span>{sourceBadge.label}</span>
-                        </div>
-                        {profile.defaultPreset.enabled && (
-                          <button
-                            type="button"
-                            onClick={() => setIgnoreDefaultPresetTemp((prev) => !prev)}
-                            className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-colors ${
-                              ignoreDefaultPresetTemp
-                                ? 'bg-slate-100 text-slate-700 border-slate-300'
-                                : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                            }`}
-                          >
-                            {ignoreDefaultPresetTemp
-                              ? 'Oletusrajaus tauolla • Palauta oletus'
-                              : `Oletusrajaus aktiivinen (${profile.defaultPreset.favoriteActivities.length} aktiviteettia)`}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-slate-500">
-                        {filteredSortedEvents.length}/{baseAreaSortedEvents.length}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={eventFeedStatus === 'loading'}
-                        onClick={() => void loadEventsFeed(true)}
-                        className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors disabled:opacity-50"
-                      >
-                        {eventFeedStatus === 'loading' ? '↻ Ladataan...' : '↻ Päivitä'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {EVENT_AGE_QUICK_FILTERS.map((item) => {
-                          const active = eventAgeFilter === item.id
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => {
-                                setEventAgeFilter(item.id)
-                                recordDemoSelection('EVENTS_AGE_FILTER', item.id)
-                              }}
-                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
-                                active
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                              }`}
-                            >
-                              {item.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="search"
-                          value={eventSearchQuery}
-                          onChange={(e) => setEventSearchQuery(e.target.value)}
-                          placeholder="Hae tapahtumaa tai paikkaa..."
-                          aria-label="Hae tapahtumaa tai paikkaa"
-                          className="w-full sm:w-52 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
-                        />
-                        {hasActiveQuickEventFilter && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEventAgeFilter('all')
-                              setEventSearchQuery('')
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-700 shrink-0"
-                            title="Tyhjennä ikä- ja hakusuodatin"
-                          >
-                            Tyhjennä
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {filteredSortedEvents.length === 0 ? (
-                    <div className="bg-white rounded-2xl p-7 text-center border border-slate-200 space-y-3">
-                      <p className="text-2xl">📍</p>
-                      <h3 className="font-bold text-sm text-slate-900">
-                        Ei tapahtumia valituilla suodattimilla
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Kokeile näyttää kaikki {profile.filters.maxDistanceKm} km:n säteellä olevat
-                        tapahtumat tai muokkaa profiilin oletusrajauksia.
-                      </p>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {profile.defaultPreset.enabled && !ignoreDefaultPresetTemp && (
-                          <button
-                            type="button"
-                            onClick={() => setIgnoreDefaultPresetTemp(true)}
-                            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
-                          >
-                            Näytä kaikki {profile.filters.maxDistanceKm} km:n säteellä
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab('profile')
-                            setProfileSubView('main')
-                          }}
-                          className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-                        >
-                          Muokkaa oletusrajauksia
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      {filteredSortedEvents.map((evt) => {
-                        const isGoing = attendingIds.includes(evt.id)
-                        const matchedGoing = profile.privacy.shareEventsWithMatches
-                          ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
-                          : []
-                        const gcalUrl = buildGoogleCalendarUrl(evt)
-
-                        return (
-                          <div
-                            key={evt.id}
-                            className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2.5"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-start gap-2">
-                                <div className="space-y-1">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-blue-600 uppercase">
-                                      {evt.district ? `${evt.district} (${evt.city})` : evt.city} •{' '}
-                                      {evt.hasExactCoords ? '' : '~'}
-                                      {evt.distanceKm} km kotoa
-                                    </span>
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
-                                      👶 {evt.ageGroup || 'Kaikki ikäryhmät'}
-                                    </span>
-                                  </div>
-                                  <h3 className="text-base font-bold text-slate-900 leading-snug">
-                                    {evt.title}
-                                  </h3>
-                                </div>
-                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-medium shrink-0">
-                                  {evt.price}
-                                </span>
-                              </div>
-
-                              <p className="text-xs text-slate-600">
-                                📍 {evt.venue || evt.city} <br />
-                                🕒 {evt.time}
-                              </p>
-
-                              {evt.description && (
-                                <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
-                                  {evt.description}
-                                </p>
-                              )}
-
-                              {matchedGoing.length > 0 && (
-                                <div className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
-                                  🤝 Mukana osumistasi:{' '}
-                                  <strong>{matchedGoing.map((m) => m.name).join(', ')}</strong>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="pt-1 flex flex-wrap gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => toggleEventAttendance(evt.id)}
-                                className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-bold transition-colors ${
-                                  isGoing
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-slate-900 text-white hover:bg-slate-800'
-                                }`}
-                              >
-                                {isGoing ? '✓ Menossa mukaan' : '+ Menossa mukaan'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openHubChannel('event_chat', { eventId: evt.id })}
-                                className="px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-xs font-bold hover:bg-amber-100 transition-colors"
-                                title="Keskustele tapahtumaan menossa olevien kanssa (anonyymi oletuksena)"
-                              >
-                                💬 Menossa-chat
-                              </button>
-                              <a
-                                href={gcalUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => recordDemoSelection('GCAL_EXPORT', evt.id)}
-                                className="px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-bold hover:bg-emerald-100 transition-colors"
-                                title="Lisää tapahtuma Google Kalenteriin"
-                              >
-                                📅 Kalenteriin
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => openOnMap(evt.coords, evt.id)}
-                                className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
-                              >
-                                Kartalla
-                              </button>
-                              {evt.url && (
-                                <a
-                                  href={evt.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"
-                                >
-                                  Lisätiedot ↗
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+                <EventsTabPanel
+                  profile={profile}
+                  sourceBadge={sourceBadge}
+                  eventFeedStatus={eventFeedStatus}
+                  filteredSortedEvents={filteredSortedEvents}
+                  baseAreaSortedEventsCount={baseAreaSortedEvents.length}
+                  matchedFamilies={matchedFamilies}
+                  attendingIds={attendingIds}
+                  eventAgeFilter={eventAgeFilter}
+                  onEventAgeFilterChange={setEventAgeFilter}
+                  eventSearchQuery={eventSearchQuery}
+                  onEventSearchQueryChange={setEventSearchQuery}
+                  hasActiveQuickEventFilter={hasActiveQuickEventFilter}
+                  ignoreDefaultPresetTemp={ignoreDefaultPresetTemp}
+                  onToggleDefaultPreset={() =>
+                    setIgnoreDefaultPresetTemp((prev) => !prev)
+                  }
+                  onRefreshEvents={() => void loadEventsFeed(true)}
+                  onClearEventFilters={() => {
+                    setEventAgeFilter('all')
+                    setEventSearchQuery('')
+                  }}
+                  onShowAllEvents={() => setIgnoreDefaultPresetTemp(true)}
+                  onOpenProfileSettings={() => {
+                    setActiveTab('profile')
+                    setProfileSubView('main')
+                  }}
+                  onToggleEventAttendance={toggleEventAttendance}
+                  onOpenEventChat={(eventId) =>
+                    openHubChannel('event_chat', { eventId })
+                  }
+                  onLogSelection={recordDemoSelection}
+                  onOpenMap={openOnMap}
+                />
               )}
 
               {activeTab === 'families' && (
-                <div className="p-4 sm:p-6 space-y-4">
-                  <div className="grid grid-cols-2 sm:hidden bg-slate-200 p-1 rounded-xl text-xs font-bold">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFamilySubTab('discover')
-                        recordDemoSelection('FAMILIES_SUBTAB', 'discover')
-                      }}
-                      className={`py-2 rounded-lg transition-all ${
-                        familySubTab === 'discover'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600'
-                      }`}
-                    >
-                      Selaa ({filteredDeck.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFamilySubTab('matches')
-                        recordDemoSelection('FAMILIES_SUBTAB', 'matches')
-                      }}
-                      className={`py-2 rounded-lg transition-all ${
-                        familySubTab === 'matches'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600'
-                      }`}
-                    >
-                      Osumat ({matchedFamilies.length})
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 items-start">
-                    <div className={familySubTab === 'discover' ? 'block' : 'hidden sm:block'}>
-                      <div className="hidden sm:flex items-center justify-between mb-2">
-                        <h2 className="text-sm font-bold text-slate-800">
-                          Selaa lähialueen perheitä ({filteredDeck.length})
-                        </h2>
-                      </div>
-
-                      {currentCard ? (
-                        <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden">
-                          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white">
-                            <div className="flex justify-between items-center text-xs opacity-90 mb-1">
-                              <span>📍 {currentCard.area}</span>
-                              <span>{currentCard.distanceKm} km kotoa</span>
-                            </div>
-                            <div className="flex items-start justify-between gap-3">
-                              <h2 className="text-2xl font-extrabold">{currentCard.name}</h2>
-                              <span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-xs font-extrabold shadow-sm shrink-0">
-                                {currentCard.match.percent} % match
-                              </span>
-                            </div>
-                            <p className="text-sm mt-1 font-medium">
-                              👶 Lapset: {currentCard.childrenAges}
-                            </p>
-                            {profile.privacy.showCloseRelativesInMatches &&
-                              currentCard.hasCloseRelatives &&
-                              currentCard.closeRelativesSummary && (
-                                <p className="text-xs mt-1.5 bg-white/15 px-2.5 py-1 rounded-lg inline-block">
-                                  🫂 Läheiset: {currentCard.closeRelativesSummary}
-                                </p>
-                              )}
-                          </div>
-
-                          <div className="p-5 space-y-4">
-                            <div className="grid grid-cols-4 gap-1.5 text-center bg-slate-50 border border-slate-200 rounded-xl p-2 text-[10px]">
-                              <div>
-                                <div className="font-extrabold text-emerald-700">
-                                  {currentCard.match.interestsPts}/40
-                                </div>
-                                <div className="text-slate-500">Tägit</div>
-                              </div>
-                              <div>
-                                <div className="font-extrabold text-emerald-700">
-                                  {currentCard.match.distancePts}/30
-                                </div>
-                                <div className="text-slate-500">Etäisyys</div>
-                              </div>
-                              <div>
-                                <div className="font-extrabold text-emerald-700">
-                                  {currentCard.match.agePts}/20
-                                </div>
-                                <div className="text-slate-500">Ikäryhmä</div>
-                              </div>
-                              <div>
-                                <div className="font-extrabold text-emerald-700">
-                                  {currentCard.match.eventPts}/10
-                                </div>
-                                <div className="text-slate-500">Meno</div>
-                              </div>
-                            </div>
-
-                            <p className="text-sm text-slate-700 leading-relaxed">
-                              {currentCard.bio}
-                            </p>
-
-                            {(() => {
-                              const sharedEvt = safeEvents.find(
-                                (e) => e.id === currentCard.attendingEventId,
-                              )
-                              if (!sharedEvt) return null
-                              const bothGoing = attendingIds.includes(sharedEvt.id)
-                              return (
-                                <div
-                                  className={`p-3 rounded-xl border text-xs ${
-                                    bothGoing
-                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                                      : 'bg-blue-50 border-blue-200 text-blue-900'
-                                  }`}
-                                >
-                                  <span className="font-bold block">
-                                    {bothGoing
-                                      ? '✨ Yhteinen tapahtuma!'
-                                      : '📅 Menossa tapahtumaan:'}
-                                  </span>
-                                  {sharedEvt.title} ({sharedEvt.time})
-                                </div>
-                              )
-                            })()}
-
-                            <div className="flex flex-wrap gap-1.5">
-                              {currentCard.interests.map((tag) => {
-                                const isCommon =
-                                  profile.defaultPreset.favoriteActivities.includes(tag) ||
-                                  profile.interests.includes(tag)
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                                      isCommon
-                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold'
-                                        : 'bg-slate-100 text-slate-700'
-                                    }`}
-                                  >
-                                    #{tag} {isCommon && '★'}
-                                  </span>
-                                )
-                              })}
-                            </div>
-
-                            <div className="pt-2 grid grid-cols-2 gap-3">
-                              <button
-                                type="button"
-                                onClick={() => handleSwipe(false)}
-                                className="py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50"
-                              >
-                                ✕ Ohita
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSwipe(true)}
-                                className="py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-sm hover:bg-emerald-700"
-                              >
-                                🤝 Verkostoidu
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-white rounded-2xl p-7 text-center border border-slate-200 space-y-3">
-                          <p className="text-3xl">🔍</p>
-                          <h3 className="font-bold text-slate-900">
-                            {profile.privacy.discoverable
-                              ? 'Ei enempää hakuehtoihin sopivia perheitä'
-                              : 'Profiilisi haku on piilotettu'}
-                          </h3>
-                          <p className="text-xs text-slate-500">
-                            Etäisyydet lasketaan kotiseudustasi <strong>{profile.area}</strong> (max{' '}
-                            {profile.filters.maxDistanceKm} km).
-                          </p>
-                          <div className="flex flex-wrap justify-center gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveTab('profile')
-                                setProfileSubView('main')
-                              }}
-                              className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-800 text-xs font-bold"
-                            >
-                              Muokkaa kotiseutua & filttereitä
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDismissedIds([])
-                                recordDemoSelection('DISMISSED_RESET', currentUser.id)
-                              }}
-                              className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-                            >
-                              Palauta ohitetut
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={familySubTab === 'matches' ? 'block' : 'hidden sm:block'}>
-                      <div className="hidden sm:flex items-center justify-between mb-2">
-                        <h2 className="text-sm font-bold text-slate-800">
-                          Osumat ({matchedFamilies.length})
-                        </h2>
-                      </div>
-
-                      <div className="space-y-3">
-                        {matchedFamilies.length === 0 ? (
-                          <div className="bg-white rounded-2xl p-6 text-center border border-slate-200">
-                            <p className="text-xs text-slate-500">
-                              Ei vielä osumia. Selaa perheitä ja paina Verkostoidu!
-                            </p>
-                          </div>
-                        ) : (
-                          matchedFamilies.map((fam) => (
-                            <div
-                              key={fam.id}
-                              className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-3"
-                            >
-                              <div>
-                                <div className="flex items-center gap-1.5">
-                                  <h3 className="font-bold text-sm text-slate-900">{fam.name}</h3>
-                                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                                    {fam.match.percent} %
-                                  </span>
-                                </div>
-                                <p className="text-xs text-slate-500">
-                                  {fam.area} ({fam.distanceKm} km) • {fam.childrenAges}
-                                </p>
-                                {profile.privacy.showCloseRelativesInMatches &&
-                                  fam.hasCloseRelatives &&
-                                  fam.closeRelativesSummary && (
-                                    <p className="text-[11px] text-emerald-700 mt-0.5">
-                                      🫂 {fam.closeRelativesSummary}
-                                    </p>
-                                  )}
-                              </div>
-                              <div className="flex gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => openOnMap(fam.coords, fam.id)}
-                                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
-                                >
-                                  Kartta
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    openHubChannel('matches', { directTargetId: fam.id })
-                                  }
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
-                                >
-                                  Viesti
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <FamiliesTabPanel
+                  familySubTab={familySubTab}
+                  filteredDeckCount={filteredDeck.length}
+                  matchedFamilies={matchedFamilies}
+                  currentCard={currentCard}
+                  profile={profile}
+                  safeEvents={safeEvents}
+                  attendingIds={attendingIds}
+                  onFamilySubTabChange={setFamilySubTab}
+                  onLogSelection={recordDemoSelection}
+                  onSwipe={handleSwipe}
+                  onOpenProfileSettings={() => {
+                    setActiveTab('profile')
+                    setProfileSubView('main')
+                  }}
+                  onResetDismissed={() => {
+                    setDismissedIds([])
+                    recordDemoSelection('DISMISSED_RESET', currentUser.id)
+                  }}
+                  onOpenMap={openOnMap}
+                  onOpenMatchesChat={(familyId) =>
+                    openHubChannel('matches', { directTargetId: familyId })
+                  }
+                />
               )}
 
               {activeTab === 'hub' && (
@@ -1987,519 +961,76 @@ export default function PerheAppPrototypePage() {
               )}
 
               {activeTab === 'profile' && profileSubView === 'members' && (
-                <div className="p-4 sm:p-6 space-y-4 pb-8">
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingChildId(null)
-                        setEditingRelativeId(null)
-                        setProfileSubView('main')
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 hover:bg-slate-100"
-                    >
-                      ← Takaisin profiiliin
-                    </button>
-                    <span className="text-xs font-bold text-slate-700">
-                      Perheen jäsenet ({profile.familyName})
-                    </span>
-                  </div>
-
-                  {inviteBanner && (
-                    <div className="px-3.5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm">
-                      {inviteBanner}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-                    <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                          Vanhemmat ({totalParentsCount})
-                        </h2>
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
-                          Perheen ylläpito
-                        </span>
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between gap-2 text-xs">
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-900 truncate">
-                            👤 {currentUser.displayName} (Ensisijainen vanhempi)
-                          </p>
-                          <p className="text-[11px] text-slate-600 truncate">{currentUser.email}</p>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold shrink-0">
-                          Google-tili
-                        </span>
-                      </div>
-
-                      {profile.coParents.map((cp) => (
-                        <div
-                          key={cp.id}
-                          className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-900 truncate">
-                                {cp.status === 'accepted' ? '👥' : '✉️'} {cp.name}
-                              </p>
-                              <p className="text-[11px] text-slate-600 truncate">{cp.email}</p>
-                              <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                                Koodi: {cp.inviteCode}
-                              </p>
-                            </div>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                                cp.status === 'accepted'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {cp.status === 'accepted'
-                                ? '✓ Hyväksytty'
-                                : `Odottaa (${cp.invitedAt})`}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap justify-end gap-1.5 pt-1 border-t border-slate-200/70">
-                            <button
-                              type="button"
-                              onClick={() => setPreviewInviteId(cp.id)}
-                              className="px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-[11px] font-bold hover:bg-blue-100"
-                            >
-                              Kutsulinkki
-                            </button>
-                            {cp.status === 'pending' && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => simulateAcceptCoParent(cp.id)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700"
-                                >
-                                  Simuloi hyväksyntä
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => resendCoParentInvite(cp.id)}
-                                  className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-slate-700 text-[11px] font-semibold hover:bg-slate-100"
-                                >
-                                  Lähetä uudelleen
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeCoParent(cp.id)}
-                              className="px-2 py-1 rounded-lg text-rose-600 hover:bg-rose-50 text-[11px] font-bold"
-                            >
-                              Poista
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-
-                      <div className="pt-2 border-t border-slate-100 space-y-2">
-                        <p className="text-[11px] font-semibold text-slate-700">
-                          Kutsu toinen vanhempi sähköpostilla (Demo)
-                        </p>
-                        <div className="space-y-1.5">
-                          <input
-                            value={inviteParentName}
-                            onChange={(e) => setInviteParentName(e.target.value)}
-                            placeholder="Nimi / rooli (esim. Puoliso)"
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
-                          />
-                          <div className="flex gap-1.5">
-                            <input
-                              type="email"
-                              value={inviteParentEmail}
-                              onChange={(e) => {
-                                setInviteParentEmail(e.target.value)
-                                if (inviteError) setInviteError('')
-                              }}
-                              onKeyDown={(e) => e.key === 'Enter' && sendCoParentInvite()}
-                              placeholder="puoliso@esimerkki.fi"
-                              className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-300 text-xs"
-                            />
-                            <button
-                              type="button"
-                              onClick={sendCoParentInvite}
-                              className="px-3.5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shrink-0 hover:bg-blue-700"
-                            >
-                              Lähetä kutsu
-                            </button>
-                          </div>
-                        </div>
-                        {inviteError && (
-                          <p className="text-[11px] text-rose-600 font-medium">{inviteError}</p>
-                        )}
-                      </div>
-                    </section>
-
-                    <div className="space-y-4">
-                      <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                            Lapset ({profile.children.length})
-                          </h2>
-                          <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
-                            Päivittää ikärajaukset
-                          </span>
-                        </div>
-
-                        {profile.children.length === 0 ? (
-                          <p className="text-xs text-slate-500">
-                            Ei vielä lisättyjä lapsia. Lisää omat lapsesi alta.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {profile.children.map((child) => {
-                              const isEditing = editingChildId === child.id
-                              return (
-                                <div
-                                  key={child.id}
-                                  className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2"
-                                >
-                                  {isEditing ? (
-                                    <div className="space-y-2">
-                                      <div className="flex gap-1.5">
-                                        <input
-                                          value={editChildAge}
-                                          onChange={(e) => setEditChildAge(e.target.value)}
-                                          className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
-                                        />
-                                        <select
-                                          value={editChildGroup}
-                                          onChange={(e) => setEditChildGroup(e.target.value)}
-                                          className="px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
-                                        >
-                                          {['0-3v', '4-6v', '7-12v', '13+v'].map((g) => (
-                                            <option key={g} value={g}>
-                                              {g}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div className="flex justify-end gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingChildId(null)}
-                                          className="px-2.5 py-1 rounded-lg border border-slate-300 text-slate-600 font-semibold"
-                                        >
-                                          Peruuta
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => saveEditChild(child.id)}
-                                          className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold"
-                                        >
-                                          Tallenna
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div>
-                                        <span className="font-bold text-slate-900">
-                                          👶 {child.ageLabel}
-                                        </span>
-                                        <span className="ml-2 px-2 py-0.5 rounded-full bg-teal-100 text-teal-900 text-[10px] font-semibold">
-                                          {child.group}
-                                        </span>
-                                      </div>
-                                      <div className="flex gap-1 shrink-0">
-                                        <button
-                                          type="button"
-                                          onClick={() => startEditChild(child)}
-                                          className="px-2 py-1 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-100"
-                                        >
-                                          Muokkaa
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => removeChild(child.id)}
-                                          className="px-2 py-1 rounded-lg text-rose-600 hover:bg-rose-50 font-bold"
-                                        >
-                                          Poista
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-
-                        <div className="flex gap-1.5 pt-1">
-                          <input
-                            value={newChildAge}
-                            onChange={(e) => {
-                              setNewChildAge(e.target.value)
-                              if (childError) setChildError('')
-                            }}
-                            onKeyDown={(e) => e.key === 'Enter' && addChild()}
-                            placeholder="Ikä esim. 3 v"
-                            className="w-24 px-2.5 py-2 rounded-xl border border-slate-300 text-xs"
-                          />
-                          <select
-                            value={newChildGroup}
-                            onChange={(e) => setNewChildGroup(e.target.value)}
-                            className="px-2 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                          >
-                            {['0-3v', '4-6v', '7-12v', '13+v'].map((g) => (
-                              <option key={g} value={g}>
-                                {g}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={addChild}
-                            className="flex-1 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-                          >
-                            + Lisää lapsi
-                          </button>
-                        </div>
-                        {childError && (
-                          <p className="text-[11px] text-rose-600 font-medium">{childError}</p>
-                        )}
-                      </section>
-
-                      <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                            Läheiset ({profile.closeRelatives.length})
-                          </h2>
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              profile.privacy.showCloseRelativesInMatches
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {profile.privacy.showCloseRelativesInMatches
-                              ? 'Näkyy mätseissä'
-                              : 'Piilotettu mätseiltä'}
-                          </span>
-                        </div>
-
-                        <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 cursor-pointer">
-                          <span>Näytä läheiset mätseissä ja haussa</span>
-                          <input
-                            type="checkbox"
-                            checked={profile.privacy.showCloseRelativesInMatches}
-                            onChange={(e) =>
-                              setProfile({
-                                ...profile,
-                                privacy: {
-                                  ...profile.privacy,
-                                  showCloseRelativesInMatches: e.target.checked,
-                                },
-                              })
-                            }
-                            className="accent-emerald-600 w-4 h-4"
-                          />
-                        </label>
-
-                        {profile.closeRelatives.length === 0 ? (
-                          <p className="text-xs text-slate-500">Ei vielä lisättyjä läheisiä.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {profile.closeRelatives.map((rel) => {
-                              const isEditing = editingRelativeId === rel.id
-                              return (
-                                <div
-                                  key={rel.id}
-                                  className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2"
-                                >
-                                  {isEditing ? (
-                                    <div className="space-y-2">
-                                      <div className="flex gap-1.5">
-                                        <select
-                                          value={editRelativeRole}
-                                          onChange={(e) => setEditRelativeRole(e.target.value)}
-                                          className="px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
-                                        >
-                                          {RELATIVE_ROLES.map((role) => (
-                                            <option key={role} value={role}>
-                                              {role}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <input
-                                          value={editRelativeNote}
-                                          onChange={(e) => setEditRelativeNote(e.target.value)}
-                                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
-                                        />
-                                      </div>
-                                      <div className="flex justify-end gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingRelativeId(null)}
-                                          className="px-2.5 py-1 rounded-lg border border-slate-300 text-slate-600 font-semibold"
-                                        >
-                                          Peruuta
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => saveEditRelative(rel.id)}
-                                          className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold"
-                                        >
-                                          Tallenna
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div>
-                                        <span className="font-bold text-slate-900">
-                                          🫂 {rel.relationLabel}
-                                        </span>
-                                        <span className="ml-2 text-slate-600">{rel.note}</span>
-                                      </div>
-                                      <div className="flex gap-1 shrink-0">
-                                        <button
-                                          type="button"
-                                          onClick={() => startEditRelative(rel)}
-                                          className="px-2 py-1 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-100"
-                                        >
-                                          Muokkaa
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => removeCloseRelative(rel.id)}
-                                          className="px-2 py-1 rounded-lg text-rose-600 hover:bg-rose-50 font-bold"
-                                        >
-                                          Poista
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-
-                        <div className="flex gap-1.5 pt-1">
-                          <select
-                            value={newRelativeRole}
-                            onChange={(e) => setNewRelativeRole(e.target.value)}
-                            className="px-2 py-2 rounded-xl border border-slate-300 text-xs bg-white"
-                          >
-                            {RELATIVE_ROLES.map((role) => (
-                              <option key={role} value={role}>
-                                {role}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            value={newRelativeNote}
-                            onChange={(e) => setNewRelativeNote(e.target.value)}
-                            placeholder="Lisätieto (esim. mummi / kummi)"
-                            className="flex-1 min-w-0 px-2.5 py-2 rounded-xl border border-slate-300 text-xs"
-                          />
-                          <button
-                            type="button"
-                            onClick={addCloseRelative}
-                            className="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shrink-0"
-                          >
-                            + Lisää
-                          </button>
-                        </div>
-                      </section>
-                    </div>
-                  </div>
-                </div>
+                <FamilyMembersPanel
+                  currentUser={currentUser}
+                  profile={profile}
+                  totalParentsCount={totalParentsCount}
+                  inviteBanner={inviteBanner}
+                  inviteParentName={inviteParentName}
+                  inviteParentEmail={inviteParentEmail}
+                  inviteError={inviteError}
+                  newChildAge={newChildAge}
+                  newChildGroup={newChildGroup}
+                  childError={childError}
+                  newRelativeRole={newRelativeRole}
+                  newRelativeNote={newRelativeNote}
+                  editingChildId={editingChildId}
+                  editChildAge={editChildAge}
+                  editChildGroup={editChildGroup}
+                  editingRelativeId={editingRelativeId}
+                  editRelativeRole={editRelativeRole}
+                  editRelativeNote={editRelativeNote}
+                  onChangeProfile={setProfile}
+                  onBack={() => {
+                    setEditingChildId(null)
+                    setEditingRelativeId(null)
+                    setProfileSubView('main')
+                  }}
+                  onPreviewInvite={setPreviewInviteId}
+                  onSimulateAcceptCoParent={simulateAcceptCoParent}
+                  onResendCoParentInvite={resendCoParentInvite}
+                  onRemoveCoParent={removeCoParent}
+                  onInviteParentNameChange={setInviteParentName}
+                  onInviteParentEmailChange={(email) => {
+                    setInviteParentEmail(email)
+                    if (inviteError) setInviteError('')
+                  }}
+                  onSendCoParentInvite={sendCoParentInvite}
+                  onEditChildAgeChange={setEditChildAge}
+                  onEditChildGroupChange={setEditChildGroup}
+                  onCancelEditChild={() => setEditingChildId(null)}
+                  onSaveEditChild={saveEditChild}
+                  onStartEditChild={startEditChild}
+                  onRemoveChild={removeChild}
+                  onNewChildAgeChange={(age) => {
+                    setNewChildAge(age)
+                    if (childError) setChildError('')
+                  }}
+                  onNewChildGroupChange={setNewChildGroup}
+                  onAddChild={addChild}
+                  onEditRelativeRoleChange={setEditRelativeRole}
+                  onEditRelativeNoteChange={setEditRelativeNote}
+                  onCancelEditRelative={() => setEditingRelativeId(null)}
+                  onSaveEditRelative={saveEditRelative}
+                  onStartEditRelative={startEditRelative}
+                  onRemoveCloseRelative={removeCloseRelative}
+                  onNewRelativeRoleChange={setNewRelativeRole}
+                  onNewRelativeNoteChange={setNewRelativeNote}
+                  onAddCloseRelative={addCloseRelative}
+                />
               )}
 
               {activeTab === 'profile' && profileSubView === 'store_inspector' && (
-                <div className="p-4 sm:p-6 space-y-4 pb-8 bg-gradient-to-b from-indigo-950 via-slate-950 to-purple-950 min-h-full text-indigo-50">
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubView('main')}
-                      className="px-3 py-1.5 rounded-xl bg-indigo-900/90 border border-indigo-600/60 text-xs font-bold text-indigo-100 hover:bg-indigo-800"
-                    >
-                      ← Takaisin profiiliin
-                    </button>
-                    <span className="px-2.5 py-1 rounded-full bg-fuchsia-500/20 border border-fuchsia-400/50 font-mono text-[10px] font-bold text-fuchsia-300 truncate">
-                      FILE_MONGO_INSPECTOR • family-{currentUser.id}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-                    <section className="rounded-2xl p-4 bg-indigo-950/90 border border-indigo-500/50 space-y-2.5 shadow-lg">
-                      <div className="flex items-center justify-between gap-2">
-                        <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-cyan-300">
-                          📜 Kantaoperaatioiden feedi (backscroll)
-                        </h2>
-                        <span className="font-mono text-[10px] text-indigo-300">
-                          {dbFeedLog.length} merkintää • REV #{mongoRevision}
-                        </span>
-                      </div>
-
-                      <div className="max-h-72 sm:max-h-[460px] overflow-y-auto space-y-2 pr-1 font-mono">
-                        {dbFeedLog.length === 0 ? (
-                          <p className="text-[11px] text-indigo-300/80 py-4 text-center">
-                            Ei vielä kantakirjauksia tässä istunnossa.
-                          </p>
-                        ) : (
-                          dbFeedLog.map((entry) => (
-                            <div
-                              key={entry.id}
-                              className="rounded-xl bg-slate-950/95 border border-indigo-700/60 p-2.5 space-y-1 text-[10px]"
-                            >
-                              <p className="text-emerald-300 break-all font-semibold">
-                                {entry.terminalLine}
-                              </p>
-                              <p className="text-cyan-200/90">{entry.diffStamp}</p>
-                              <p className="text-fuchsia-300 italic">&gt; {entry.quip}</p>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="rounded-2xl p-4 bg-purple-950/60 border border-purple-500/40 space-y-2.5 text-xs">
-                      <div className="flex items-center justify-between">
-                        <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-fuchsia-300">
-                          Kantaan tallentuvat tiedot (`family-{currentUser.id}`)
-                        </h2>
-                        <span className="font-mono text-[10px] text-indigo-300">
-                          {mongoInstanceLabel || 'default'}
-                        </span>
-                      </div>
-
-                      <pre className="mt-2 p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 sm:max-h-[420px] leading-relaxed">
-                        {JSON.stringify(
-                          {
-                            _id: `family-${currentUser.id}`,
-                            userId: currentUser.id,
-                            googleEmail: currentUser.email,
-                            updatedAt: mongoUpdatedAt || null,
-                            familyName: profile.familyName,
-                            homeCity: profile.homeCity,
-                            area: profile.area,
-                            homeCoords: safeHomeCoords,
-                            onboardingCompleted: profile.onboardingCompleted,
-                            defaultPreset: profile.defaultPreset,
-                            coParents: profile.coParents,
-                            children: profile.children,
-                            closeRelatives: profile.closeRelatives,
-                            interests: profile.interests,
-                            filters: profile.filters,
-                            privacy: profile.privacy,
-                          },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </section>
-                  </div>
-                </div>
+                <StoreInspectorPanel
+                  currentUser={currentUser}
+                  dbFeedLog={dbFeedLog}
+                  mongoRevision={mongoRevision}
+                  mongoInstanceLabel={mongoInstanceLabel}
+                  mongoUpdatedAt={mongoUpdatedAt}
+                  profile={profile}
+                  safeHomeCoords={safeHomeCoords}
+                  onBack={() => setProfileSubView('main')}
+                />
               )}
             </main>
 
@@ -2595,126 +1126,34 @@ export default function PerheAppPrototypePage() {
         )}
       </div>
 
-      {showDemoMonitor && (
-        <FloatingDockWindow
-          title={currentUser ? `DEMO_SEURANTA (${currentUser.id})` : 'DEMO_SEURANTA'}
-          badge="NO_DB_PII"
-          pos={demoFloatPos}
-          onPosChange={setDemoFloatPos}
-          onClose={() => setShowDemoMonitor(false)}
-          headerToneClass="bg-zinc-900 text-amber-400"
-          borderToneClass="border-amber-500/40"
-        >
-          <div className="flex items-center justify-between font-mono text-[10px] text-zinc-400">
-            <span>
-              evt:{attendingIds.length} match:{matchedIds.length} skip:{dismissedIds.length}
-            </span>
-            <span className="text-orange-400">
-              🟠 {profile.homeCity} ≤{profile.filters.maxDistanceKm}km
-            </span>
-          </div>
-
-          <div
-            className={`rounded-lg px-2 py-1.5 border font-mono text-[10px] space-y-1 ${
-              eventFeedStatus === 'live-api'
-                ? 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300'
-                : eventFeedStatus === 'loading'
-                  ? 'bg-zinc-900 border-zinc-700 text-zinc-300'
-                  : 'bg-rose-950/60 border-rose-700/50 text-rose-300'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-bold">/api/events</span>
-              <div className="flex items-center gap-1.5">
-                <span>
-                  {eventFeedStatus === 'loading'
-                    ? 'LOADING...'
-                    : eventFeedDebug.httpStatus
-                      ? `HTTP ${eventFeedDebug.httpStatus}`
-                      : 'NET_ERR'}
-                </span>
-                <button
-                  type="button"
-                  disabled={eventFeedStatus === 'loading'}
-                  onClick={() => void loadEventsFeed(true)}
-                  className="px-1.5 py-0.5 rounded bg-black/40 hover:bg-black/70 text-[9px] font-bold text-amber-300 disabled:opacity-50"
-                >
-                  ↻ Päivitä
-                </button>
-              </div>
-            </div>
-            {eventFeedDebug.errorDetail ? (
-              <p className="text-[9px] text-rose-200 break-words">{eventFeedDebug.errorDetail}</p>
-            ) : (
-              eventFeedStatus === 'live-api' && (
-                <p className="text-[9px] text-emerald-200">
-                  OK • yht. {eventFeedDebug.count} (LE:{eventFeedSources?.linkedEventsCount ?? 0} |
-                  EP:{eventFeedSources?.karoCount ?? 0})
-                </p>
-              )
-            )}
-          </div>
-
-          <div className="bg-zinc-900 rounded-lg px-2 py-1.5 border border-zinc-800 font-mono text-[10px] text-zinc-200 truncate">
-            {demoSelections[0]
-              ? `[${demoSelections[0].time}] ${demoSelections[0].action}: ${demoSelections[0].detail}`
-              : 'READY'}
-          </div>
-          {demoSelections.length > 1 && (
-            <div className="max-h-14 overflow-y-auto space-y-0.5 font-mono text-[9px] text-zinc-400">
-              {demoSelections.slice(1, 6).map((item) => (
-                <div key={item.id} className="truncate">
-                  [{item.time}] {item.action} → {item.detail}
-                </div>
-              ))}
-            </div>
-          )}
-        </FloatingDockWindow>
-      )}
-
-      {showNerdDbFloat && (
-        <FloatingDockWindow
-          title={`FILE_MONGO // REV #${mongoRevision}`}
-          badge={dbSyncStatus.toUpperCase()}
-          pos={dbFloatPos}
-          onPosChange={setDbFloatPos}
-          onClose={() => setShowNerdDbFloat(false)}
-          headerToneClass="bg-indigo-950 text-cyan-300"
-          borderToneClass="border-indigo-500/50"
-        >
-          {latestDbEntry ? (
-            <div className="space-y-1 font-mono text-[10px]">
-              <p className="text-emerald-300 break-all">{latestDbEntry.terminalLine}</p>
-              <p className="text-cyan-200/90">{latestDbEntry.diffStamp}</p>
-              <p className="text-fuchsia-300 italic">&gt; {latestDbEntry.quip}</p>
-            </div>
-          ) : (
-            <p className="font-mono text-[10px] text-indigo-300">
-              {currentUser
-                ? `odottaa kantakirjoitusta (family-${currentUser.id})...`
-                : 'kirjaudu Google-tilillä avataksesi kannan...'}
-            </p>
-          )}
-
-          <div className="flex items-center justify-between pt-1 border-t border-white/10">
-            <span className="font-mono text-[9px] text-indigo-300">
-              feedi: {dbFeedLog.length} riviä
-            </span>
-            {currentUser && (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('profile')
-                  setProfileSubView('store_inspector')
-                }}
-                className="px-2 py-1 rounded bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-mono text-[10px] font-bold"
-              >
-                Avaa backscroll →
-              </button>
-            )}
-          </div>
-        </FloatingDockWindow>
-      )}
+      <DebugMonitorPanels
+        showDemoMonitor={showDemoMonitor}
+        showNerdDbFloat={showNerdDbFloat}
+        currentUser={currentUser}
+        demoFloatPos={demoFloatPos}
+        dbFloatPos={dbFloatPos}
+        onDemoPosChange={setDemoFloatPos}
+        onDbPosChange={setDbFloatPos}
+        onCloseDemoMonitor={() => setShowDemoMonitor(false)}
+        onCloseNerdDbFloat={() => setShowNerdDbFloat(false)}
+        attendingIds={attendingIds}
+        matchedIds={matchedIds}
+        dismissedIds={dismissedIds}
+        profile={profile}
+        eventFeedStatus={eventFeedStatus}
+        eventFeedDebug={eventFeedDebug}
+        eventFeedSources={eventFeedSources}
+        onRefreshEvents={() => void loadEventsFeed(true)}
+        demoSelections={demoSelections}
+        mongoRevision={mongoRevision}
+        dbSyncStatus={dbSyncStatus}
+        latestDbEntry={latestDbEntry}
+        dbFeedLog={dbFeedLog}
+        onOpenStoreInspector={() => {
+          setActiveTab('profile')
+          setProfileSubView('store_inspector')
+        }}
+      />
     </div>
   )
 }

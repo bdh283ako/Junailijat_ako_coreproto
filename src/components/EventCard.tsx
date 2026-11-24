@@ -2,7 +2,7 @@
 
 import React from "react";
 import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
-import type { NormalizedEvent } from "@/lib/eventFeedClient";
+import type { NormalizedEvent } from "../app/(frontend)/akotestaa/shellproto/eventFeedClient";
 
 export interface EventCardProps {
   event: NormalizedEvent;

@@ -3,10 +3,14 @@
 import React, { useState } from 'react'
 import { CircleMarker, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
-import type { CityGroupedEvents, MapPlottableEvent, ResolvedMapData } from './mapGeoResolver'
+import type { CityOnlyGroup, GeoResolvableEvent, ResolvedMapEvents } from './mapGeoResolver'
 
-interface MapPinLayerProps {
-  mapData: ResolvedMapData
+type MapPinEvent = GeoResolvableEvent & {
+  locationName?: string
+}
+
+interface MapPinLayerProps<T extends MapPinEvent> {
+  mapData: ResolvedMapEvents<T>
   onSelectEvent?: (eventId: string) => void
 }
 
@@ -29,18 +33,21 @@ function createCityListIcon(count: number) {
   })
 }
 
-export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
-  const [activeCityGroup, setActiveCityGroup] = useState<CityGroupedEvents | null>(null)
+export function MapPinLayer<T extends MapPinEvent>({
+  mapData,
+  onSelectEvent,
+}: MapPinLayerProps<T>) {
+  const [activeCityGroup, setActiveCityGroup] = useState<CityOnlyGroup<T> | null>(null)
 
   return (
     <>
       {/* 1. Tarkka karttasijainti: vahva emerald-vihreä */}
-      {mapData.exactPins.map((evt: MapPlottableEvent) => {
-        if (!evt.plotCoordinates) return null
+      {mapData.exactPins.map((item) => {
+        if (!item.plotCoords) return null
         return (
           <CircleMarker
-            key={`exact-${evt.id}`}
-            center={[evt.plotCoordinates.lat, evt.plotCoordinates.lng]}
+            key={`exact-${item.event.id}`}
+            center={item.plotCoords}
             radius={8}
             pathOptions={{
               color: '#064e3b',
@@ -52,13 +59,13 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
             <Popup>
               <div className="text-xs space-y-1">
                 <div className="font-bold text-emerald-800">Tarkka sijainti</div>
-                <div className="font-semibold">{evt.title}</div>
-                {evt.locationName && <div>{evt.locationName}</div>}
-                {evt.city && <div className="text-slate-600">{evt.city}</div>}
+                <div className="font-semibold">{item.event.title}</div>
+                {item.event.locationName && <div>{item.event.locationName}</div>}
+                {item.city && <div className="text-slate-600">{item.city}</div>}
                 {onSelectEvent && (
                   <button
                     type="button"
-                    onClick={() => onSelectEvent(evt.id)}
+                    onClick={() => onSelectEvent(item.event.id)}
                     className="mt-1 underline text-emerald-700 font-medium"
                   >
                     Avaa tapahtuma
@@ -71,12 +78,12 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
       })}
 
       {/* 2. Kaupunginosa / tunnettu alue: vaaleanvihreä */}
-      {mapData.districtPins.map((evt: MapPlottableEvent) => {
-        if (!evt.plotCoordinates) return null
+      {mapData.districtPins.map((item) => {
+        if (!item.plotCoords) return null
         return (
           <CircleMarker
-            key={`district-${evt.id}`}
-            center={[evt.plotCoordinates.lat, evt.plotCoordinates.lng]}
+            key={`district-${item.event.id}`}
+            center={item.plotCoords}
             radius={7}
             pathOptions={{
               color: '#15803d',
@@ -88,14 +95,14 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
             <Popup>
               <div className="text-xs space-y-1">
                 <div className="font-bold text-green-800">
-                  Alue: {evt.district} ({evt.city})
+                  Alue: {item.district} ({item.city})
                 </div>
-                <div className="font-semibold">{evt.title}</div>
-                {evt.locationName && <div>{evt.locationName}</div>}
+                <div className="font-semibold">{item.event.title}</div>
+                {item.event.locationName && <div>{item.event.locationName}</div>}
                 {onSelectEvent && (
                   <button
                     type="button"
-                    onClick={() => onSelectEvent(evt.id)}
+                    onClick={() => onSelectEvent(item.event.id)}
                     className="mt-1 underline text-green-800 font-medium"
                   >
                     Avaa tapahtuma
@@ -111,8 +118,8 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
       {mapData.cityGroups.map((group) => (
         <Marker
           key={`city-group-${group.city}`}
-          position={[group.coordinates.lat, group.coordinates.lng]}
-          icon={createCityListIcon(group.events.length)}
+          position={group.coords}
+          icon={createCityListIcon(group.items.length)}
           eventHandlers={{
             click: () => setActiveCityGroup(group),
           }}
@@ -120,7 +127,7 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
           <Popup>
             <div className="text-xs space-y-1">
               <div className="font-bold text-slate-900">
-                {group.city} — {group.events.length} kaupunkitason tapahtumaa
+                {group.city} — {group.items.length} kaupunkitason tapahtumaa
               </div>
               <div className="text-slate-600">
                 Ei tarkkaa osoitetta tai kaupunginosaa. Klikkaa avataksesi listan.
@@ -130,7 +137,7 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
                 onClick={() => setActiveCityGroup(group)}
                 className="mt-1 px-2 py-1 rounded bg-emerald-600 text-white font-semibold"
               >
-                Avaa listaus ({group.events.length})
+                Avaa listaus ({group.items.length})
               </button>
             </div>
           </Popup>
@@ -159,7 +166,7 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
         <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="font-bold text-emerald-950">
-              {activeCityGroup.city} — vain kaupunkitason tapahtumat ({activeCityGroup.events.length})
+              {activeCityGroup.city} — vain kaupunkitason tapahtumat ({activeCityGroup.items.length})
             </span>
             <button
               type="button"
@@ -170,21 +177,24 @@ export function MapPinLayer({ mapData, onSelectEvent }: MapPinLayerProps) {
             </button>
           </div>
           <ul className="space-y-1.5 max-h-48 overflow-y-auto">
-            {activeCityGroup.events.map((item) => (
+            {activeCityGroup.items.map((item) => (
               <li
-                key={`city-item-${item.id}`}
+                key={`city-item-${item.event.id}`}
                 className="flex items-center justify-between gap-2 bg-white rounded px-2.5 py-1.5 border border-emerald-100"
               >
                 <div>
-                  <div className="font-semibold text-slate-900">{item.title}</div>
+                  <div className="font-semibold text-slate-900">{item.event.title}</div>
                   <div className="text-[11px] text-slate-500">
-                    {item.locationName || item.address || activeCityGroup.city}
+                    {item.event.locationName ||
+                      item.event.address ||
+                      item.event.streetAddress ||
+                      activeCityGroup.city}
                   </div>
                 </div>
                 {onSelectEvent && (
                   <button
                     type="button"
-                    onClick={() => onSelectEvent(item.id)}
+                    onClick={() => onSelectEvent(item.event.id)}
                     className="shrink-0 text-emerald-700 font-semibold underline"
                   >
                     Valitse

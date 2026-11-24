@@ -263,7 +263,7 @@ export function ProfileSettingsPanel({
               <label className="text-xs text-slate-500 block mb-1">Perheen nimi</label>
               <input
                 value={profile.familyName}
-                onChange={(e) => setProfile({ ...profile, familyName: e.target.value })}
+                onChange={(e) => onChangeProfile({ ...profile, familyName: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-medium"
               />
             </div>

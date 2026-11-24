@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { EventCard } from "@/components/EventCard";
-import type { NormalizedEvent } from "@/lib/eventFeedClient";
+import type { NormalizedEvent } from "../app/(frontend)/akotestaa/shellproto/eventFeedClient";
 
 interface EventsApiResponse {
   events: NormalizedEvent[];

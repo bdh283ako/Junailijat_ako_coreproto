@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { buildGoogleCalendarUrl } from "./googleCalendar";
+import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
 import type { NormalizedEvent } from "./eventFeedClient";
 
 export interface EventCardProps {
