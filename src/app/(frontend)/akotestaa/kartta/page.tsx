@@ -360,6 +360,14 @@ export default function KarttaTestiPage() {
         </div>
       </header>
 
+      <div
+        role="note"
+        className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-900"
+      >
+        Demokartta: synteettiset perheet ja selaimeen tallennetut demomätsit eivät ole
+        PostgreSQL-käyttäjätietoja.
+      </div>
+
       {/* KARTTA-ALUE */}
       <div style={{ position: 'relative', flex: 1, width: '100%' }}>
         <div ref={mapRef} style={{ width: '100%', height: '100%' }} />

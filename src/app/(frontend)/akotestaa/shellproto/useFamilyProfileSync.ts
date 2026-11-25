@@ -12,8 +12,6 @@ import {
   NERD_DB_QUIPS,
   normalizeProfile,
   nowClock,
-  PersistedSessionState,
-  SESSION_STORAGE_PREFIX,
 } from './protoData'
 import type { AuthenticatedGoogleUser, UserProfileState } from './protoData'
 
@@ -44,10 +42,6 @@ export interface FamilyProfileSyncState {
   setAttendingIds: Dispatch<SetStateAction<string[]>>
   dismissedIds: string[]
   setDismissedIds: Dispatch<SetStateAction<string[]>>
-  matchedIds: string[]
-  setMatchedIds: Dispatch<SetStateAction<string[]>>
-  messages: Record<string, string[]>
-  setMessages: Dispatch<SetStateAction<Record<string, string[]>>>
   saveProfileFeedback: (profileToSave?: UserProfileState) => Promise<boolean>
   saveFamilyProfile: (payload: FamilyProfile) => Promise<FamilyProfile>
   resetTransientData: () => void
@@ -77,17 +71,6 @@ export function isFamilyProfileComplete(profile: FamilyProfile | null | undefine
   )
 }
 
-function loadTransientSession(userId: string): PersistedSessionState | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(`${SESSION_STORAGE_PREFIX}${userId}`)
-    if (!raw) return null
-    return JSON.parse(raw) as PersistedSessionState
-  } catch {
-    return null
-  }
-}
-
 export function useFamilyProfileSync({
   currentUser,
 }: UseFamilyProfileSyncOptions): FamilyProfileSyncState {
@@ -101,8 +84,6 @@ export function useFamilyProfileSync({
   const [profileSavedToast, setProfileSavedToast] = useState(false)
   const [attendingIds, setAttendingIds] = useState<string[]>(INITIAL_ATTENDING_IDS)
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
-  const [matchedIds, setMatchedIds] = useState<string[]>([])
-  const [messages, setMessages] = useState<Record<string, string[]>>({})
 
   const skipNextDbSaveRef = useRef(true)
   const instanceLabelRef = useRef('')
@@ -119,7 +100,7 @@ export function useFamilyProfileSync({
   }, [mongoRevision])
 
   const pickRandomNerdQuip = useCallback((): string => {
-    if (NERD_DB_QUIPS.length === 0) return 'COMMITTED -> family_profiles'
+    if (NERD_DB_QUIPS.length === 0) return 'COMMITTED -> users.familyProfile'
     let idx = Math.floor(Math.random() * NERD_DB_QUIPS.length)
     if (NERD_DB_QUIPS.length > 1 && idx === lastQuipIdxRef.current) {
       idx = (idx + 1) % NERD_DB_QUIPS.length
@@ -142,8 +123,8 @@ export function useFamilyProfileSync({
       const entry: DbCommitFeedEntry = {
         id: `db-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         statusCode,
-        terminalLine: `[${statusCode} ${opLabel}] doc:_id=${docKey} -> mongo-${instanceName}.json${latencySuffix}`,
-        diffStamp: `Δ persisted @ ${clock} • rev #${rev} • COMMITTED -> family_profiles (v${rev})`,
+        terminalLine: `[${statusCode} ${opLabel}] ${docKey} -> PostgreSQL/${instanceName}${latencySuffix}`,
+        diffStamp: `Δ persisted @ ${clock} • rev #${rev} • COMMITTED -> users.familyProfile (v${rev})`,
         quip: pickRandomNerdQuip(),
         revision: rev,
       }
@@ -167,16 +148,8 @@ export function useFamilyProfileSync({
       const userId = currentUser.id
       const docKey = `family-${userId}`
       const baseDefault = buildInitialProfileForGoogleUser(currentUser)
-      const transient = loadTransientSession(userId)
-
-      setAttendingIds(
-        Array.isArray(transient?.attendingIds) ? transient.attendingIds : INITIAL_ATTENDING_IDS,
-      )
-      setDismissedIds(Array.isArray(transient?.dismissedIds) ? transient.dismissedIds : [])
-      setMatchedIds(Array.isArray(transient?.matchedIds) ? transient.matchedIds : [])
-      setMessages(
-        transient?.messages && typeof transient.messages === 'object' ? transient.messages : {},
-      )
+      setAttendingIds(INITIAL_ATTENDING_IDS)
+      setDismissedIds([])
 
       const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
       try {
@@ -227,7 +200,7 @@ export function useFamilyProfileSync({
         if (!cancelled) {
           setProfile(baseDefault)
           setDbSyncStatus('error')
-          pushDbFeedEntry('503', 'STORE_OFFLINE', docKey, 'local-memory', 0)
+          pushDbFeedEntry('503', 'STORE_OFFLINE', docKey, 'postgresql', 0)
         }
       } finally {
         if (!cancelled) setIsHydrated(true)
@@ -239,24 +212,6 @@ export function useFamilyProfileSync({
       cancelled = true
     }
   }, [currentUser, pushDbFeedEntry])
-
-  useEffect(() => {
-    if (!isHydrated || !currentUser || typeof window === 'undefined') return
-    try {
-      const payload: PersistedSessionState = {
-        attendingIds,
-        dismissedIds,
-        matchedIds,
-        messages,
-      }
-      window.localStorage.setItem(
-        `${SESSION_STORAGE_PREFIX}${currentUser.id}`,
-        JSON.stringify(payload),
-      )
-    } catch {
-      // Ohitetaan kiintiövirheet
-    }
-  }, [isHydrated, currentUser, attendingIds, dismissedIds, matchedIds, messages])
 
   useEffect(() => {
     if (!isHydrated || !currentUser) return
@@ -470,18 +425,8 @@ export function useFamilyProfileSync({
 
   const resetTransientData = useCallback(() => {
     setDismissedIds([])
-    setMatchedIds([])
     setAttendingIds(INITIAL_ATTENDING_IDS)
-    setMessages({})
-
-    if (currentUser && typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem(`${SESSION_STORAGE_PREFIX}${currentUser.id}`)
-      } catch {
-        // Ohitetaan virheet
-      }
-    }
-  }, [currentUser])
+  }, [])
 
   return {
     profile,
@@ -504,10 +449,6 @@ export function useFamilyProfileSync({
     setAttendingIds,
     dismissedIds,
     setDismissedIds,
-    matchedIds,
-    setMatchedIds,
-    messages,
-    setMessages,
     saveProfileFeedback,
     saveFamilyProfile,
     resetTransientData,

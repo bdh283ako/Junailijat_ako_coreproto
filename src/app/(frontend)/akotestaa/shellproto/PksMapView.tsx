@@ -1,17 +1,8 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  calcDistanceKm,
-  FamilyEvent,
-  FamilyProfile,
-  PKS_MLL_FAMILY_CAFES,
-} from './protoData'
-import {
-  DEFAULT_PKS_COORDS,
-  resolveEventsForMap,
-  type CityOnlyGroup,
-} from './mapGeoResolver'
+import { calcDistanceKm, FamilyEvent, FamilyProfile, PKS_MLL_FAMILY_CAFES } from './protoData'
+import { DEFAULT_PKS_COORDS, resolveEventsForMap, type CityOnlyGroup } from './mapGeoResolver'
 
 interface LeafletCircleMarker {
   addTo: (map: LeafletMapInstance) => LeafletCircleMarker
@@ -44,10 +35,7 @@ interface LeafletGlobal {
     iconSize?: [number, number]
     iconAnchor?: [number, number]
   }) => unknown
-  marker: (
-    coords: [number, number],
-    options?: { icon?: unknown },
-  ) => LeafletDivIconMarker
+  marker: (coords: [number, number], options?: { icon?: unknown }) => LeafletDivIconMarker
   circleMarker: (
     coords: [number, number],
     options: {
@@ -94,6 +82,19 @@ function getEventVenueLabel(evt: MapEventRecord): string {
 
 function getEventTimeLabel(evt: MapEventRecord): string {
   return evt.time || evt.startDate || ''
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }
+    return entities[character]
+  })
 }
 
 export function PksMapView({
@@ -155,7 +156,7 @@ export function PksMapView({
       .sort((a, b) => a.distanceKm - b.distanceKm)
   }, [events, safeHome, activeCityFilter])
 
-// Kartalle piirretään enintään 25 lähintä tapahtumaa PER KAUPUNKI
+  // Kartalle piirretään enintään 25 lähintä tapahtumaa per kaupunki.
   const mapCappedEvents = useMemo(() => {
     const perCityCount = new Map<string, number>()
     const result: typeof cityFilteredAllEvents = []
@@ -193,9 +194,7 @@ export function PksMapView({
 
   const visibleMatchedFamilies = useMemo(() => {
     if (activeCityFilter === 'Kaikki PKS') return matchedFamilies
-    return matchedFamilies.filter(
-      (f) => f.city.toLowerCase() === activeCityFilter.toLowerCase(),
-    )
+    return matchedFamilies.filter((f) => f.city.toLowerCase() === activeCityFilter.toLowerCase())
   }, [matchedFamilies, activeCityFilter])
 
   // Sivutuslaskenta kartan alla olevalle listalle
@@ -263,9 +262,50 @@ export function PksMapView({
           onResetBounds()
         })
 
-      // 1. Tarkka karttasijainti: vahva syvä sininen (#1d4ed8) (max 25 yhteensä kartalla)
-      resolvedMap.exactPins.forEach(({ event: evt, plotCoords }) => {
-        if (!plotCoords) return
+      // Only events at exactly the same coordinates share a marker.
+      const exactPinGroups = new Map<string, typeof resolvedMap.exactPins>()
+      resolvedMap.exactPins.forEach((pin) => {
+        if (!pin.plotCoords) return
+        const key = `${pin.plotCoords[0]},${pin.plotCoords[1]}`
+        const group = exactPinGroups.get(key)
+        if (group) {
+          group.push(pin)
+        } else {
+          exactPinGroups.set(key, [pin])
+        }
+      })
+
+      exactPinGroups.forEach((pins) => {
+        const firstPin = pins[0]
+        const coords = firstPin?.plotCoords
+        if (!firstPin || !coords) return
+        const eventCount = pins.length
+
+        if (eventCount > 1) {
+          const badgeIcon = L.divIcon({
+            className: 'perhepiiri-event-cluster',
+            html: `<div role="img" aria-label="${eventCount} tapahtumaa samassa sijainnissa" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#1d4ed8;color:#fff;border:2px solid #fff;border-radius:9999px;box-shadow:0 2px 8px rgba(15,23,42,.4);font-size:10px;font-weight:800;">${eventCount}</div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })
+          const eventRows = pins
+            .map(({ event: evt }) => {
+              const time = getEventTimeLabel(evt)
+              const venue = getEventVenueLabel(evt)
+              const isGoing = attendingIds.includes(evt.id)
+              return `<li style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>${escapeHtml(evt.title)}</strong><br/><span style="font-size:11px;color:#475569;">${escapeHtml(venue)}${time ? ` • ${escapeHtml(time)}` : ''}${isGoing ? ' • ✅ Olet menossa mukaan' : ''}</span></li>`
+            })
+            .join('')
+
+          L.marker(coords, { icon: badgeIcon })
+            .addTo(map)
+            .bindPopup(
+              `<strong>${eventCount} tapahtumaa samassa sijainnissa</strong><ul style="max-height:240px;overflow-y:auto;list-style:none;padding:0;margin:6px 0 0;">${eventRows}</ul>`,
+            )
+          return
+        }
+
+        const evt = firstPin.event
         const isGoing = attendingIds.includes(evt.id)
         const venueText = getEventVenueLabel(evt)
         const timeText = getEventTimeLabel(evt)
@@ -276,7 +316,7 @@ export function PksMapView({
           ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#1d4ed8;text-decoration:underline;">Lisätiedot ↗</a>`
           : ''
 
-        L.circleMarker(plotCoords, {
+        L.circleMarker(coords, {
           radius: 9.5,
           fillColor: '#1d4ed8',
           color: '#1e3a8a',
@@ -457,7 +497,7 @@ export function PksMapView({
             <span>🟠 Koti</span>
             <span
               className="inline-flex items-center gap-1"
-              title="Kartalle piirretään enintään 25 lähintä tapahtumaa"
+              title="Kartalla näytetään enintään 25 lähintä tapahtumaa kaupunkia kohden. Vain täsmälleen samoihin koordinaatteihin osuvat tapahtumat ryhmitellään."
             >
               <span className="w-2.5 h-2.5 rounded-full bg-blue-700 border border-blue-900 inline-block" />
               Kartalla ({mapCappedEvents.length}/{cityFilteredAllEvents.length})
@@ -469,7 +509,7 @@ export function PksMapView({
             <button
               type="button"
               onClick={() =>
-                setSelectedCityGroup((prev) => (prev ? null : resolvedMap.cityGroups[0] ?? null))
+                setSelectedCityGroup((prev) => (prev ? null : (resolvedMap.cityGroups[0] ?? null)))
               }
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-blue-600 bg-blue-50 text-blue-900 font-bold hover:bg-blue-100"
             >
@@ -513,7 +553,8 @@ export function PksMapView({
         <div className="bg-blue-50 border-b border-blue-200 px-4 sm:px-6 py-3 text-xs max-h-44 overflow-y-auto shrink-0">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="font-bold text-blue-950">
-              {selectedCityGroup.city} — vain kaupunkitason tapahtumat ({selectedCityGroup.items.length})
+              {selectedCityGroup.city} — vain kaupunkitason tapahtumat (
+              {selectedCityGroup.items.length})
             </span>
             <button
               type="button"
@@ -561,7 +602,7 @@ export function PksMapView({
           <div className="font-bold text-slate-800">
             Tapahtumalista ({activeCityFilter}): {cityFilteredAllEvents.length} kpl{' '}
             <span className="font-normal text-slate-500">
-              (kartalla max {MAX_MAP_EVENT_PINS} lähintä)
+              (kartalla enintään {MAX_MAP_EVENT_PINS} lähintä / kaupunki)
             </span>
           </div>
 

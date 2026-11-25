@@ -114,15 +114,6 @@ export interface AuthenticatedGoogleUser {
   avatarUrl?: string
 }
 
-export interface PersistedSessionState {
-  attendingIds: string[]
-  dismissedIds: string[]
-  matchedIds: string[]
-  messages: Record<string, string[]>
-}
-
-export const SESSION_STORAGE_PREFIX = 'perhepiiri_session_v1_'
-
 export const PKS_DEFAULT_BOUNDS: [[number, number], [number, number]] = [
   [60.135, 24.585],
   [60.345, 25.165],
@@ -164,7 +155,7 @@ export const NERD_DB_QUIPS: string[] = [
   'ACID-takuu: jopa perheen iltapuuro säilyy ehjänä.',
   'Indeksi kunnossa: etäisyys 15 km ja lapset synkassa.',
   'Ei lukkiutumisia, toisin kuin aamuruuhkassa Kehä I:llä.',
-  'JSON-dokumentti kommitoitu ilman draamaa tai 404-virheitä.',
+  'PostgreSQL-rivi kommitoitu ilman draamaa tai 404-virheitä.',
   'Oletusfiltterit tallessa — ei tarvitse klikkailla joka aamu.',
 ]
 

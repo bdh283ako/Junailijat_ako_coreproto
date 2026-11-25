@@ -183,10 +183,7 @@ export default function AkoTestaaMatsitPage() {
           </div>
 
           <nav className="flex items-center gap-5 text-xs sm:text-sm">
-            <a
-              href="/"
-              className="text-slate-300 hover:text-white transition-colors"
-            >
+            <a href="/" className="text-slate-300 hover:text-white transition-colors">
               ← GatherEvents (Pääsivu)
             </a>
             <a
@@ -205,6 +202,14 @@ export default function AkoTestaaMatsitPage() {
         </div>
       </header>
 
+      <div
+        role="note"
+        className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs text-amber-900"
+      >
+        Demomätsäys: valinnat tallentuvat vain tähän selaimeen eivätkä muuta oikean käyttäjätilin
+        tietoja.
+      </div>
+
       {/* KEHITYS- JA DEMOKONTROLLIPANEELI */}
       <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs text-amber-900">
         <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
@@ -219,8 +224,8 @@ export default function AkoTestaaMatsitPage() {
               {backendStatus === 'ok'
                 ? '🟢 Payload API (/api/match)'
                 : backendStatus === 'local-fallback'
-                ? '🟡 LocalStorage + Demo-vastatykkäys'
-                : '⚪ Valmiina'}
+                  ? '🟡 LocalStorage + Demo-vastatykkäys'
+                  : '⚪ Valmiina'}
             </span>
           </div>
 
@@ -311,9 +316,7 @@ export default function AkoTestaaMatsitPage() {
                 )}
 
                 {/* Perheen kuvaus */}
-                <p className="mt-5 text-slate-700 text-base leading-relaxed">
-                  {currentTarget.bio}
-                </p>
+                <p className="mt-5 text-slate-700 text-base leading-relaxed">{currentTarget.bio}</p>
 
                 {/* Kiinnostuksen kohteet */}
                 <div className="mt-6">
@@ -415,16 +418,12 @@ export default function AkoTestaaMatsitPage() {
           {/* 2. Tietokantaloki (Mitä kantaan on tallennettu) */}
           <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 shadow-sm font-mono text-xs">
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
-              <span className="font-bold text-emerald-400">
-                Collection: family-matches
-              </span>
+              <span className="font-bold text-emerald-400">Collection: family-matches</span>
               <span className="text-slate-400">{records.length} riviä</span>
             </div>
 
             {records.length === 0 ? (
-              <div className="text-slate-500 py-3">
-                // Odottaa ensimmäistä pyyhkäisyä...
-              </div>
+              <div className="text-slate-500 py-3">// Odottaa ensimmäistä pyyhkäisyä...</div>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {records.map((rec, i) => (
@@ -441,8 +440,8 @@ export default function AkoTestaaMatsitPage() {
                           rec.status === 'matched'
                             ? 'text-emerald-400 font-bold'
                             : rec.status === 'liked'
-                            ? 'text-blue-400'
-                            : 'text-slate-400'
+                              ? 'text-blue-400'
+                              : 'text-slate-400'
                         }
                       >
                         [{rec.status.toUpperCase()}]

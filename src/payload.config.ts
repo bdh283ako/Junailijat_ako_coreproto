@@ -1,5 +1,6 @@
 import path from 'path'
-import { buildFigmaConfig } from '@payloadcms/figma'
+import { postgresAdapter } from '@payloadcms/db-postgres'
+import { buildConfig } from 'payload'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { en as adminLanguage } from '@payloadcms/translations/languages/en'
 import { fileURLToPath } from 'url'
@@ -14,8 +15,27 @@ import { ChatMessages } from './collections/ChatMessages'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
+const databaseUrl = process.env.DATABASE_URL
+const payloadSecret = process.env.PAYLOAD_SECRET
 
-export default buildFigmaConfig({
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL must be set to connect Payload to PostgreSQL.')
+}
+
+if (!payloadSecret) {
+  throw new Error('PAYLOAD_SECRET must be set to sign Payload sessions.')
+}
+
+export default buildConfig({
+  secret: payloadSecret,
+  db: postgresAdapter({
+    push: false,
+    pool: {
+      connectionString: databaseUrl,
+      max: process.env.VERCEL ? 5 : 10,
+      idleTimeoutMillis: 10_000,
+    },
+  }),
   admin: {
     user: Admins.slug,
     constrainWidth: true,
@@ -34,7 +54,16 @@ export default buildFigmaConfig({
     fallbackLanguage: 'en',
     supportedLanguages: { en: adminLanguage },
   },
-  collections: [Admins, Users, Media, Folders, Tags, FamilyMatches, EventParticipations, ChatMessages],
+  collections: [
+    Admins,
+    Users,
+    Media,
+    Folders,
+    Tags,
+    FamilyMatches,
+    EventParticipations,
+    ChatMessages,
+  ],
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
@@ -44,5 +73,4 @@ export default buildFigmaConfig({
     defaultLocale: 'en',
   },
   plugins: [mcpPlugin({})],
-  figma: {},
 })

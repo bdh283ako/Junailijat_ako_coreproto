@@ -31,6 +31,13 @@ export const Users: CollectionConfig = {
     { name: 'avatarUrl', type: 'text' },
     { name: 'savedLocation', type: 'json' },
     { name: 'familyProfile', type: 'json' },
+    { name: 'communityState', type: 'json' },
+    {
+      name: 'isDemo',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: { description: 'Imported demo profile; never treated as an authenticated account.' },
+    },
   ],
   versions: false,
 }

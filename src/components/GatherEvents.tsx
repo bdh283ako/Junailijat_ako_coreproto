@@ -66,12 +66,12 @@ const KNOWN_PLACES: Record<string, [number, number]> = {
   'töölön kirkko': [60.1797, 24.9213],
   'temppeliaukion kirkko': [60.173, 24.9252],
   'meilahden kirkko': [60.1912, 24.9041],
-  'fokus': [60.1988, 24.9304],
-  'tripla': [60.1988, 24.9304],
-  'taivallahden': [60.1755, 24.9135],
-  'töölö': [60.178, 24.92],
-  'sello': [60.2183, 24.8124],
-  'tapiola': [60.176, 24.8047],
+  fokus: [60.1988, 24.9304],
+  tripla: [60.1988, 24.9304],
+  taivallahden: [60.1755, 24.9135],
+  töölö: [60.178, 24.92],
+  sello: [60.2183, 24.8124],
+  tapiola: [60.176, 24.8047],
   'iso omena': [60.1618, 24.7384],
 }
 
@@ -167,7 +167,10 @@ function formatEventDate(value: string) {
   const date = new Date(value)
   return {
     day: new Intl.DateTimeFormat('fi-FI', { day: '2-digit' }).format(date),
-    month: new Intl.DateTimeFormat('fi-FI', { month: 'short' }).format(date).replace('.', '').toUpperCase(),
+    month: new Intl.DateTimeFormat('fi-FI', { month: 'short' })
+      .format(date)
+      .replace('.', '')
+      .toUpperCase(),
     long: new Intl.DateTimeFormat('fi-FI', {
       weekday: 'short',
       day: 'numeric',
@@ -185,15 +188,23 @@ export function GatherEvents() {
 
   return (
     <div className="site-shell">
-    <header className="header" style={{ position: 'relative', zIndex: 100000 }}>
+      <header className="header" style={{ position: 'relative', zIndex: 100000 }}>
         <a className="brand" href="/" aria-label="Gather etusivu">
           gather<span>.</span>
         </a>
         <nav className={menuOpen ? 'nav open' : 'nav'} aria-label="Päänavigaatio">
-          <a className="active" href="#kartta" onClick={() => setMenuOpen(false)}>Kartta & Alue</a>
-          <a href="#perhe-match" onClick={() => setMenuOpen(false)}>Perhe-Match</a>
-          <a href="#json-tapahtumat" onClick={() => setMenuOpen(false)}>Tapahtumat</a>
-          <a href="#tapahtumat" onClick={() => setMenuOpen(false)}>Kalenteri</a>
+          <a className="active" href="#kartta" onClick={() => setMenuOpen(false)}>
+            Kartta & Alue
+          </a>
+          <a href="#perhe-match" onClick={() => setMenuOpen(false)}>
+            Perhe-Match
+          </a>
+          <a href="#json-tapahtumat" onClick={() => setMenuOpen(false)}>
+            Tapahtumat
+          </a>
+          <a href="#tapahtumat" onClick={() => setMenuOpen(false)}>
+            Kalenteri
+          </a>
         </nav>
         <div className="header-actions" style={{ position: 'relative', zIndex: 100001 }}>
           <UserProfileMenu onLocationChange={setUserLocation} />
@@ -207,6 +218,14 @@ export function GatherEvents() {
           </button>
         </div>
       </header>
+
+      <div
+        role="note"
+        className="mx-auto mt-3 w-full max-w-7xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Demotila: kotialue, demo-profiili ja mätsäysvalinnat tallentuvat vain tähän selaimeen, eivät
+        PostgreSQL:ään. Älä syötä oikeaa kotiosoitetta tai muita henkilötietoja.
+      </div>
 
       <main>
         <JsonEventFeed userLocation={userLocation} />
@@ -316,7 +335,8 @@ function UserProfileMenu({ onLocationChange }: { onLocationChange: (loc: SavedLo
   const handleSignOut = async () => {
     try {
       if (typeof (authSession as any).signOut === 'function') await (authSession as any).signOut()
-      else if (typeof (authSession as any).logout === 'function') await (authSession as any).logout()
+      else if (typeof (authSession as any).logout === 'function')
+        await (authSession as any).logout()
       else {
         await fetch('/api/users/logout', { method: 'POST', credentials: 'include' })
         window.location.href = '/'
@@ -367,7 +387,13 @@ function UserProfileMenu({ onLocationChange }: { onLocationChange: (loc: SavedLo
               setQuery(e.target.value)
               if (saved) setSaved(null)
             }}
-            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #94a3b8' }}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: '1px solid #94a3b8',
+            }}
           />
           {suggestions.map((item, i) => (
             <button
@@ -390,7 +416,16 @@ function UserProfileMenu({ onLocationChange }: { onLocationChange: (loc: SavedLo
             </button>
           ))}
           {saved && (
-            <div style={{ marginTop: 8, fontSize: 12, color: '#166534', background: '#f0fdf4', padding: '6px 8px', borderRadius: 6 }}>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: '#166534',
+                background: '#f0fdf4',
+                padding: '6px 8px',
+                borderRadius: 6,
+              }}
+            >
               ✓ Alue: <strong>{saved.city}</strong>
             </div>
           )}
@@ -426,7 +461,13 @@ function findFallbackCoords(text: string): [number, number] | null {
   return null
 }
 
-function DefaultAddressMap({ userLocation, events }: { userLocation: SavedLocation; events: EventFeedItem[] }) {
+function DefaultAddressMap({
+  userLocation,
+  events,
+}: {
+  userLocation: SavedLocation
+  events: EventFeedItem[]
+}) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<any>(null)
   const layerRef = useRef<any>(null)
@@ -486,7 +527,9 @@ function DefaultAddressMap({ userLocation, events }: { userLocation: SavedLocati
     let cancelled = false
 
     async function plotEvents() {
-      const cache: Record<string, [number, number]> = JSON.parse(localStorage.getItem('gather_geo_cache_v3') || '{}')
+      const cache: Record<string, [number, number]> = JSON.parse(
+        localStorage.getItem('gather_geo_cache_v3') || '{}',
+      )
       const bounds: Array<[number, number]> = [[userLocation.lat, userLocation.lng]]
       let count = 0
 
@@ -497,14 +540,19 @@ function DefaultAddressMap({ userLocation, events }: { userLocation: SavedLocati
 
         if (!coords) {
           const baseVenue = (ev.location?.name || '').split(/[,–—\-:/(]/)[0].trim()
-          const query = [ev.location?.address?.streetAddress || baseVenue, ev.location?.address?.addressLocality || 'Helsinki']
+          const query = [
+            ev.location?.address?.streetAddress || baseVenue,
+            ev.location?.address?.addressLocality || 'Helsinki',
+          ]
             .filter(Boolean)
             .join(', ')
           if (cache[query]) {
             coords = cache[query]
           } else if (query) {
             try {
-              const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&lat=60.18&lon=24.92`)
+              const res = await fetch(
+                `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&lat=60.18&lon=24.92`,
+              )
               const data = await res.json()
               const c = data?.features?.[0]?.geometry?.coordinates
               if (c) {
@@ -527,7 +575,9 @@ function DefaultAddressMap({ userLocation, events }: { userLocation: SavedLocati
           bounds.push([lat, lng])
 
           L.marker([lat, lng])
-            .bindPopup(`<b>${ev.name}</b><br/><small>${d.long} · ${ev.location?.name || 'Töölö'}</small><br/><a href="${ev.url}" target="_blank">Avaa tapahtuma →</a>`)
+            .bindPopup(
+              `<b>${ev.name}</b><br/><small>${d.long} · ${ev.location?.name || 'Töölö'}</small><br/><a href="${ev.url}" target="_blank">Avaa tapahtuma →</a>`,
+            )
             .addTo(layerRef.current)
         }
       }
@@ -555,7 +605,10 @@ function DefaultAddressMap({ userLocation, events }: { userLocation: SavedLocati
           Kartalla kotipisteesi sekä <strong>{plottedCount}</strong> paikannettua tapahtumaa.
         </p>
       </div>
-      <div ref={mapRef} style={{ width: '100%', height: 420, borderRadius: 20, overflow: 'hidden' }} />
+      <div
+        ref={mapRef}
+        style={{ width: '100%', height: 420, borderRadius: 20, overflow: 'hidden' }}
+      />
     </section>
   )
 }
@@ -572,7 +625,10 @@ function JsonEventFeed({ userLocation }: { userLocation: SavedLocation }) {
         setEvents(
           (d.itemListElement || [])
             .map((x: any) => x.item)
-            .sort((a: EventFeedItem, b: EventFeedItem) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+            .sort(
+              (a: EventFeedItem, b: EventFeedItem) =>
+                new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+            ),
         ),
       )
       .catch(() => {})
@@ -582,7 +638,13 @@ function JsonEventFeed({ userLocation }: { userLocation: SavedLocation }) {
     const city = userLocation.city.toLocaleLowerCase('fi')
     const district = userLocation.district.toLocaleLowerCase('fi')
     return events.filter((ev) => {
-      const text = [ev.name, ev.description, ev.location?.name, ev.location?.address?.addressLocality, ev.location?.address?.addressRegion]
+      const text = [
+        ev.name,
+        ev.description,
+        ev.location?.name,
+        ev.location?.address?.addressLocality,
+        ev.location?.address?.addressRegion,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLocaleLowerCase('fi')
@@ -619,15 +681,24 @@ function JsonEventFeed({ userLocation }: { userLocation: SavedLocation }) {
             </h2>
             {onlyHomeArea && events.length > 0 && areaMatches.length === 0 && (
               <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-                Alueelta "{userLocation.city}" ei löytynyt suoria osumia – näytetään kaikki lähialueen tapahtumat.
+                Alueelta "{userLocation.city}" ei löytynyt suoria osumia – näytetään kaikki
+                lähialueen tapahtumat.
               </p>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className={effectiveOnlyHome ? 'button primary' : 'button'} onClick={() => setOnlyHomeArea(true)}>
+            <button
+              type="button"
+              className={effectiveOnlyHome ? 'button primary' : 'button'}
+              onClick={() => setOnlyHomeArea(true)}
+            >
               Vain {userLocation.city} ({areaMatches.length})
             </button>
-            <button type="button" className={!effectiveOnlyHome ? 'button primary' : 'button'} onClick={() => setOnlyHomeArea(false)}>
+            <button
+              type="button"
+              className={!effectiveOnlyHome ? 'button primary' : 'button'}
+              onClick={() => setOnlyHomeArea(false)}
+            >
               Kaikki ({events.length})
             </button>
           </div>
@@ -636,16 +707,30 @@ function JsonEventFeed({ userLocation }: { userLocation: SavedLocation }) {
         <div className="feed-toolbar">
           <label className="feed-search">
             <span>Hae tapahtumista</span>
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nimi, paikka tai järjestäjä" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Nimi, paikka tai järjestäjä"
+            />
           </label>
         </div>
 
         <div className="feed-grid">
           {filtered.map((ev) => {
             const date = formatEventDate(ev.startDate)
-            const region = ev.location?.address?.addressLocality ?? ev.location?.address?.addressRegion ?? 'Helsinki'
+            const region =
+              ev.location?.address?.addressLocality ??
+              ev.location?.address?.addressRegion ??
+              'Helsinki'
             return (
-              <a className="feed-card" href={ev.url} target="_blank" rel="noreferrer" key={ev['@id']}>
+              <a
+                className="feed-card"
+                href={ev.url}
+                target="_blank"
+                rel="noreferrer"
+                key={ev['@id']}
+              >
                 <span className="feed-date">
                   <small>{date.month}</small>
                   <strong>{date.day}</strong>
@@ -686,16 +771,22 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
   const [newChildGender, setNewChildGender] = useState<'boy' | 'girl' | 'unspecified'>('boy')
   const [newChildTags, setNewChildTags] = useState<string[]>([])
   const [newAdultName, setNewAdultName] = useState('')
-  const [newAdultRole, setNewAdultRole] = useState<'Vanhempi' | 'Isovanhempi' | 'Läheinen'>('Vanhempi')
+  const [newAdultRole, setNewAdultRole] = useState<'Vanhempi' | 'Isovanhempi' | 'Läheinen'>(
+    'Vanhempi',
+  )
 
   useEffect(() => {
     const saved = localStorage.getItem('gather_family_profile_v1')
     if (saved) {
-      try { setMyFamily(JSON.parse(saved)) } catch {}
+      try {
+        setMyFamily(JSON.parse(saved))
+      } catch {}
     }
     const savedMatches = localStorage.getItem('gather_family_matches_v1')
     if (savedMatches) {
-      try { setMatches(JSON.parse(savedMatches)) } catch {}
+      try {
+        setMatches(JSON.parse(savedMatches))
+      } catch {}
     }
   }, [])
 
@@ -715,7 +806,10 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
     if (!newAdultName.trim()) return
     saveFamily({
       ...myFamily,
-      adults: [...myFamily.adults, { id: `a-${Date.now()}`, name: newAdultName.trim(), role: newAdultRole }],
+      adults: [
+        ...myFamily.adults,
+        { id: `a-${Date.now()}`, name: newAdultName.trim(), role: newAdultRole },
+      ],
     })
     setNewAdultName('')
   }
@@ -725,7 +819,10 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
     if (!Number.isFinite(age) || age < 0 || age > 18) return
     saveFamily({
       ...myFamily,
-      children: [...myFamily.children, { id: `c-${Date.now()}`, age, gender: newChildGender, tags: newChildTags }],
+      children: [
+        ...myFamily.children,
+        { id: `c-${Date.now()}`, age, gender: newChildGender, tags: newChildTags },
+      ],
     })
     setNewChildTags([])
   }
@@ -735,11 +832,25 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
     const myAges = myFamily.children.map((c) => c.age)
 
     return MOCK_FAMILIES.filter((f) => !passed.includes(f.id)).map((candidate) => {
-      const sharedParent = candidate.parentInterests.filter((t) => myFamily.parentInterests.includes(t))
-      const sharedChild = Array.from(new Set(candidate.children.flatMap((c) => c.tags).filter((t) => myChildTags.has(t))))
-      const ageBonus = candidate.children.some((cc) => myAges.some((ma) => Math.abs(ma - cc.age) <= 2)) ? 25 : 0
+      const sharedParent = candidate.parentInterests.filter((t) =>
+        myFamily.parentInterests.includes(t),
+      )
+      const sharedChild = Array.from(
+        new Set(candidate.children.flatMap((c) => c.tags).filter((t) => myChildTags.has(t))),
+      )
+      const ageBonus = candidate.children.some((cc) =>
+        myAges.some((ma) => Math.abs(ma - cc.age) <= 2),
+      )
+        ? 25
+        : 0
       const score = Math.min(98, 45 + sharedParent.length * 12 + sharedChild.length * 15 + ageBonus)
-      return { family: candidate, score, sharedParent, sharedChild, isMatched: matches.includes(candidate.id) }
+      return {
+        family: candidate,
+        score,
+        sharedParent,
+        sharedChild,
+        isMatched: matches.includes(candidate.id),
+      }
     })
   }, [myFamily, passed, matches])
 
@@ -754,50 +865,144 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
           <h2>Perhe-Match ({userLocation.city})</h2>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className={activeTab === 'match' ? 'button primary' : 'button'} onClick={() => setActiveTab('match')}>
+          <button
+            type="button"
+            className={activeTab === 'match' ? 'button primary' : 'button'}
+            onClick={() => setActiveTab('match')}
+          >
             🔥 Selaa perheitä ({scoredCandidates.length})
           </button>
-          <button type="button" className={activeTab === 'profile' ? 'button primary' : 'button'} onClick={() => setActiveTab('profile')}>
+          <button
+            type="button"
+            className={activeTab === 'profile' ? 'button primary' : 'button'}
+            onClick={() => setActiveTab('profile')}
+          >
             👨‍👩‍👧‍👦 Meidän perhe ({myFamily.adults.length} aikuista, {myFamily.children.length} lasta)
           </button>
         </div>
       </div>
 
       {activeTab === 'profile' ? (
-        <div style={{ background: '#fff', borderRadius: 20, padding: 24, border: '1px solid rgba(0,0,0,0.08)', display: 'grid', gap: 20 }}>
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 20,
+            padding: 24,
+            border: '1px solid rgba(0,0,0,0.08)',
+            display: 'grid',
+            gap: 20,
+          }}
+        >
           <div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 17 }}>1. Perheen aikuiset & lähisukulaiset</h3>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 17 }}>
+              1. Perheen aikuiset & lähisukulaiset
+            </h3>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
               {myFamily.adults.map((a) => (
-                <span key={a.id} style={{ padding: '5px 12px', borderRadius: 999, background: '#f1f5f9', fontSize: 13, fontWeight: 600 }}>
+                <span
+                  key={a.id}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 999,
+                    background: '#f1f5f9',
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
                   👤 {a.name} ({a.role})
                 </span>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input type="text" placeholder="Nimi (esim. Puoliso tai Mummi)" value={newAdultName} onChange={(e) => setNewAdultName(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1' }} />
-              <select value={newAdultRole} onChange={(e) => setNewAdultRole(e.target.value as any)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1' }}>
+              <input
+                type="text"
+                placeholder="Nimi (esim. Puoliso tai Mummi)"
+                value={newAdultName}
+                onChange={(e) => setNewAdultName(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1' }}
+              />
+              <select
+                value={newAdultRole}
+                onChange={(e) => setNewAdultRole(e.target.value as any)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1' }}
+              >
                 <option value="Vanhempi">Vanhempi</option>
                 <option value="Isovanhempi">Isovanhempi</option>
                 <option value="Läheinen">Läheinen</option>
               </select>
-              <button type="button" className="button" onClick={handleAddAdult}>+ Lisää aikuinen</button>
+              <button type="button" className="button" onClick={handleAddAdult}>
+                + Lisää aikuinen
+              </button>
             </div>
           </div>
 
           <div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 17 }}>2. Lapset (ikä pakollinen, sukupuoli & tagit)</h3>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 17 }}>
+              2. Lapset (ikä pakollinen, sukupuoli & tagit)
+            </h3>
             <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
               {myFamily.children.map((c, idx) => (
-                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: 10 }}>
-                  <span><strong>Lapsi #{idx + 1}: {c.age} v</strong> ({genderLabel(c.gender)}) · {c.tags.join(', ')}</span>
-                  <button type="button" onClick={() => saveFamily({ ...myFamily, children: myFamily.children.filter((x) => x.id !== c.id) })} style={{ border: 'none', background: 'transparent', color: '#b91c1c', cursor: 'pointer' }}>Poista</button>
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: '#f8fafc',
+                    borderRadius: 10,
+                  }}
+                >
+                  <span>
+                    <strong>
+                      Lapsi #{idx + 1}: {c.age} v
+                    </strong>{' '}
+                    ({genderLabel(c.gender)}) · {c.tags.join(', ')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      saveFamily({
+                        ...myFamily,
+                        children: myFamily.children.filter((x) => x.id !== c.id),
+                      })
+                    }
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#b91c1c',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Poista
+                  </button>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-              <label style={{ fontSize: 13 }}>Ikä*: <input type="number" min={0} max={18} value={newChildAge} onChange={(e) => setNewChildAge(e.target.value)} style={{ width: 60, padding: 6 }} /></label>
-              <select value={newChildGender} onChange={(e) => setNewChildGender(e.target.value as any)} style={{ padding: 6 }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <label style={{ fontSize: 13 }}>
+                Ikä*:{' '}
+                <input
+                  type="number"
+                  min={0}
+                  max={18}
+                  value={newChildAge}
+                  onChange={(e) => setNewChildAge(e.target.value)}
+                  style={{ width: 60, padding: 6 }}
+                />
+              </label>
+              <select
+                value={newChildGender}
+                onChange={(e) => setNewChildGender(e.target.value as any)}
+                style={{ padding: 6 }}
+              >
                 <option value="boy">Poika</option>
                 <option value="girl">Tyttö</option>
                 <option value="unspecified">Ei halua kertoa</option>
@@ -808,18 +1013,34 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
                 <button
                   key={tag}
                   type="button"
-                  onClick={() => setNewChildTags((p) => (p.includes(tag) ? p.filter((t) => t !== tag) : [...p, tag]))}
-                  style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, border: '1px solid #cbd5e1', background: newChildTags.includes(tag) ? '#166534' : '#fff', color: newChildTags.includes(tag) ? '#fff' : '#0f172a', cursor: 'pointer' }}
+                  onClick={() =>
+                    setNewChildTags((p) =>
+                      p.includes(tag) ? p.filter((t) => t !== tag) : [...p, tag],
+                    )
+                  }
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    border: '1px solid #cbd5e1',
+                    background: newChildTags.includes(tag) ? '#166534' : '#fff',
+                    color: newChildTags.includes(tag) ? '#fff' : '#0f172a',
+                    cursor: 'pointer',
+                  }}
                 >
                   {tag}
                 </button>
               ))}
             </div>
-            <button type="button" className="button primary" onClick={handleAddChild}>+ Lisää lapsi</button>
+            <button type="button" className="button primary" onClick={handleAddChild}>
+              + Lisää lapsi
+            </button>
           </div>
 
           <div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 17 }}>3. Vanhempien "Nyt kiinnostaa" -tagit</h3>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 17 }}>
+              3. Vanhempien "Nyt kiinnostaa" -tagit
+            </h3>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {PARENT_TAGS.map((tag) => {
                 const active = myFamily.parentInterests.includes(tag)
@@ -828,7 +1049,16 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
                     key={tag}
                     type="button"
                     onClick={() => toggleParentInterest(tag)}
-                    style={{ padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600, border: '1px solid #cbd5e1', background: active ? '#166534' : '#fff', color: active ? '#fff' : '#0f172a', cursor: 'pointer' }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      border: '1px solid #cbd5e1',
+                      background: active ? '#166534' : '#fff',
+                      color: active ? '#fff' : '#0f172a',
+                      cursor: 'pointer',
+                    }}
                   >
                     {active ? `✓ ${tag}` : `+ ${tag}`}
                   </button>
@@ -840,21 +1070,64 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
       ) : (
         <div className="feed-grid">
           {scoredCandidates.map(({ family, score, sharedParent, sharedChild, isMatched }) => (
-            <div key={family.id} className="feed-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 20, background: '#fff', borderRadius: 20 }}>
+            <div
+              key={family.id}
+              className="feed-card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: 20,
+                background: '#fff',
+                borderRadius: 20,
+              }}
+            >
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#557263' }}>📍 {family.district}, {family.city}</span>
-                  <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>{score} % Match</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#557263' }}>
+                    📍 {family.district}, {family.city}
+                  </span>
+                  <span
+                    style={{
+                      background: '#dcfce7',
+                      color: '#166534',
+                      padding: '3px 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {score} % Match
+                  </span>
                 </div>
-                <strong style={{ fontSize: 18, display: 'block', marginBottom: 6 }}>{family.familyName}</strong>
+                <strong style={{ fontSize: 18, display: 'block', marginBottom: 6 }}>
+                  {family.familyName}
+                </strong>
                 <p style={{ fontSize: 13, color: '#475569', margin: '0 0 10px 0' }}>{family.bio}</p>
-                <div style={{ fontSize: 12, marginBottom: 6 }}><strong>👨‍👩‍👧 Aikuiset:</strong> {family.adults.map((a) => `${a.name} (${a.role})`).join(', ')}</div>
-                <div style={{ fontSize: 12, marginBottom: 12 }}><strong>🧒 Lapset:</strong> {family.children.map((c) => `${c.age} v (${genderLabel(c.gender)}: ${c.tags.join(', ')})`).join(' · ')}</div>
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <strong>👨‍👩‍👧 Aikuiset:</strong>{' '}
+                  {family.adults.map((a) => `${a.name} (${a.role})`).join(', ')}
+                </div>
+                <div style={{ fontSize: 12, marginBottom: 12 }}>
+                  <strong>🧒 Lapset:</strong>{' '}
+                  {family.children
+                    .map((c) => `${c.age} v (${genderLabel(c.gender)}: ${c.tags.join(', ')})`)
+                    .join(' · ')}
+                </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
                   {family.parentInterests.map((tag) => {
                     const isShared = sharedParent.includes(tag) || sharedChild.includes(tag)
                     return (
-                      <span key={tag} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: isShared ? '#fef9c3' : '#f1f5f9', fontWeight: isShared ? 700 : 500 }}>
+                      <span
+                        key={tag}
+                        style={{
+                          fontSize: 11,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          background: isShared ? '#fef9c3' : '#f1f5f9',
+                          fontWeight: isShared ? 700 : 500,
+                        }}
+                      >
                         {isShared ? `★ ${tag}` : tag}
                       </span>
                     )
@@ -863,12 +1136,30 @@ function FamilyMatcher({ userLocation }: { userLocation: SavedLocation }) {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {isMatched ? (
-                  <div style={{ width: '100%', padding: 10, borderRadius: 10, background: '#dcfce7', color: '#166534', textAlign: 'center', fontWeight: 700, fontSize: 13 }}>
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: 10,
+                      borderRadius: 10,
+                      background: '#dcfce7',
+                      color: '#166534',
+                      textAlign: 'center',
+                      fontWeight: 700,
+                      fontSize: 13,
+                    }}
+                  >
                     💚 Match! Kutsu yhteiseen tapahtumaan lähetetty
                   </div>
                 ) : (
                   <>
-                    <button type="button" className="button" onClick={() => setPassed((p) => [...p, family.id])} style={{ flex: 1 }}>✕ Ohita</button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => setPassed((p) => [...p, family.id])}
+                      style={{ flex: 1 }}
+                    >
+                      ✕ Ohita
+                    </button>
                     <button
                       type="button"
                       className="button primary"

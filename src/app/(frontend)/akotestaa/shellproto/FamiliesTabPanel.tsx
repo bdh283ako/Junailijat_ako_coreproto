@@ -10,10 +10,11 @@ import type {
 export type FamilySubTab = 'discover' | 'matches'
 
 type ScoredFamily = FamilyProfile & {
-  email: string
+  id: string
   likedByMe: boolean
   likedMe: boolean
   isMutualMatch: boolean
+  passedByMe: boolean
   matchChannelId: string
   distanceKm: number
   match: ReturnType<typeof calcFamilyMatch>
@@ -210,7 +211,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                     onClick={() => onSwipe(true)}
                     className="py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-sm hover:bg-emerald-700"
                   >
-                    {currentCard.likedByMe ? '❤️ Peru tykkäys' : '🤝 Verkostoidu'}
+                    {currentCard.likedByMe ? '❤️ Jo kiinnostunut' : '🤝 Verkostoidu'}
                   </button>
                 </div>
               </div>

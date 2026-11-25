@@ -1,118 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getPayload } from 'payload'
+import config from '@payload-config'
+import { getCurrentUser } from '@/lib/current-user'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export interface StoredFamilyProfileRecord {
-  userId: string
-  instanceId: string
-  updatedAt: string
-  profile: Record<string, unknown>
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-declare global {
-  // Säilytetään demoprofiilit palvelinprosessin yli dev- ja preview-ajossa
-  var __perhePiiriDemoProfiles: Map<string, StoredFamilyProfileRecord> | undefined
+function profileRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
 }
 
-const profileStore =
-  globalThis.__perhePiiriDemoProfiles ??
-  (globalThis.__perhePiiriDemoProfiles = new Map<string, StoredFamilyProfileRecord>())
-
-const INSTANCE_ID =
-  process.env.DEMO_INSTANCE_ID?.trim() ||
-  process.env.VERCEL_REGION?.trim() ||
-  'figma-demo-local'
-
-function sanitizeUserId(raw: string | null | undefined): string {
-  const cleaned = (raw ?? '').trim().toLowerCase()
-  if (!cleaned) return 'demo_user'
-  return cleaned.replace(/[^a-z0-9_@-]+/g, '_').slice(0, 80) || 'demo_user'
+function noStore(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'Cache-Control': 'no-store' },
+  })
 }
 
-export async function GET(req: NextRequest) {
-  const userId = sanitizeUserId(req.nextUrl.searchParams.get('userId'))
-  const existing = profileStore.get(userId)
+export async function GET() {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return noStore({ error: 'Kirjautuminen vaaditaan.' }, 401)
 
-  if (!existing) {
-    return NextResponse.json(
-      {
-        ok: true,
-        userId,
-        instanceId: INSTANCE_ID,
-        document: null,
-      },
-      { status: 200 },
-    )
-  }
-
-  return NextResponse.json(
-    {
+    return noStore({
       ok: true,
-      userId,
-      instanceId: existing.instanceId,
-      document: existing,
-    },
-    { status: 200 },
-  )
+      userId: String(user.id),
+      instanceId: 'postgresql',
+      document: {
+        userId: String(user.id),
+        instanceId: 'postgresql',
+        updatedAt: user.updatedAt,
+        profile: isRecord(user.familyProfile) ? user.familyProfile : null,
+      },
+    })
+  } catch (error) {
+    console.error('GET /api/family-profile error:', error)
+    return noStore({ error: 'Perheprofiilin haku epäonnistui.' }, 500)
+  }
 }
 
-export async function PUT(req: NextRequest) {
+export async function PUT(request: NextRequest) {
   let body: unknown
   try {
-    body = await req.json()
+    body = await request.json()
   } catch {
-    return NextResponse.json(
-      { ok: false, error: 'Virheellinen JSON-runko.' },
-      { status: 400 },
-    )
+    return noStore({ error: 'Pyynnön JSON-runko ei kelpaa.' }, 400)
+  }
+  if (!isRecord(body) || !isRecord(body.profile)) {
+    return noStore({ error: 'Profiilin täytyy olla JSON-objekti.' }, 400)
   }
 
-  if (!body || typeof body !== 'object') {
-    return NextResponse.json(
-      { ok: false, error: 'Pyynnön rungon täytyy olla objekti.' },
-      { status: 400 },
-    )
+  let serialized: string
+  try {
+    serialized = JSON.stringify(body.profile)
+  } catch {
+    return noStore({ error: 'Profiilia ei voitu käsitellä.' }, 400)
+  }
+  if (serialized.length > 64_000) {
+    return noStore({ error: 'Profiili ylittää sallitun koon.' }, 413)
   }
 
-  const payload = body as {
-    userId?: unknown
-    profile?: unknown
+  try {
+    const user = await getCurrentUser()
+    if (!user) return noStore({ error: 'Kirjautuminen vaaditaan.' }, 401)
+
+    const payload = await getPayload({ config })
+    const saved = await payload.update({
+      collection: 'users',
+      id: user.id,
+      data: {
+        familyProfile: {
+          ...profileRecord(user.familyProfile),
+          ...body.profile,
+        },
+      },
+      overrideAccess: true,
+    })
+
+    const document = {
+      userId: String(saved.id),
+      instanceId: 'postgresql',
+      updatedAt: saved.updatedAt,
+      profile: isRecord(saved.familyProfile) ? saved.familyProfile : {},
+    }
+    return noStore({ ok: true, userId: String(saved.id), instanceId: 'postgresql', document }, 200)
+  } catch (error) {
+    console.error('PUT /api/family-profile error:', error)
+    return noStore({ error: 'Perheprofiilin tallennus epäonnistui.' }, 500)
   }
-
-  const userId = sanitizeUserId(
-    typeof payload.userId === 'string' ? payload.userId : undefined,
-  )
-
-  if (!payload.profile || typeof payload.profile !== 'object' || Array.isArray(payload.profile)) {
-    return NextResponse.json(
-      { ok: false, error: 'Puuttuva tai virheellinen profile-objekti.' },
-      { status: 400 },
-    )
-  }
-
-  const updatedAt = new Date().toISOString()
-  const previous = profileStore.get(userId)
-
-  const nextRecord: StoredFamilyProfileRecord = {
-    userId,
-    instanceId: INSTANCE_ID,
-    updatedAt,
-    profile: {
-      ...(previous?.profile ?? {}),
-      ...(payload.profile as Record<string, unknown>),
-    },
-  }
-
-  profileStore.set(userId, nextRecord)
-
-  return NextResponse.json(
-    {
-      ok: true,
-      userId,
-      instanceId: INSTANCE_ID,
-      document: nextRecord,
-    },
-    { status: 201 },
-  )
 }

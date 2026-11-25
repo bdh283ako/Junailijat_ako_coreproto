@@ -36,7 +36,7 @@ export function StoreInspectorPanel({
           ← Takaisin profiiliin
         </button>
         <span className="px-2.5 py-1 rounded-full bg-fuchsia-500/20 border border-fuchsia-400/50 font-mono text-[10px] font-bold text-fuchsia-300 truncate">
-          FILE_MONGO_INSPECTOR • family-{currentUser.id}
+          POSTGRESQL_INSPECTOR • users/{currentUser.id}/familyProfile
         </span>
       </div>
 
@@ -74,7 +74,7 @@ export function StoreInspectorPanel({
         <section className="rounded-2xl p-4 bg-purple-950/60 border border-purple-500/40 space-y-2.5 text-xs">
           <div className="flex items-center justify-between">
             <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-fuchsia-300">
-              Kantaan tallentuvat tiedot (`family-{currentUser.id}`)
+              PostgreSQL-kantaan tallentuva käyttäjäprofiili
             </h2>
             <span className="font-mono text-[10px] text-indigo-300">
               {mongoInstanceLabel || 'default'}
@@ -84,7 +84,9 @@ export function StoreInspectorPanel({
           <pre className="mt-2 p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 sm:max-h-[420px] leading-relaxed">
             {JSON.stringify(
               {
-                _id: `family-${currentUser.id}`,
+                id: currentUser.id,
+                collection: 'users',
+                field: 'familyProfile',
                 userId: currentUser.id,
                 googleEmail: currentUser.email,
                 updatedAt: mongoUpdatedAt || null,

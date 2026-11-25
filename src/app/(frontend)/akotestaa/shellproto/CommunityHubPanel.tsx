@@ -165,34 +165,34 @@ function loadCommunityState(userId: string): PersistedCommunityState | null {
   try {
     const raw = window.localStorage.getItem(`${COMMUNITY_STORAGE_PREFIX}${userId}`)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<PersistedCommunityState>
-    if (!parsed || typeof parsed !== 'object') return null
-
-    return {
-      threads:
-        Array.isArray(parsed.threads) && parsed.threads.length > 0
-          ? parsed.threads
-          : INITIAL_THREADS,
-      eventMessagesById:
-        parsed.eventMessagesById && typeof parsed.eventMessagesById === 'object'
-          ? parsed.eventMessagesById
-          : INITIAL_EVENT_ROOM_MESSAGES,
-      nicknameInput:
-        typeof parsed.nicknameInput === 'string' && parsed.nicknameInput.trim()
-          ? parsed.nicknameInput
-          : 'KotiKetunPerhe',
-      useNicknameInBoard:
-        typeof parsed.useNicknameInBoard === 'boolean' ? parsed.useNicknameInBoard : true,
-      anonLabelInput:
-        typeof parsed.anonLabelInput === 'string' && parsed.anonLabelInput.trim()
-          ? parsed.anonLabelInput
-          : 'Anonyymi osallistuja',
-    }
+    return parseCommunityState(JSON.parse(raw))
   } catch {
     return null
   }
 }
 
+function parseCommunityState(value: unknown): PersistedCommunityState | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const parsed = value as Partial<PersistedCommunityState>
+  return {
+    threads:
+      Array.isArray(parsed.threads) && parsed.threads.length > 0 ? parsed.threads : INITIAL_THREADS,
+    eventMessagesById:
+      parsed.eventMessagesById && typeof parsed.eventMessagesById === 'object'
+        ? parsed.eventMessagesById
+        : INITIAL_EVENT_ROOM_MESSAGES,
+    nicknameInput:
+      typeof parsed.nicknameInput === 'string' && parsed.nicknameInput.trim()
+        ? parsed.nicknameInput
+        : 'KotiKetunPerhe',
+    useNicknameInBoard:
+      typeof parsed.useNicknameInBoard === 'boolean' ? parsed.useNicknameInBoard : true,
+    anonLabelInput:
+      typeof parsed.anonLabelInput === 'string' && parsed.anonLabelInput.trim()
+        ? parsed.anonLabelInput
+        : 'Anonyymi osallistuja',
+  }
+}
 interface CommunityHubPanelProps {
   currentUser: AuthenticatedGoogleUser
   profile: UserProfileState
@@ -330,6 +330,7 @@ export function CommunityHubPanel({
   const [eventChatInput, setEventChatInput] = useState('')
   const [anonLabelInput, setAnonLabelInput] = useState('Anonyymi osallistuja')
   const [communityHydrated, setCommunityHydrated] = useState(false)
+  const [communitySyncError, setCommunitySyncError] = useState<string | null>(null)
   const [resetCommunityToast, setResetCommunityToast] = useState(false)
 
   const initializedChatSectionRef = useRef(false)
@@ -377,35 +378,92 @@ export function CommunityHubPanel({
   ])
 
   useEffect(() => {
-    const saved = loadCommunityState(currentUser.id)
-    if (saved) {
+    let cancelled = false
+    const applyState = (saved: PersistedCommunityState) => {
       setThreads(saved.threads)
       setEventMessagesById(saved.eventMessagesById)
       setNicknameInput(saved.nicknameInput)
       setUseNicknameInBoard(saved.useNicknameInBoard)
       setAnonLabelInput(saved.anonLabelInput)
-      const firstInDefaultRoom = saved.threads.find((t) => t.roomId === 'general')
-      if (firstInDefaultRoom) {
-        setSelectedThreadId(firstInDefaultRoom.id)
+      const firstInDefaultRoom = saved.threads.find((thread) => thread.roomId === 'general')
+      if (firstInDefaultRoom) setSelectedThreadId(firstInDefaultRoom.id)
+    }
+
+    const hydrate = async () => {
+      try {
+        const response = await fetch('/api/community-state', { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error(`Yhteisötilan haku epäonnistui (HTTP ${response.status}).`)
+        }
+        const data: unknown = await response.json()
+        const saved =
+          data && typeof data === 'object' && 'state' in data
+            ? parseCommunityState(data.state)
+            : null
+        if (cancelled) return
+
+        if (saved) {
+          applyState(saved)
+        } else {
+          const legacy = loadCommunityState(currentUser.id)
+          if (legacy) {
+            applyState(legacy)
+            const migration = await fetch('/api/community-state', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ state: legacy }),
+            })
+            if (!migration.ok) {
+              throw new Error(`Vanhan yhteisötilan siirto epäonnistui (HTTP ${migration.status}).`)
+            }
+            window.localStorage.removeItem(storageKey)
+          }
+        }
+        setCommunitySyncError(null)
+        setCommunityHydrated(true)
+      } catch (error) {
+        if (!cancelled) {
+          setCommunitySyncError(
+            error instanceof Error ? error.message : 'Yhteisötilan haku epäonnistui.',
+          )
+        }
       }
     }
-    setCommunityHydrated(true)
+
+    setCommunityHydrated(false)
+    void hydrate()
+    return () => {
+      cancelled = true
+    }
   }, [currentUser.id])
 
   useEffect(() => {
-    if (!communityHydrated || typeof window === 'undefined') return
-    try {
-      const payload: PersistedCommunityState = {
-        threads,
-        eventMessagesById,
-        nicknameInput,
-        useNicknameInBoard,
-        anonLabelInput,
-      }
-      window.localStorage.setItem(storageKey, JSON.stringify(payload))
-    } catch {
-      // Ohitetaan selaimen tallennusrajoitukset
+    if (!communityHydrated) return
+    const payload: PersistedCommunityState = {
+      threads,
+      eventMessagesById,
+      nicknameInput,
+      useNicknameInBoard,
+      anonLabelInput,
     }
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/community-state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: payload }),
+        })
+        if (!response.ok) {
+          throw new Error(`Yhteisötilan tallennus epäonnistui (HTTP ${response.status}).`)
+        }
+        setCommunitySyncError(null)
+      } catch (error) {
+        setCommunitySyncError(
+          error instanceof Error ? error.message : 'Yhteisötilan tallennus epäonnistui.',
+        )
+      }
+    }, 500)
+    return () => window.clearTimeout(timer)
   }, [
     communityHydrated,
     storageKey,
@@ -416,7 +474,7 @@ export function CommunityHubPanel({
     anonLabelInput,
   ])
 
-  const resetCommunityLocalStorage = () => {
+  const resetCommunityState = () => {
     setThreads(INITIAL_THREADS)
     setSelectedThreadId(INITIAL_THREADS[0]?.id || '')
     setEventMessagesById(INITIAL_EVENT_ROOM_MESSAGES)
@@ -426,8 +484,10 @@ export function CommunityHubPanel({
     if (typeof window !== 'undefined') {
       try {
         window.localStorage.removeItem(storageKey)
-      } catch {
-        // Ohitetaan virheet
+      } catch (error) {
+        setCommunitySyncError(
+          error instanceof Error ? error.message : 'Vanhaa paikallista tilaa ei voitu poistaa.',
+        )
       }
     }
     setResetCommunityToast(true)
@@ -453,7 +513,7 @@ export function CommunityHubPanel({
     setSection(nextSection)
     if (nextSection === 'matches' && activeDirectFamily) {
       onActiveChatChannelChange({
-        id: `family:${activeDirectFamily.id}`,
+        id: activeDirectFamily.matchChannelId,
         title: activeDirectFamily.name,
       })
     } else if (nextSection === 'event_chat' && selectedEventId) {
@@ -468,7 +528,7 @@ export function CommunityHubPanel({
   }
 
   const selectedFamilyChannelId = activeDirectFamily
-    ? `family:${activeDirectFamily.id}`
+    ? activeDirectFamily.matchChannelId
     : null
   const selectedFamilyChatMessages =
     selectedFamilyChannelId && activeChatChannel?.id === selectedFamilyChannelId
@@ -487,14 +547,14 @@ export function CommunityHubPanel({
     event.preventDefault()
     if (
       !activeDirectFamily ||
-      activeChatChannel?.id !== `family:${activeDirectFamily.id}` ||
+      activeChatChannel?.id !== activeDirectFamily.matchChannelId ||
       !directInput.trim()
     ) {
       return
     }
     const body = directInput.trim()
     onActiveChatChannelChange({
-      id: `family:${activeDirectFamily.id}`,
+      id: activeDirectFamily.matchChannelId,
       title: activeDirectFamily.name,
     })
     if (await onSendChatMessage(body)) setDirectInput('')
@@ -569,6 +629,11 @@ export function CommunityHubPanel({
 
   return (
     <div className="p-4 sm:p-6 space-y-4 pb-8">
+      {communitySyncError && (
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+          Yhteisötilan tietokantatallennus epäonnistui: {communitySyncError}
+        </p>
+      )}
       {/* Ylänavigaatio: emoji-ikonit ilman A/B/C-koodeja */}
       <div className="bg-white rounded-2xl p-2 border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs font-bold">
         <button
@@ -1192,18 +1257,18 @@ export function CommunityHubPanel({
                 Mitä tietoa käsitellään ja missä se sijaitsee?
               </h2>
               <p className="text-indigo-200/80">
-                Avoimuusnäkymä käyttäjälle: näet suoraan, mikä data on perheprofiilissa, mikä
-                selaimen localStoragessa ja miten anonymiteetti toimii.
+                Avoimuusnäkymä käyttäjälle: sovellusdata tallentuu PostgreSQL-tietokantaan,
+                ja selaimeen jäävät vain käyttöliittymän tilapäiset asetukset.
               </p>
             </div>
             <button
               type="button"
-              onClick={resetCommunityLocalStorage}
+              onClick={resetCommunityState}
               className="px-3 py-2 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-500/60 text-cyan-200 text-xs font-bold shrink-0"
             >
               {resetCommunityToast
-                ? '✓ Paikallinen palstadata palautettu!'
-                : 'Nollaa paikallinen palstahistoria'}
+                ? '✓ Yhteisötila palautettu!'
+                : 'Nollaa oma yhteisötila'}
             </button>
           </div>
 
@@ -1229,10 +1294,9 @@ export function CommunityHubPanel({
                 näkyy viestin yhteydessä.
               </p>
               <p className="text-[11px] text-indigo-200/80">
-                Huonepalstan viestit ja tämän selaimen lukukuittaukset säilyvät
-                <code> localStorage</code>-muistissa avaimella{' '}
-                <code className="break-all">{storageKey}</code> sekä erillisellä
-                lukukuittausavaimella.
+                Huonepalstan sisältö ja asetukset tallennetaan kirjautuneen käyttäjän yhteyteen
+                PostgreSQL-tietokantaan. Vanha selainkopio siirretään tietokantaan ensimmäisellä
+                käyttökerralla.
               </p>
             </section>
 
@@ -1263,12 +1327,11 @@ export function CommunityHubPanel({
             </section>
 
             <section className="rounded-xl border border-indigo-700/50 bg-indigo-950/80 p-3 space-y-2">
-              <h3 className="font-bold text-indigo-200">💾 Prototyypin tallennuspaikat</h3>
+              <h3 className="font-bold text-indigo-200">💾 Tallennus</h3>
               <p className="text-[11px] text-indigo-100/90">
-                Huonepalsta ja lukukuittaukset ovat tämän selaimen <code>localStorage</code>-muistissa.
-                Yhteiset osallistumiset sekä mätsi- ja tapahtumaviestit tallentuvat
-                prototyyppipalvelimella tiedostoon <code>data/demo-store.json</code>; myöhempi
-                tuotantototeutus voi käyttää Postgres-tietokantaa.
+                Perheprofiili, yhteisötila, ilmoittautumiset, mätsit ja viestit tallennetaan
+                PostgreSQL-tietokantaan API-reittien kautta. Tietokannan yhteysosoite asetetaan
+                ympäristömuuttujalla <code>DATABASE_URL</code>.
               </p>
             </section>
           </div>
@@ -1285,9 +1348,8 @@ export function CommunityHubPanel({
                 (<code>DELETE /api/participations</code>).
               </li>
               <li>
-                “Nollaa paikallinen palstahistoria” tyhjentää tämän selaimen paikallisen
-                palstademodatan. Se ei poista prototyyppipalvelimelle tallennettuja osallistumisia
-                tai chat-viestejä.
+                “Nollaa oma yhteisötila” palauttaa oman huonepalsta- ja tapahtumachat-näkymän
+                oletustilaan. Se ei poista ilmoittautumisia, mätsiviestejä tai tapahtumaviestejä.
               </li>
             </ul>
           </section>

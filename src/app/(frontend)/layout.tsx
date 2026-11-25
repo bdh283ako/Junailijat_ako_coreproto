@@ -2,8 +2,6 @@ import React from 'react'
 import type { Metadata } from 'next'
 import { DM_Sans } from 'next/font/google'
 import Script from 'next/script'
-import { BodyCustomCode, renderHeadCustomCode } from '@/lib/make-custom-code'
-import { makeSiteSettings, sanitizeHtmlAttribute } from '@/lib/make-site-settings'
 import './styles.css'
 
 const dmSans = DM_Sans({
@@ -11,54 +9,27 @@ const dmSans = DM_Sans({
   variable: '--font-dm-sans',
 })
 
-const defaultTitle = 'Gather — tapahtumat suomeksi'
-const title = makeSiteSettings.title ?? defaultTitle
-const description =
-  makeSiteSettings.description ??
-  'Löydä ajankohtaisia tapahtumia ja hyvää seuraa EventPulse-tapahtumakalenterista.'
-const favicon = makeSiteSettings.icons?.icon ?? '/favicon.svg'
-const socialImage = makeSiteSettings.openGraph?.image
-const googleAnalyticsId = sanitizeHtmlAttribute(makeSiteSettings.analytics?.googleAnalyticsId)
+const title = 'Junailijat — perheiden tapahtumat'
+const description = 'Löydä tapahtumia ja seuraa pääkaupunkiseudun perheille.'
+const googleAnalyticsId = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title,
   description,
-  robots: makeSiteSettings.robots?.index === false ? { follow: false, index: false } : undefined,
-  icons: favicon ? { icon: favicon } : undefined,
-  openGraph: {
-    title,
-    description,
-    images: socialImage ? [socialImage] : undefined,
-  },
-  twitter: socialImage
-    ? {
-        card: 'summary_large_image',
-        images: [socialImage],
-      }
-    : undefined,
+  icons: { icon: '/favicon.svg' },
+  openGraph: { title, description },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const language = sanitizeHtmlAttribute(makeSiteSettings.language) || 'fi'
-  const addBypassLinks = makeSiteSettings.accessibility?.addBypassLinks === true
-  const customScripts = makeSiteSettings.customScripts
-
   return (
-    <html lang={language}>
-      <head>
-        {renderHeadCustomCode(customScripts?.headStart, 'head-start')}
-        {renderHeadCustomCode(customScripts?.headEnd, 'head-end')}
-      </head>
+    <html lang="fi">
       <body
         className={`${dmSans.variable} min-h-screen bg-[var(--paper)] text-[var(--ink)] antialiased`}
       >
-        <BodyCustomCode html={customScripts?.bodyStart} />
-        {addBypassLinks && (
-          <a className="figma-bypass-link" href="#root">
-            Skip to content
-          </a>
-        )}
+        <a className="skip-link" href="#root">
+          Siirry sisältöön
+        </a>
         <div id="root" tabIndex={-1}>
           {children}
         </div>
@@ -68,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               src={`https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsId}`}
               strategy="afterInteractive"
             />
-            <Script id="figma-google-analytics" strategy="afterInteractive">
+            <Script id="google-analytics" strategy="afterInteractive">
               {`
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
@@ -78,7 +49,6 @@ gtag('config', ${JSON.stringify(googleAnalyticsId)});
             </Script>
           </>
         )}
-        <BodyCustomCode html={customScripts?.bodyEnd} />
       </body>
     </html>
   )

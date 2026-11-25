@@ -50,65 +50,8 @@ interface UseEventChatAndParticipationsOptions {
   currentUserName: string
 }
 
-interface DemoIdentity {
-  email: string
-  name: string
-}
-
-const DEMO_IDENTITY_STORAGE_KEY = 'perhepiiri_event_api_demo_identity_v1'
-let inMemoryDemoIdentity: DemoIdentity | null = null
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function isDemoIdentity(value: unknown): value is DemoIdentity {
-  return (
-    isRecord(value) &&
-    typeof value.email === 'string' &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email) &&
-    typeof value.name === 'string' &&
-    value.name.trim().length > 0
-  )
-}
-
-function getOrCreateDemoIdentity(): DemoIdentity {
-  if (inMemoryDemoIdentity) return inMemoryDemoIdentity
-
-  if (typeof window !== 'undefined') {
-    try {
-      const saved = window.localStorage.getItem(DEMO_IDENTITY_STORAGE_KEY)
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved)
-        if (isDemoIdentity(parsed)) {
-          inMemoryDemoIdentity = parsed
-          return parsed
-        }
-      }
-    } catch {
-      // Fall back to the in-memory identity when localStorage is unavailable or malformed.
-    }
-  }
-
-  const id =
-    typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function'
-      ? window.crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-  const identity = {
-    email: `demo-${id}@example.test`,
-    name: `Demokäyttäjä ${id.slice(0, 8)}`,
-  }
-  inMemoryDemoIdentity = identity
-
-  if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem(DEMO_IDENTITY_STORAGE_KEY, JSON.stringify(identity))
-    } catch {
-      // The in-memory identity remains available for this browser session.
-    }
-  }
-
-  return identity
 }
 
 function parseParticipation(value: unknown): EventParticipationRecord | null {
@@ -261,30 +204,17 @@ export function useEventChatAndParticipations({
   )
   const normalizedEmail = currentUserEmail.trim().toLowerCase()
   const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
-  const [demoIdentity, setDemoIdentity] = useState<DemoIdentity | null>(null)
-
-  useEffect(() => {
-    setDemoIdentity(hasValidEmail ? null : getOrCreateDemoIdentity())
-  }, [hasValidEmail])
-
-  const resolveIdentity = useCallback((): DemoIdentity => {
-    if (hasValidEmail) {
-      return {
+  const identity = useMemo(
+    () =>
+      hasValidEmail
+        ? {
         email: normalizedEmail,
         name: currentUserName.trim() || normalizedEmail.split('@')[0] || 'Google-käyttäjä',
       }
-    }
-    const identity = getOrCreateDemoIdentity()
-    setDemoIdentity(identity)
-    return identity
-  }, [currentUserName, hasValidEmail, normalizedEmail])
-  const effectiveIdentity = hasValidEmail
-    ? {
-        email: normalizedEmail,
-        name: currentUserName.trim() || normalizedEmail.split('@')[0] || 'Google-käyttäjä',
-      }
-    : demoIdentity
-  const participationEmail = effectiveIdentity?.email ?? ''
+        : null,
+    [currentUserName, hasValidEmail, normalizedEmail],
+  )
+  const participationEmail = identity?.email ?? ''
 
   const [participations, setParticipations] = useState<EventParticipationRecord[]>([])
   const [joinedEventIds, setJoinedEventIds] = useState<string[]>([])
@@ -399,7 +329,10 @@ export function useEventChatAndParticipations({
 
   const toggleParticipation = useCallback(
     async (eventId: string, eventTitle: string): Promise<'going' | 'removed' | false> => {
-      const identity = resolveIdentity()
+      if (!identity) {
+        setParticipationError('Kirjaudu Google-tilillä osallistuaksesi tapahtumaan.')
+        return false
+      }
       if (pendingEventIds.has(eventId)) return false
 
       const participantMatches = (participation: EventParticipationRecord) =>
@@ -520,7 +453,7 @@ export function useEventChatAndParticipations({
         })
       }
     },
-    [countsByEventId, joinedEventIdSet, participations, pendingEventIds, resolveIdentity],
+    [countsByEventId, identity, joinedEventIdSet, participations, pendingEventIds],
   )
 
   const activeChannelId = activeChannel?.id ?? null
@@ -581,7 +514,10 @@ export function useEventChatAndParticipations({
       }
       if (!messageBody) return false
 
-      const identity = resolveIdentity()
+      if (!identity) {
+        setChatError('Kirjaudu Google-tilillä lähettääksesi viestin.')
+        return false
+      }
       setIsSendingMessage(true)
       setChatError(null)
       try {
@@ -629,7 +565,7 @@ export function useEventChatAndParticipations({
         setIsSendingMessage(false)
       }
     },
-    [resolveIdentity],
+    [identity],
   )
 
   return {
@@ -641,9 +577,9 @@ export function useEventChatAndParticipations({
     pendingEventIds,
     participationError,
     toggleParticipation,
-    participantEmail: effectiveIdentity?.email ?? '',
-    participantName: effectiveIdentity?.name ?? '',
-    isDemoIdentity: !hasValidEmail,
+    participantEmail: identity?.email ?? '',
+    participantName: identity?.name ?? '',
+    isDemoIdentity: false,
     channels,
     activeChannel,
     setActiveChannel,

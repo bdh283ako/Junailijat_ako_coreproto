@@ -2,9 +2,8 @@
 
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { announceSessionChange, authSession, signOutInPlace } from '@/lib/app-session-browser'
-import { openPreviewOAuth, waitForPreviewOAuthSession } from '@/lib/preview-oauth-browser'
+import { useState, useSyncExternalStore } from 'react'
+import { authSession, signOutInPlace } from '@/lib/app-session-browser'
 
 export function AuthControl({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
@@ -15,29 +14,14 @@ export function AuthControl({ embedded = false }: { embedded?: boolean }) {
   )
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const pendingSignIn = useRef<AbortController | null>(null)
-
-  useEffect(() => () => pendingSignIn.current?.abort(), [])
 
   async function handleSignIn() {
     setBusy(true)
     setMessage('')
     try {
-      if (window.self !== window.top) {
-        pendingSignIn.current?.abort()
-        const controller = (pendingSignIn.current = new AbortController())
-        const secret = await openPreviewOAuth()
-        const outcome = await waitForPreviewOAuthSession(secret, controller.signal)
-        if (outcome === 'complete') {
-          await announceSessionChange(router)
-        } else if (outcome === 'expired') {
-          setMessage('Kirjautumispyyntö vanheni. Yritä uudelleen.')
-        }
-      } else {
-        await signIn('google', { redirectTo: '/' })
-      }
+      await signIn('google', { redirectTo: '/' })
     } catch {
-      setMessage('Google-kirjautuminen ei onnistunut. Salli ponnahdusikkuna ja yritä uudelleen.')
+      setMessage('Google-kirjautuminen ei onnistunut. Yritä uudelleen.')
     } finally {
       setBusy(false)
     }

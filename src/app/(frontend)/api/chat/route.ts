@@ -1,68 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/current-user'
 import {
   appendChatMessage,
-  listChannelMessages,
-  listChannelsSummary,
-} from '@/lib/localDemoStore'
+  canAccessChatChannel,
+  listChatChannels,
+  listChatMessages,
+} from '@/lib/postgres-app-data'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const channelId = searchParams.get('channelId')?.trim()
+function noStore(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'Cache-Control': 'no-store' },
+  })
+}
 
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return noStore({ error: 'Kirjautuminen vaaditaan.' }, 401)
+
+    const channelId = request.nextUrl.searchParams.get('channelId')?.trim()
     if (channelId) {
-      const messages = await listChannelMessages(channelId)
-      return NextResponse.json({ messages })
+      if (channelId.length > 300) return noStore({ error: 'Kanavatunniste ei kelpaa.' }, 400)
+      if (!(await canAccessChatChannel(user, channelId))) {
+        return noStore({ error: 'Sinulla ei ole pääsyä tähän keskusteluun.' }, 403)
+      }
+      return noStore({ messages: await listChatMessages(channelId) })
     }
 
-    const channels = await listChannelsSummary()
-    return NextResponse.json({ channels })
+    return noStore({ channels: await listChatChannels(user) })
   } catch (error) {
     console.error('GET /api/chat error:', error)
-    return NextResponse.json({ error: 'Keskustelujen haku epäonnistui' }, { status: 500 })
+    return noStore({ error: 'Keskustelujen haku epäonnistui.' }, 500)
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
+  let body: unknown
   try {
-    const body: unknown = await req.json()
-    const channelId =
-      isRecord(body) && typeof body.channelId === 'string' ? body.channelId.trim() : ''
-    const channelTitle =
-      isRecord(body) && typeof body.channelTitle === 'string' ? body.channelTitle.trim() : ''
-    const senderEmail =
-      isRecord(body) && typeof body.senderEmail === 'string'
-        ? body.senderEmail.trim().toLowerCase()
-        : ''
-    const senderName =
-      isRecord(body) && typeof body.senderName === 'string' ? body.senderName.trim() : ''
-    const messageBody = isRecord(body) && typeof body.body === 'string' ? body.body.trim() : ''
+    body = await request.json()
+  } catch {
+    return noStore({ error: 'Pyynnön JSON-runko ei kelpaa.' }, 400)
+  }
+  if (!isRecord(body)) return noStore({ error: 'Pyynnön runko ei kelpaa.' }, 400)
 
-    if (!channelId || !channelTitle || !senderEmail || !senderName || !messageBody) {
-      return NextResponse.json(
-        {
-          error: 'Pakolliset kentät: channelId, channelTitle, senderEmail, senderName, body',
-        },
-        { status: 400 },
-      )
+  const channelId = typeof body.channelId === 'string' ? body.channelId.trim() : ''
+  const channelTitle = typeof body.channelTitle === 'string' ? body.channelTitle.trim() : ''
+  const messageBody = typeof body.body === 'string' ? body.body.trim() : ''
+  if (
+    !channelId ||
+    channelId.length > 300 ||
+    !channelTitle ||
+    channelTitle.length > 160 ||
+    !messageBody ||
+    messageBody.length > 2000
+  ) {
+    return noStore({ error: 'Viestin tiedot eivät kelpaa.' }, 400)
+  }
+
+  try {
+    const user = await getCurrentUser()
+    if (!user) return noStore({ error: 'Kirjautuminen vaaditaan.' }, 401)
+    if (!user.email) return noStore({ error: 'Google-tililtä puuttuu sähköpostiosoite.' }, 400)
+    if (!(await canAccessChatChannel(user, channelId))) {
+      return noStore({ error: 'Sinulla ei ole pääsyä tähän keskusteluun.' }, 403)
     }
 
     const message = await appendChatMessage({
       channelId,
       channelTitle,
-      senderEmail,
-      senderName,
+      senderEmail: user.email.trim().toLowerCase(),
+      senderName: user.name?.trim() || user.email.split('@')[0],
       body: messageBody,
     })
-    return NextResponse.json({ message }, { status: 201 })
+    return noStore({ message }, 201)
   } catch (error) {
     console.error('POST /api/chat error:', error)
-    return NextResponse.json({ error: 'Viestin lähetys epäonnistui' }, { status: 500 })
+    return noStore({ error: 'Viestin lähetys epäonnistui.' }, 500)
   }
 }

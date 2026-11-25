@@ -155,7 +155,7 @@ export function DebugMonitorPanels({
 
       {showNerdDbFloat && (
         <FloatingDockWindow
-          title={`FILE_MONGO // REV #${mongoRevision}`}
+          title={`POSTGRESQL // REV #${mongoRevision}`}
           badge={dbSyncStatus.toUpperCase()}
           pos={dbFloatPos}
           onPosChange={onDbPosChange}

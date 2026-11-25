@@ -41,7 +41,7 @@ import {
 } from './protoData'
 
 interface ApiFamilyProfile {
-  email: string
+  id: string
   familyName: string
   area: string
   childrenSummary?: string
@@ -50,6 +50,7 @@ interface ApiFamilyProfile {
   likedByMe: boolean
   likedMe: boolean
   isMutualMatch: boolean
+  passedByMe: boolean
   matchChannelId: string
 }
 
@@ -72,13 +73,14 @@ function parseApiFamily(value: unknown): ApiFamilyProfile {
   }
   const record = value as Record<string, unknown>
   if (
-    typeof record.email !== 'string' ||
+    typeof record.id !== 'string' ||
     typeof record.familyName !== 'string' ||
     typeof record.area !== 'string' ||
     typeof record.updatedAt !== 'string' ||
     typeof record.likedByMe !== 'boolean' ||
     typeof record.likedMe !== 'boolean' ||
     typeof record.isMutualMatch !== 'boolean' ||
+    typeof record.passedByMe !== 'boolean' ||
     typeof record.matchChannelId !== 'string' ||
     (record.childrenSummary !== undefined && typeof record.childrenSummary !== 'string') ||
     (record.bio !== undefined && typeof record.bio !== 'string')
@@ -86,13 +88,14 @@ function parseApiFamily(value: unknown): ApiFamilyProfile {
     throw new Error('Perheprofiilin vastaus sisältää virheellisiä kenttiä.')
   }
   return {
-    email: record.email,
+    id: record.id,
     familyName: record.familyName,
     area: record.area,
     updatedAt: record.updatedAt,
     likedByMe: record.likedByMe,
     likedMe: record.likedMe,
     isMutualMatch: record.isMutualMatch,
+    passedByMe: record.passedByMe,
     matchChannelId: record.matchChannelId,
     ...(typeof record.childrenSummary === 'string'
       ? { childrenSummary: record.childrenSummary }
@@ -262,7 +265,7 @@ export default function PerheAppPrototypePage() {
   const [mapFocusCoords, setMapFocusCoords] = useState<[number, number] | null>(null)
   const [apiFamilyProfiles, setApiFamilyProfiles] = useState<ApiFamilyProfile[]>([])
   const [familyApiError, setFamilyApiError] = useState<string | null>(null)
-  const [pendingFamilyLikeEmail, setPendingFamilyLikeEmail] = useState<string | null>(null)
+  const [pendingFamilyLikeId, setPendingFamilyLikeId] = useState<string | null>(null)
 
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transientToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -317,45 +320,13 @@ export default function PerheAppPrototypePage() {
     currentUserEmail: currentUser?.email ?? '',
     currentUserName: currentUser?.displayName ?? '',
   })
-  const familyProfileInput = useMemo(
-    () => ({
-      email: currentUser?.email.trim().toLowerCase() ?? '',
-      familyName: profile.familyName || currentUser?.displayName || 'Perhe',
-      area: [profile.homeCity, profile.area].filter(Boolean).join(', ') || 'Pääkaupunkiseutu',
-      childrenSummary:
-        profile.children.length > 0
-          ? Array.from(
-              new Set(
-                profile.children.map((child) => child.group || child.ageLabel).filter(Boolean),
-              ),
-            ).join(', ')
-          : undefined,
-      bio:
-        profile.interests.length > 0
-          ? `Kiinnostuksen kohteet: ${profile.interests.join(', ')}`
-          : undefined,
-    }),
-    [
-      currentUser?.displayName,
-      currentUser?.email,
-      profile.area,
-      profile.children,
-      profile.familyName,
-      profile.homeCity,
-      profile.interests,
-    ],
-  )
-
   const refreshFamilyProfiles = useCallback(async () => {
-    const viewerEmail = currentUser?.email.trim().toLowerCase()
-    if (!viewerEmail) {
+    if (!currentUser) {
       setApiFamilyProfiles([])
       return
     }
 
-    const response = await fetch(`/api/families?viewerEmail=${encodeURIComponent(viewerEmail)}`, {
-      cache: 'no-store',
-    })
+    const response = await fetch('/api/families', { cache: 'no-store' })
     const payload: unknown = await response.json()
     if (!response.ok) {
       const message =
@@ -376,10 +347,10 @@ export default function PerheAppPrototypePage() {
       throw new Error('Perheiden hakuvastaus ei kelpaa.')
     }
     setApiFamilyProfiles(payload.families.map(parseApiFamily))
-  }, [currentUser?.email])
+  }, [currentUser?.id])
 
   useEffect(() => {
-    if (!familyProfileInput.email) {
+    if (!currentUser) {
       setApiFamilyProfiles([])
       return
     }
@@ -396,36 +367,19 @@ export default function PerheAppPrototypePage() {
         recordDemoSelection('FAMILY_API_ERROR', message)
       }
     }
-    const upsertProfile = async () => {
-      const response = await fetch('/api/families', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upsertProfile', profile: familyProfileInput }),
-      })
-      if (!response.ok) {
-        const payload: unknown = await response.json()
-        const message =
-          payload &&
-          typeof payload === 'object' &&
-          'error' in payload &&
-          typeof payload.error === 'string'
-            ? payload.error
-            : `Perheprofiilin tallennus epäonnistui (HTTP ${response.status}).`
-        throw new Error(message)
-      }
-      await refreshFamilyProfiles()
-      setFamilyApiError(null)
-    }
-
-    void upsertProfile().catch(reportError)
+    const loadFamilies = () =>
+      refreshFamilyProfiles()
+        .then(() => setFamilyApiError(null))
+        .catch(reportError)
+    void loadFamilies()
     const intervalId = window.setInterval(() => {
-      void refreshFamilyProfiles().catch(reportError)
+      void loadFamilies()
     }, 4000)
     return () => {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [familyProfileInput, recordDemoSelection, refreshFamilyProfiles])
+  }, [currentUser?.id, recordDemoSelection, refreshFamilyProfiles])
 
   const eventChatReadStorageKey = `shellproto-event-chat-last-read:${encodeURIComponent(
     eventChat.participantEmail.trim().toLowerCase() || 'demo',
@@ -492,7 +446,7 @@ export default function PerheAppPrototypePage() {
   }, [eventChat.participantEmail, eventChat.participations])
 
   const matchedIds = useMemo(
-    () => apiFamilyProfiles.filter((family) => family.isMutualMatch).map((family) => family.email),
+    () => apiFamilyProfiles.filter((family) => family.isMutualMatch).map((family) => family.id),
     [apiFamilyProfiles],
   )
   const mutualFamilyChannelIds = useMemo(
@@ -737,7 +691,7 @@ export default function PerheAppPrototypePage() {
     const famCoords = resolveCoordsTuple(COARSE_CITY_COORDS[city], DEFAULT_PKS_COORDS)
     const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
     const familyProfile: FamilyProfile = {
-      id: family.email,
+      id: family.id,
       name: family.familyName,
       area: family.area,
       city,
@@ -760,7 +714,7 @@ export default function PerheAppPrototypePage() {
   const filteredDeck = familiesWithDistance
     .filter((fam) => {
       if (!profile.privacy.discoverable) return false
-      if (dismissedIds.includes(fam.id) || matchedIds.includes(fam.id)) return false
+      if (fam.passedByMe || dismissedIds.includes(fam.id) || matchedIds.includes(fam.id)) return false
       if (fam.distanceKm > profile.filters.maxDistanceKm) return false
       if (profile.filters.targetCity !== 'Kaikki PKS' && fam.city !== profile.filters.targetCity) {
         return false
@@ -1057,69 +1011,55 @@ export default function PerheAppPrototypePage() {
 
   const handleSwipe = (liked: boolean) => {
     if (!currentCard) return
-    if (liked) {
-      if (pendingFamilyLikeEmail === currentCard.email) return
-      const fromEmail = currentUser?.email.trim().toLowerCase()
-      if (!fromEmail) {
-        setFamilyApiError('Kirjaudu sisään ennen perheiden tykkäämistä.')
-        return
-      }
-      setPendingFamilyLikeEmail(currentCard.email)
-      void (async () => {
-        try {
-          const response = await fetch('/api/families', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'toggleLike',
-              fromEmail,
-              toEmail: currentCard.email,
-            }),
-          })
-          const payload: unknown = await response.json()
-          if (!response.ok) {
-            const message =
-              payload &&
-              typeof payload === 'object' &&
-              'error' in payload &&
-              typeof payload.error === 'string'
-                ? payload.error
-                : `Tykkäyksen tallennus epäonnistui (HTTP ${response.status}).`
-            throw new Error(message)
-          }
-          if (
-            !payload ||
-            typeof payload !== 'object' ||
-            !('like' in payload) ||
-            !payload.like ||
-            typeof payload.like !== 'object' ||
-            !('isMutualMatch' in payload.like) ||
-            typeof payload.like.isMutualMatch !== 'boolean'
-          ) {
-            throw new Error('Tykkäyksen palvelinvastaus ei kelpaa.')
-          }
-          setFamilyApiError(null)
-          await refreshFamilyProfiles()
-          if (payload.like.isMutualMatch) {
-            setLatestMatch(currentCard)
-            recordDemoSelection('FAMILY_MATCH', currentCard.email)
-          } else {
-            setLatestMatch(null)
-            recordDemoSelection('FAMILY_LIKE', currentCard.email)
-          }
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : 'Tykkäyksen tallennus epäonnistui.'
-          setFamilyApiError(message)
-          recordDemoSelection('FAMILY_API_ERROR', message)
-        } finally {
-          setPendingFamilyLikeEmail(null)
-        }
-      })()
-    } else {
-      setDismissedIds((prev) => [...prev, currentCard.id])
-      recordDemoSelection('SWIPE_PASS', currentCard.id)
+    if (pendingFamilyLikeId === currentCard.id) return
+    if (!currentUser) {
+      setFamilyApiError('Kirjaudu sisään ennen perheiden selaamista.')
+      return
     }
+
+    setPendingFamilyLikeId(currentCard.id)
+    void (async () => {
+      try {
+        const response = await fetch('/api/match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toFamilyId: currentCard.id,
+            action: liked ? 'liked' : 'passed',
+          }),
+        })
+        const payload: unknown = await response.json()
+        if (!response.ok) {
+          const message =
+            payload &&
+            typeof payload === 'object' &&
+            'error' in payload &&
+            typeof payload.error === 'string'
+              ? payload.error
+              : `Perhevalinnan tallennus epäonnistui (HTTP ${response.status}).`
+          throw new Error(message)
+        }
+        if (!payload || typeof payload !== 'object' || !('match' in payload)) {
+          throw new Error('Perhevalinnan palvelinvastaus ei kelpaa.')
+        }
+        setFamilyApiError(null)
+        await refreshFamilyProfiles()
+        if (liked && payload.match === true) {
+          setLatestMatch(currentCard)
+          recordDemoSelection('FAMILY_MATCH', currentCard.id)
+        } else {
+          setLatestMatch(null)
+          recordDemoSelection(liked ? 'FAMILY_LIKE' : 'SWIPE_PASS', currentCard.id)
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Perhevalinnan tallennus epäonnistui.'
+        setFamilyApiError(message)
+        recordDemoSelection('FAMILY_API_ERROR', message)
+      } finally {
+        setPendingFamilyLikeId(null)
+      }
+    })()
   }
 
   const openOnMap = (coords: [number, number], label = 'coords') => {
@@ -1363,8 +1303,26 @@ export default function PerheAppPrototypePage() {
                 setProfileSubView('main')
               }}
               onResetDismissed={() => {
-                setDismissedIds([])
-                recordDemoSelection('DISMISSED_RESET', currentUser.id)
+                void (async () => {
+                  try {
+                    const response = await fetch('/api/match', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'reset-passed' }),
+                    })
+                    if (!response.ok) {
+                      throw new Error(`Ohitettujen perheiden nollaus epäonnistui (HTTP ${response.status}).`)
+                    }
+                    setDismissedIds([])
+                    await refreshFamilyProfiles()
+                    setFamilyApiError(null)
+                    recordDemoSelection('DISMISSED_RESET', currentUser.id)
+                  } catch (error) {
+                    setFamilyApiError(
+                      error instanceof Error ? error.message : 'Ohitettujen perheiden nollaus epäonnistui.',
+                    )
+                  }
+                })()
               }}
               onOpenMap={openOnMap}
               onOpenMatchesChat={(familyId) =>

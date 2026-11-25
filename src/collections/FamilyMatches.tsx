@@ -1,14 +1,17 @@
-import type { CollectionConfig } from 'payload'
+import type { Access, CollectionConfig } from 'payload'
+
+const isPayloadAdmin: Access = ({ req }) => req.user?.collection === 'admins'
 
 export const FamilyMatches: CollectionConfig = {
   slug: 'family-matches',
+  access: {
+    read: isPayloadAdmin,
+    create: isPayloadAdmin,
+    update: isPayloadAdmin,
+    delete: isPayloadAdmin,
+  },
   admin: {
     useAsTitle: 'status',
-  },
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
   },
   fields: [
     {
@@ -35,4 +38,5 @@ export const FamilyMatches: CollectionConfig = {
       ],
     },
   ],
+  indexes: [{ fields: ['fromFamily', 'toFamily'], unique: true }],
 }

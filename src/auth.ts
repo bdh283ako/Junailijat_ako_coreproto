@@ -26,6 +26,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     csrfToken: { name: CSRF_COOKIE, options: SESSION_COOKIE_OPTIONS },
   },
   callbacks: {
+    async signIn({ account, profile }) {
+      if (account?.provider !== 'google' || typeof profile?.sub !== 'string') return false
+
+      await syncGoogleUser({
+        sub: profile.sub,
+        email: typeof profile.email === 'string' ? profile.email : null,
+        name: typeof profile.name === 'string' ? profile.name : null,
+        picture: typeof profile.picture === 'string' ? profile.picture : null,
+      })
+      return true
+    },
     jwt({ token, account, profile }) {
       if (account?.provider === 'google' && typeof profile?.sub === 'string') {
         token.providerId = profile.sub
@@ -43,26 +54,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.providerId = typeof token.providerId === 'string' ? token.providerId : ''
       }
       return session
-    },
-  },
-  events: {
-    async signIn({ account, profile }) {
-      if (account?.provider !== 'google' || typeof profile?.sub !== 'string') return
-
-      try {
-        await syncGoogleUser({
-          sub: profile.sub,
-          email: typeof profile.email === 'string' ? profile.email : null,
-          name: typeof profile.name === 'string' ? profile.name : null,
-          picture: typeof profile.picture === 'string' ? profile.picture : null,
-        })
-      } catch (error) {
-        // Account persistence must not invalidate an otherwise valid provider session.
-        console.error(
-          '[app-auth] Google user sync failed',
-          error instanceof Error ? error.message : 'Unknown error',
-        )
-      }
     },
   },
 })

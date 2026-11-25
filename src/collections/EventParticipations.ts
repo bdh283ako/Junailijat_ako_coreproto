@@ -1,4 +1,6 @@
-import type { CollectionConfig } from 'payload'
+import type { Access, CollectionConfig } from 'payload'
+
+const isPayloadAdmin: Access = ({ req }) => req.user?.collection === 'admins'
 
 export const EventParticipations: CollectionConfig = {
   slug: 'event-participations',
@@ -7,10 +9,10 @@ export const EventParticipations: CollectionConfig = {
     defaultColumns: ['eventTitle', 'participantName', 'status', 'updatedAt'],
   },
   access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
+    read: isPayloadAdmin,
+    create: isPayloadAdmin,
+    update: isPayloadAdmin,
+    delete: isPayloadAdmin,
   },
   fields: [
     { name: 'eventId', type: 'text', required: true, index: true },
@@ -28,4 +30,5 @@ export const EventParticipations: CollectionConfig = {
       ],
     },
   ],
+  indexes: [{ fields: ['eventId', 'participantEmail'], unique: true }],
 }
