@@ -1,6 +1,7 @@
 'use client'
 
 import { buildGoogleCalendarUrl } from './googleCalendar'
+import type { EventParticipationRecord } from './hooks/useEventChatAndParticipations'
 import type { FamilyEvent, FamilyProfile, UserProfileState } from './protoData'
 
 export type EventAgeQuickFilter = 'all' | '0-3' | '4-6' | '7-12' | 'all-ages'
@@ -22,7 +23,11 @@ interface EventsTabPanelProps {
   filteredSortedEvents: EventsTabEvent[]
   baseAreaSortedEventsCount: number
   matchedFamilies: Pick<FamilyProfile, 'attendingEventId' | 'name'>[]
-  attendingIds: string[]
+  participations: EventParticipationRecord[]
+  currentUserEmail: string
+  pendingEventIds: ReadonlySet<string>
+  isLoadingParticipations: boolean
+  participationError: string | null
   eventAgeFilter: EventAgeQuickFilter
   onEventAgeFilterChange: (filter: EventAgeQuickFilter) => void
   eventSearchQuery: string
@@ -34,8 +39,8 @@ interface EventsTabPanelProps {
   onClearEventFilters: () => void
   onShowAllEvents: () => void
   onOpenProfileSettings: () => void
-  onToggleEventAttendance: (eventId: string) => void
-  onOpenEventChat: (eventId: string) => void
+  onToggleParticipation: (eventId: string, eventTitle: string) => void
+  onOpenEventChat: (eventId: string, eventTitle: string) => void
   onLogSelection: (action: string, detail: string) => void
   onOpenMap: (coords: [number, number], label?: string) => void
 }
@@ -55,7 +60,11 @@ export function EventsTabPanel({
   filteredSortedEvents,
   baseAreaSortedEventsCount,
   matchedFamilies,
-  attendingIds,
+  participations,
+  currentUserEmail,
+  pendingEventIds,
+  isLoadingParticipations,
+  participationError,
   eventAgeFilter,
   onEventAgeFilterChange,
   eventSearchQuery,
@@ -67,7 +76,7 @@ export function EventsTabPanel({
   onClearEventFilters,
   onShowAllEvents,
   onOpenProfileSettings,
-  onToggleEventAttendance,
+  onToggleParticipation,
   onOpenEventChat,
   onLogSelection,
   onOpenMap,
@@ -122,6 +131,12 @@ export function EventsTabPanel({
           </button>
         </div>
       </div>
+
+      {participationError && (
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+          {participationError}
+        </p>
+      )}
 
       <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -203,7 +218,14 @@ export function EventsTabPanel({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {filteredSortedEvents.map((evt) => {
-            const isGoing = attendingIds.includes(evt.id)
+            const eventParticipations = participations.filter(
+              (participation) => participation.eventId === evt.id && participation.status === 'going',
+            )
+            const isGoing = eventParticipations.some(
+              (participation) =>
+                participation.participantEmail.trim().toLowerCase() ===
+                currentUserEmail.trim().toLowerCase(),
+            )
             const matchedGoing = profile.privacy.shareEventsWithMatches
               ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
               : []
@@ -258,18 +280,22 @@ export function EventsTabPanel({
                 <div className="pt-1 flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    onClick={() => onToggleEventAttendance(evt.id)}
-                    className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-bold transition-colors ${
+                    disabled={pendingEventIds.has(evt.id)}
+                    aria-pressed={isGoing}
+                    onClick={() => onToggleParticipation(evt.id, evt.title)}
+                    className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-bold transition-colors disabled:cursor-wait disabled:opacity-60 ${
                       isGoing
                         ? 'bg-emerald-600 text-white'
                         : 'bg-slate-900 text-white hover:bg-slate-800'
                     }`}
                   >
-                    {isGoing ? '✓ Menossa mukaan' : '+ Menossa mukaan'}
+                    {pendingEventIds.has(evt.id)
+                      ? 'Tallennetaan...'
+                      : `${isGoing ? '✓ Menossa' : '+ Menossa'} (${isLoadingParticipations ? '…' : eventParticipations.length})`}
                   </button>
                   <button
                     type="button"
-                    onClick={() => onOpenEventChat(evt.id)}
+                    onClick={() => onOpenEventChat(evt.id, evt.title)}
                     className="px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-xs font-bold hover:bg-amber-100 transition-colors"
                     title="Keskustele tapahtumaan menossa olevien kanssa (anonyymi oletuksena)"
                   >

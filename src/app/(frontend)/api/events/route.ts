@@ -25,7 +25,7 @@ export interface NormalizedFeedEvent {
 
 const KARO_EVENTPULSE_URL =
   process.env.KARO_EVENTPULSE_URL?.trim() ||
-  'https://eventpulsebyjunailijat.ai.studio/api/events/feed.jsonld'
+  'https://eventpulsebyjunailijat.ai.studio/api/events/feed.jsonld?horizon=all'
 
 // YSO-asiasanat Linked Eventsissä: lapset (p4354), perheet (p13050), vauvat (p11185), leikki-ikäiset (p20513)
 const FAMILY_YSO_KEYWORDS = 'yso:p4354,yso:p13050,yso:p11185,yso:p20513'
@@ -480,7 +480,7 @@ async function fetchLinkedEventsForMunicipality(
     }
 
     const res = await fetch(buildDefaultUrl(true), {
-      next: { revalidate: 300 },
+      cache: 'no-store',
       signal: AbortSignal.timeout(8000),
     })
     const payload = res.ok
@@ -491,7 +491,7 @@ async function fetchLinkedEventsForMunicipality(
 
     if (rows.length < targetSize) {
       const fallbackRes = await fetch(buildDefaultUrl(false), {
-        next: { revalidate: 300 },
+        cache: 'no-store',
         signal: AbortSignal.timeout(8000),
       })
       if (fallbackRes.ok) {
@@ -528,7 +528,7 @@ async function fetchLinkedEventsForMunicipality(
 async function fetchKauniainenWebEvents(): Promise<NormalizedFeedEvent[]> {
   try {
     const res = await fetch(KAUNIAINEN_EVENTS_URL, {
-      next: { revalidate: 900 },
+      cache: 'no-store',
       signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) return []
@@ -548,9 +548,10 @@ async function fetchKauniainenWebEvents(): Promise<NormalizedFeedEvent[]> {
       const title = stripHtml(m[2])
       if (!link || !title || title.length < 4 || seen.has(link)) continue
       seen.add(link)
+      const slug = link.replace(/\/+$/, '').split('/').pop() || String(items.length + 1)
 
       items.push({
-        id: `grani-web-${items.length + 1}`,
+        id: `grani-web-${slug}`,
         title,
         startDate: new Date().toISOString(),
         time: 'Katso ajankohta sivulta',

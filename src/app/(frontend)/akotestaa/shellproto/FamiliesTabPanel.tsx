@@ -10,6 +10,11 @@ import type {
 export type FamilySubTab = 'discover' | 'matches'
 
 type ScoredFamily = FamilyProfile & {
+  email: string
+  likedByMe: boolean
+  likedMe: boolean
+  isMutualMatch: boolean
+  matchChannelId: string
   distanceKm: number
   match: ReturnType<typeof calcFamilyMatch>
 }
@@ -20,6 +25,7 @@ export interface FamiliesTabPanelProps {
   matchedFamilies: ScoredFamily[]
   currentCard: ScoredFamily | undefined
   profile: UserProfileState
+  familyApiError: string | null
   safeEvents: FamilyEvent[]
   attendingIds: string[]
   onFamilySubTabChange: (tab: FamilySubTab) => void
@@ -38,6 +44,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
     matchedFamilies,
     currentCard,
     profile,
+    familyApiError,
     safeEvents,
     attendingIds,
     onFamilySubTabChange,
@@ -51,6 +58,11 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
+      {familyApiError && (
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+          Perheiden synkronointi epäonnistui: {familyApiError}
+        </p>
+      )}
       <div className="grid grid-cols-2 sm:hidden bg-slate-200 p-1 rounded-xl text-xs font-bold">
         <button
           type="button"
@@ -198,7 +210,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                     onClick={() => onSwipe(true)}
                     className="py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-sm hover:bg-emerald-700"
                   >
-                    🤝 Verkostoidu
+                    {currentCard.likedByMe ? '❤️ Peru tykkäys' : '🤝 Verkostoidu'}
                   </button>
                 </div>
               </div>
@@ -283,7 +295,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => onOpenMatchesChat(fam.id)}
+                      onClick={() => onOpenMatchesChat(fam.matchChannelId)}
                       className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
                     >
                       Viesti

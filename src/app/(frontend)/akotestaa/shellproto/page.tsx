@@ -6,6 +6,7 @@ import {
   DebugMonitorPanels,
   type FeedSourcesMeta,
 } from './DebugMonitorPanels'
+import { EventChatWindow } from './EventChatWindow'
 import { EventsTabPanel, type EventAgeQuickFilter } from './EventsTabPanel'
 import { FamiliesTabPanel, type FamilySubTab } from './FamiliesTabPanel'
 import { FamilyMembersPanel } from './FamilyMembersPanel'
@@ -18,6 +19,7 @@ import { PksMapView } from './PksMapView'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import { StoreInspectorPanel } from './StoreInspectorPanel'
 import { useEventsFeed, type EventFeedStatus } from './useEventsFeed'
+import { useEventChatAndParticipations } from './hooks/useEventChatAndParticipations'
 import { useFamilyProfileSync } from './useFamilyProfileSync'
 import { useGoogleSession } from './useGoogleSession'
 import {
@@ -27,7 +29,6 @@ import {
   ChildItem,
   CloseRelativeItem,
   CoParentItem,
-  DEMO_FAMILIES,
   DemoSelectionEvent,
   FamilyProfile,
   FloatingPos,
@@ -39,6 +40,84 @@ import {
   TabKey,
   UserProfileState,
 } from './protoData'
+
+interface ApiFamilyProfile {
+  email: string
+  familyName: string
+  area: string
+  childrenSummary?: string
+  bio?: string
+  updatedAt: string
+  likedByMe: boolean
+  likedMe: boolean
+  isMutualMatch: boolean
+  matchChannelId: string
+}
+
+type ScoredApiFamily = FamilyProfile &
+  ApiFamilyProfile & {
+    distanceKm: number
+    match: ReturnType<typeof calcFamilyMatch>
+  }
+
+const COARSE_CITY_COORDS: Record<string, [number, number]> = {
+  Helsinki: [60.1699, 24.9384],
+  Espoo: [60.2055, 24.6559],
+  Vantaa: [60.2934, 25.0378],
+  Kauniainen: [60.212, 24.727],
+}
+
+function parseApiFamily(value: unknown): ApiFamilyProfile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Perheprofiilin vastaus ei kelpaa.')
+  }
+  const record = value as Record<string, unknown>
+  if (
+    typeof record.email !== 'string' ||
+    typeof record.familyName !== 'string' ||
+    typeof record.area !== 'string' ||
+    typeof record.updatedAt !== 'string' ||
+    typeof record.likedByMe !== 'boolean' ||
+    typeof record.likedMe !== 'boolean' ||
+    typeof record.isMutualMatch !== 'boolean' ||
+    typeof record.matchChannelId !== 'string' ||
+    (record.childrenSummary !== undefined && typeof record.childrenSummary !== 'string') ||
+    (record.bio !== undefined && typeof record.bio !== 'string')
+  ) {
+    throw new Error('Perheprofiilin vastaus sisältää virheellisiä kenttiä.')
+  }
+  return {
+    email: record.email,
+    familyName: record.familyName,
+    area: record.area,
+    updatedAt: record.updatedAt,
+    likedByMe: record.likedByMe,
+    likedMe: record.likedMe,
+    isMutualMatch: record.isMutualMatch,
+    matchChannelId: record.matchChannelId,
+    ...(typeof record.childrenSummary === 'string'
+      ? { childrenSummary: record.childrenSummary }
+      : {}),
+    ...(typeof record.bio === 'string' ? { bio: record.bio } : {}),
+  }
+}
+
+function getCoarseCity(area: string, fallbackCity: string): string {
+  const normalized = area.toLowerCase()
+  if (normalized.includes('helsinki')) return 'Helsinki'
+  if (normalized.includes('espoo')) return 'Espoo'
+  if (normalized.includes('vantaa')) return 'Vantaa'
+  if (normalized.includes('kauniainen')) return 'Kauniainen'
+  return fallbackCity in COARSE_CITY_COORDS ? fallbackCity : 'Helsinki'
+}
+
+function getAgeGroups(summary?: string): string[] {
+  const normalized = (summary ?? '').toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, '')
+  return ['0-3v', '4-6v', '7-12v', '13+v'].filter((group) => {
+    const digits = group.replace('v', '')
+    return normalized.includes(group) || normalized.includes(digits)
+  })
+}
 
 function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQuickFilter): boolean {
   if (filter === 'all') return true
@@ -141,6 +220,9 @@ export default function PerheAppPrototypePage() {
   const [hubEventId, setHubEventId] = useState<string | null>(null)
   const [hubDirectTargetId, setHubDirectTargetId] = useState<string | null>(null)
   const [hubMountKey, setHubMountKey] = useState<number>(0)
+  const [chatLastReadAt, setChatLastReadAt] = useState<Record<string, string>>({})
+  const chatLastReadAtRef = useRef<Record<string, string>>({})
+  const [chatReadError, setChatReadError] = useState<string | null>(null)
 
   const [eventAgeFilter, setEventAgeFilter] = useState<EventAgeQuickFilter>('all')
   const [eventSearchQuery, setEventSearchQuery] = useState<string>('')
@@ -165,6 +247,7 @@ export default function PerheAppPrototypePage() {
   const [showNerdDbFloat, setShowNerdDbFloat] = useState(true)
   const [demoFloatPos, setDemoFloatPos] = useState<FloatingPos | null>(null)
   const [dbFloatPos, setDbFloatPos] = useState<FloatingPos | null>(null)
+  const [chatFloatPos, setChatFloatPos] = useState<FloatingPos | null>(null)
 
   const [demoSelections, setDemoSelections] = useState<DemoSelectionEvent[]>([
     { id: 'init-1', time: '--.--.--', action: 'OAUTH_CHECK', detail: 'checking /api/auth/session' },
@@ -180,6 +263,9 @@ export default function PerheAppPrototypePage() {
 
   const [latestMatch, setLatestMatch] = useState<FamilyProfile | null>(null)
   const [mapFocusCoords, setMapFocusCoords] = useState<[number, number] | null>(null)
+  const [apiFamilyProfiles, setApiFamilyProfiles] = useState<ApiFamilyProfile[]>([])
+  const [familyApiError, setFamilyApiError] = useState<string | null>(null)
+  const [pendingFamilyLikeEmail, setPendingFamilyLikeEmail] = useState<string | null>(null)
 
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transientToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -219,10 +305,6 @@ export default function PerheAppPrototypePage() {
     setAttendingIds,
     dismissedIds,
     setDismissedIds,
-    matchedIds,
-    setMatchedIds,
-    messages,
-    setMessages,
     saveProfileFeedback,
     resetTransientData,
   } = useFamilyProfileSync({ currentUser })
@@ -234,6 +316,243 @@ export default function PerheAppPrototypePage() {
     eventFeedDebug,
     loadEventsFeed,
   } = useEventsFeed({ onLogSelection: recordDemoSelection })
+
+  const activeEventIds = useMemo(() => events.map((event) => event.id), [events])
+  const eventChat = useEventChatAndParticipations({
+    activeEventIds,
+    currentUserEmail: currentUser?.email ?? '',
+    currentUserName: currentUser?.displayName ?? '',
+  })
+  const familyProfileInput = useMemo(
+    () => ({
+      email: currentUser?.email.trim().toLowerCase() ?? '',
+      familyName: profile.familyName || currentUser?.displayName || 'Perhe',
+      area: [profile.homeCity, profile.area].filter(Boolean).join(', ') || 'Pääkaupunkiseutu',
+      childrenSummary:
+        profile.children.length > 0
+          ? Array.from(
+              new Set(
+                profile.children.map((child) => child.group || child.ageLabel).filter(Boolean),
+              ),
+            ).join(', ')
+          : undefined,
+      bio:
+        profile.interests.length > 0
+          ? `Kiinnostuksen kohteet: ${profile.interests.join(', ')}`
+          : undefined,
+    }),
+    [
+      currentUser?.displayName,
+      currentUser?.email,
+      profile.area,
+      profile.children,
+      profile.familyName,
+      profile.homeCity,
+      profile.interests,
+    ],
+  )
+
+  const refreshFamilyProfiles = useCallback(async () => {
+    const viewerEmail = currentUser?.email.trim().toLowerCase()
+    if (!viewerEmail) {
+      setApiFamilyProfiles([])
+      return
+    }
+
+    const response = await fetch(
+      `/api/families?viewerEmail=${encodeURIComponent(viewerEmail)}`,
+      { cache: 'no-store' },
+    )
+    const payload: unknown = await response.json()
+    if (!response.ok) {
+      const message =
+        payload && typeof payload === 'object' && 'error' in payload &&
+        typeof payload.error === 'string'
+          ? payload.error
+          : `Perheiden haku epäonnistui (HTTP ${response.status}).`
+      throw new Error(message)
+    }
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !('families' in payload) ||
+      !Array.isArray(payload.families)
+    ) {
+      throw new Error('Perheiden hakuvastaus ei kelpaa.')
+    }
+    setApiFamilyProfiles(payload.families.map(parseApiFamily))
+  }, [currentUser?.email])
+
+  useEffect(() => {
+    if (!familyProfileInput.email) {
+      setApiFamilyProfiles([])
+      return
+    }
+
+    let cancelled = false
+    let lastReportedError = ''
+    const reportError = (error: unknown) => {
+      if (cancelled) return
+      const message =
+        error instanceof Error ? error.message : 'Perheprofiilin synkronointi epäonnistui.'
+      setFamilyApiError(message)
+      if (message !== lastReportedError) {
+        lastReportedError = message
+        recordDemoSelection('FAMILY_API_ERROR', message)
+      }
+    }
+    const upsertProfile = async () => {
+      const response = await fetch('/api/families', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upsertProfile', profile: familyProfileInput }),
+      })
+      if (!response.ok) {
+        const payload: unknown = await response.json()
+        const message =
+          payload && typeof payload === 'object' && 'error' in payload &&
+          typeof payload.error === 'string'
+            ? payload.error
+            : `Perheprofiilin tallennus epäonnistui (HTTP ${response.status}).`
+        throw new Error(message)
+      }
+      await refreshFamilyProfiles()
+      setFamilyApiError(null)
+    }
+
+    void upsertProfile().catch(reportError)
+    const intervalId = window.setInterval(() => {
+      void refreshFamilyProfiles().catch(reportError)
+    }, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [familyProfileInput, recordDemoSelection, refreshFamilyProfiles])
+
+  const eventChatReadStorageKey = `shellproto-event-chat-last-read:${encodeURIComponent(
+    eventChat.participantEmail.trim().toLowerCase() || 'demo',
+  )}`
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const saved = window.localStorage.getItem(eventChatReadStorageKey)
+      const parsed: unknown = saved ? JSON.parse(saved) : null
+      const timestamps: Record<string, string> = {}
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        for (const [channelId, timestamp] of Object.entries(parsed)) {
+          if (typeof timestamp === 'string') timestamps[channelId] = timestamp
+        }
+      }
+      chatLastReadAtRef.current = timestamps
+      setChatLastReadAt(timestamps)
+      setChatReadError(null)
+    } catch {
+      chatLastReadAtRef.current = {}
+      setChatLastReadAt({})
+      setChatReadError('Lukukuittauksia ei voitu lukea selaimen tallennustilasta.')
+    }
+  }, [eventChatReadStorageKey])
+
+  const markChatChannelRead = useCallback(
+    (channelId: string) => {
+      const next = {
+        ...chatLastReadAtRef.current,
+        [channelId]: new Date().toISOString(),
+      }
+      chatLastReadAtRef.current = next
+      setChatLastReadAt(next)
+      try {
+        window.localStorage.setItem(eventChatReadStorageKey, JSON.stringify(next))
+        setChatReadError(null)
+      } catch {
+        setChatReadError('Lukukuittausta ei voitu tallentaa selaimen tallennustilaan.')
+      }
+    },
+    [eventChatReadStorageKey],
+  )
+
+  const activeChatLastMessageId = eventChat.messages.at(-1)?.id
+  useEffect(() => {
+    const channelId = eventChat.activeChannel?.id
+    if (channelId?.startsWith('event:') || channelId?.startsWith('family:')) {
+      markChatChannelRead(channelId)
+    }
+  }, [eventChat.activeChannel?.id, activeChatLastMessageId, markChatChannelRead])
+
+  const ownGoingEventIds = useMemo(() => {
+    const email = eventChat.participantEmail.trim().toLowerCase()
+    return new Set(
+      eventChat.participations
+        .filter(
+          (participation) =>
+            participation.status === 'going' &&
+            participation.participantEmail.trim().toLowerCase() === email,
+        )
+        .map((participation) => participation.eventId),
+    )
+  }, [eventChat.participantEmail, eventChat.participations])
+
+  const matchedIds = useMemo(
+    () => apiFamilyProfiles.filter((family) => family.isMutualMatch).map((family) => family.email),
+    [apiFamilyProfiles],
+  )
+  const mutualFamilyChannelIds = useMemo(
+    () =>
+      new Set(
+        apiFamilyProfiles
+          .filter((family) => family.isMutualMatch)
+          .map((family) => family.matchChannelId),
+      ),
+    [apiFamilyProfiles],
+  )
+
+  const unreadChatChannelIds = useMemo(
+    () =>
+      new Set(
+        eventChat.channels
+          .filter((channel) => {
+            if (!channel.id.startsWith('event:') && !channel.id.startsWith('family:')) {
+              return false
+            }
+            if (
+              channel.id.startsWith('family:') &&
+              !mutualFamilyChannelIds.has(channel.id)
+            ) {
+              return false
+            }
+            if (
+              channel.id.startsWith('event:') &&
+              !ownGoingEventIds.has(channel.id.slice('event:'.length))
+            ) {
+              return false
+            }
+            if (
+              channel.lastSenderEmail.trim().toLowerCase() ===
+              eventChat.participantEmail.trim().toLowerCase()
+            ) {
+              return false
+            }
+            const lastMessageTime = Date.parse(channel.lastMessageAt)
+            const lastReadAt = chatLastReadAt[channel.id]
+            if (!lastReadAt) return true
+            const lastReadTime = Date.parse(lastReadAt)
+            return (
+              Number.isNaN(lastReadTime) ||
+              (!Number.isNaN(lastMessageTime) && lastMessageTime > lastReadTime)
+            )
+          })
+          .map((channel) => channel.id),
+      ),
+    [
+      eventChat.channels,
+      eventChat.participantEmail,
+      chatLastReadAt,
+      ownGoingEventIds,
+      mutualFamilyChannelIds,
+    ],
+  )
 
   const openHubChannel = useCallback(
     (
@@ -259,6 +578,13 @@ export default function PerheAppPrototypePage() {
     if (typeof window === 'undefined') return
     setDemoFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 24 })
     setDbFloatPos((prev) => prev ?? { x: Math.max(12, window.innerWidth - 336), y: 268 })
+    setChatFloatPos(
+      (prev) =>
+        prev ?? {
+          x: Math.max(12, window.innerWidth - 336),
+          y: Math.max(12, Math.min(180, window.innerHeight - 460)),
+        },
+    )
   }, [])
 
   const showTransientBanner = (message: string, ms = 3500) => {
@@ -413,13 +739,26 @@ export default function PerheAppPrototypePage() {
 
   const sourceBadge = getSourceStatusBadge(eventFeedStatus, eventFeedSources)
 
-  const familiesWithDistance = DEMO_FAMILIES.map((fam) => {
-    const famCoords = resolveCoordsTuple(fam?.coords, safeHomeCoords)
+  const familiesWithDistance: ScoredApiFamily[] = apiFamilyProfiles.map((family) => {
+    const city = getCoarseCity(family.area, profile.homeCity)
+    const famCoords = resolveCoordsTuple(COARSE_CITY_COORDS[city], DEFAULT_PKS_COORDS)
     const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
-    const match = calcFamilyMatch(profile, { ...fam, coords: famCoords }, distanceKm, attendingIds)
-    return {
-      ...fam,
+    const familyProfile: FamilyProfile = {
+      id: family.email,
+      name: family.familyName,
+      area: family.area,
+      city,
       coords: famCoords,
+      childrenAges: family.childrenSummary || 'Ikäryhmää ei ilmoitettu',
+      ageGroups: getAgeGroups(family.childrenSummary),
+      bio: family.bio || '',
+      interests: [],
+      hasCloseRelatives: false,
+    }
+    const match = calcFamilyMatch(profile, familyProfile, distanceKm, attendingIds)
+    return {
+      ...family,
+      ...familyProfile,
       distanceKm,
       match,
     }
@@ -444,8 +783,7 @@ export default function PerheAppPrototypePage() {
     .sort((a, b) => b.match.percent - a.match.percent)
 
   const currentCard = filteredDeck[0]
-  const matchedFamilies = familiesWithDistance.filter((f) => matchedIds.includes(f.id))
-
+  const matchedFamilies = familiesWithDistance.filter((family) => family.isMutualMatch)
   const syncInferredAges = (prev: UserProfileState, nextChildren: ChildItem[]): string[] => {
     if (!prev.defaultPreset.useChildrenAgeInference) {
       return prev.filters.targetAgeGroups
@@ -644,20 +982,85 @@ export default function PerheAppPrototypePage() {
     }))
   }
 
-  const toggleEventAttendance = (eventId: string) => {
-    const nextGoing = !attendingIds.includes(eventId)
-    setAttendingIds((prev) =>
-      prev.includes(eventId) ? prev.filter((id) => id !== eventId) : [...prev, eventId],
-    )
-    recordDemoSelection('EVENT_ATTENDANCE', `${eventId} -> ${nextGoing ? 'GOING' : 'SKIPPED'}`)
+  const toggleDatabaseParticipation = async (eventId: string, eventTitle: string) => {
+    const result = await eventChat.toggleParticipation(eventId, eventTitle)
+    if (!result) return
+
+    const isGoing = result === 'going'
+    setAttendingIds((current) => {
+      const alreadyGoing = current.includes(eventId)
+      if (alreadyGoing === isGoing) return current
+      return isGoing
+        ? [...current, eventId]
+        : current.filter((id) => id !== eventId)
+    })
+    recordDemoSelection('EVENT_ATTENDANCE', `${eventId} -> ${isGoing ? 'GOING' : 'SKIPPED'}`)
+  }
+
+  const openPersistedEventChat = (eventId: string, eventTitle: string) => {
+    eventChat.setActiveChannel({ id: `event:${eventId}`, title: eventTitle })
+    recordDemoSelection('EVENT_CHAT_OPEN', eventId)
   }
 
   const handleSwipe = (liked: boolean) => {
     if (!currentCard) return
     if (liked) {
-      setMatchedIds((prev) => [...prev, currentCard.id])
-      setLatestMatch(currentCard)
-      recordDemoSelection('SWIPE_LIKE', `${currentCard.id} (MATCH ${currentCard.match.percent}%)`)
+      if (pendingFamilyLikeEmail === currentCard.email) return
+      const fromEmail = currentUser?.email.trim().toLowerCase()
+      if (!fromEmail) {
+        setFamilyApiError('Kirjaudu sisään ennen perheiden tykkäämistä.')
+        return
+      }
+      setPendingFamilyLikeEmail(currentCard.email)
+      void (async () => {
+        try {
+          const response = await fetch('/api/families', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'toggleLike',
+              fromEmail,
+              toEmail: currentCard.email,
+            }),
+          })
+          const payload: unknown = await response.json()
+          if (!response.ok) {
+            const message =
+              payload && typeof payload === 'object' && 'error' in payload &&
+              typeof payload.error === 'string'
+                ? payload.error
+                : `Tykkäyksen tallennus epäonnistui (HTTP ${response.status}).`
+            throw new Error(message)
+          }
+          if (
+            !payload ||
+            typeof payload !== 'object' ||
+            !('like' in payload) ||
+            !payload.like ||
+            typeof payload.like !== 'object' ||
+            !('isMutualMatch' in payload.like) ||
+            typeof payload.like.isMutualMatch !== 'boolean'
+          ) {
+            throw new Error('Tykkäyksen palvelinvastaus ei kelpaa.')
+          }
+          setFamilyApiError(null)
+          await refreshFamilyProfiles()
+          if (payload.like.isMutualMatch) {
+            setLatestMatch(currentCard)
+            recordDemoSelection('FAMILY_MATCH', currentCard.email)
+          } else {
+            setLatestMatch(null)
+            recordDemoSelection('FAMILY_LIKE', currentCard.email)
+          }
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Tykkäyksen tallennus epäonnistui.'
+          setFamilyApiError(message)
+          recordDemoSelection('FAMILY_API_ERROR', message)
+        } finally {
+          setPendingFamilyLikeEmail(null)
+        }
+      })()
     } else {
       setDismissedIds((prev) => [...prev, currentCard.id])
       recordDemoSelection('SWIPE_PASS', currentCard.id)
@@ -831,7 +1234,11 @@ export default function PerheAppPrototypePage() {
                   filteredSortedEvents={filteredSortedEvents}
                   baseAreaSortedEventsCount={baseAreaSortedEvents.length}
                   matchedFamilies={matchedFamilies}
-                  attendingIds={attendingIds}
+                  participations={eventChat.participations}
+                  currentUserEmail={eventChat.participantEmail}
+                  pendingEventIds={eventChat.pendingEventIds}
+                  isLoadingParticipations={eventChat.isLoadingParticipations}
+                  participationError={eventChat.participationError}
                   eventAgeFilter={eventAgeFilter}
                   onEventAgeFilterChange={setEventAgeFilter}
                   eventSearchQuery={eventSearchQuery}
@@ -851,10 +1258,10 @@ export default function PerheAppPrototypePage() {
                     setActiveTab('profile')
                     setProfileSubView('main')
                   }}
-                  onToggleEventAttendance={toggleEventAttendance}
-                  onOpenEventChat={(eventId) =>
-                    openHubChannel('event_chat', { eventId })
+                  onToggleParticipation={(eventId, eventTitle) =>
+                    void toggleDatabaseParticipation(eventId, eventTitle)
                   }
+                  onOpenEventChat={openPersistedEventChat}
                   onLogSelection={recordDemoSelection}
                   onOpenMap={openOnMap}
                 />
@@ -867,6 +1274,7 @@ export default function PerheAppPrototypePage() {
                   matchedFamilies={matchedFamilies}
                   currentCard={currentCard}
                   profile={profile}
+                  familyApiError={familyApiError}
                   safeEvents={safeEvents}
                   attendingIds={attendingIds}
                   onFamilySubTabChange={setFamilySubTab}
@@ -893,28 +1301,27 @@ export default function PerheAppPrototypePage() {
                   currentUser={currentUser}
                   profile={profile}
                   events={baseAreaSortedEvents}
-                  attendingIds={attendingIds}
                   matchedIds={matchedIds}
                   allFamilies={familiesWithDistance}
-                  directMessages={messages}
-                  onSendDirectMessage={(familyId, text) => {
-                    setMessages((prev) => ({
-                      ...prev,
-                      [familyId]: [...(prev[familyId] || []), text],
-                    }))
-                    recordDemoSelection('DIRECT_MSG', familyId)
-                  }}
-                  onSwipeMatchFromEvent={(familyId) => {
-                    const fam = familiesWithDistance.find((f) => f.id === familyId)
-                    if (!fam || matchedIds.includes(familyId)) return
-                    setMatchedIds((prev) => [...prev, familyId])
-                    setLatestMatch(fam)
-                    recordDemoSelection('EVENT_MATCH', familyId)
-                  }}
-                  onToggleAttendance={toggleEventAttendance}
                   initialSection={hubInitialSection}
                   initialEventId={hubEventId}
                   initialDirectTargetId={hubDirectTargetId}
+                  chatChannels={eventChat.channels}
+                  participations={eventChat.participations}
+                  pendingParticipationEventIds={eventChat.pendingEventIds}
+                  participationError={eventChat.participationError}
+                  activeChatChannel={eventChat.activeChannel}
+                  chatMessages={eventChat.messages}
+                  currentUserEmail={eventChat.participantEmail}
+                  unreadChatChannelIds={unreadChatChannelIds}
+                  isLoadingChatMessages={eventChat.isLoadingMessages}
+                  isSendingChatMessage={eventChat.isSendingMessage}
+                  chatError={
+                    [eventChat.chatError, chatReadError].filter(Boolean).join(' ') || null
+                  }
+                  onActiveChatChannelChange={eventChat.setActiveChannel}
+                  onSendChatMessage={eventChat.sendMessage}
+                  onToggleParticipation={eventChat.toggleParticipation}
                 />
               )}
 
@@ -1117,7 +1524,14 @@ export default function PerheAppPrototypePage() {
                     }`}
                   >
                     <span className="text-lg leading-none">{tab.icon}</span>
-                    <span className="text-[11px]">{tab.label}</span>
+                    <span className="inline-flex items-center gap-1 text-[11px]">
+                      {tab.label}
+                      {tab.key === 'hub' && unreadChatChannelIds.size > 0 && (
+                        <span className="min-w-4 rounded-full bg-rose-600 px-1 text-[9px] leading-4 text-white">
+                          {unreadChatChannelIds.size}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 )
               })}
@@ -1153,6 +1567,30 @@ export default function PerheAppPrototypePage() {
           setActiveTab('profile')
           setProfileSubView('store_inspector')
         }}
+      />
+      <EventChatWindow
+        channels={eventChat.channels.filter((channel) => channel.id.startsWith('event:'))}
+        activeChannel={
+          eventChat.activeChannel?.id.startsWith('event:') ? eventChat.activeChannel : null
+        }
+        messages={eventChat.messages}
+        currentUserEmail={eventChat.participantEmail}
+        isDemoIdentity={eventChat.isDemoIdentity}
+        pos={chatFloatPos}
+        onPosChange={setChatFloatPos}
+        isLoadingMessages={eventChat.isLoadingMessages}
+        isSendingMessage={eventChat.isSendingMessage}
+        error={eventChat.chatError}
+        onSelectChannel={(channel) => {
+          if (channel === null) {
+            if (eventChat.activeChannel?.id.startsWith('event:')) {
+              eventChat.setActiveChannel(null)
+            }
+          } else if (channel.id.startsWith('event:')) {
+            eventChat.setActiveChannel(channel)
+          }
+        }}
+        onSendMessage={eventChat.sendMessage}
       />
     </div>
   )

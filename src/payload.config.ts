@@ -9,6 +9,8 @@ import { Folders } from './collections/Folders'
 import { Tags } from './collections/Tags'
 import { Users } from './collections/Users'
 import { FamilyMatches } from './collections/FamilyMatches'
+import { EventParticipations } from './collections/EventParticipations'
+import { ChatMessages } from './collections/ChatMessages'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -32,7 +34,7 @@ export default buildFigmaConfig({
     fallbackLanguage: 'en',
     supportedLanguages: { en: adminLanguage },
   },
-  collections: [Admins, Users, Media, Folders, Tags, FamilyMatches],
+  collections: [Admins, Users, Media, Folders, Tags, FamilyMatches, EventParticipations, ChatMessages],
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
