@@ -7,21 +7,24 @@ type CityKey = 'helsinki' | 'espoo' | 'vantaa'
 
 const LINKED_ENDPOINTS: Record<
   CityKey,
-  { label: string; eventUrl: string; locationUrl: string }
+  { label: string; division: string; eventUrl: string; locationUrl: string }
 > = {
   helsinki: {
     label: 'Helsinki',
+    division: 'kunta:helsinki',
     eventUrl: 'https://api.hel.fi/linkedevents/v1/event/',
     locationUrl: 'https://api.hel.fi/linkedevents/v1/location/',
   },
   espoo: {
     label: 'Espoo',
-    eventUrl: 'https://api.espoo.fi/linkedevents/v1/event/',
+    division: 'kunta:espoo',
+    eventUrl: 'https://api.hel.fi/linkedevents/v1/event/',
     locationUrl: 'https://api.espoo.fi/linkedevents/v1/location/',
   },
   vantaa: {
     label: 'Vantaa',
-    eventUrl: 'https://api.vantaa.fi/linkedevents/v1/event/',
+    division: 'kunta:vantaa',
+    eventUrl: 'https://api.hel.fi/linkedevents/v1/event/',
     locationUrl: 'https://api.vantaa.fi/linkedevents/v1/location/',
   },
 }
@@ -135,6 +138,7 @@ export async function GET(request: NextRequest) {
           url.searchParams.set('include', withKeywords ? 'location,keywords' : 'location')
           url.searchParams.set('start', 'now')
           url.searchParams.set('sort', 'start_time')
+          url.searchParams.set('division', cfg.division)
           if (!includeSuper) {
             url.searchParams.set('super_event_type', 'none')
           }

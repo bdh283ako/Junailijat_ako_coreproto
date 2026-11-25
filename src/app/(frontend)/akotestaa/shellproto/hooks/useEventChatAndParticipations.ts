@@ -319,13 +319,16 @@ export function useEventChatAndParticipations({
   }, [])
 
   useEffect(() => {
-    void refreshChannels()
-  }, [refreshChannels])
+    if (!currentUserEmail.trim()) {
+      setRawChannels([])
+      setChannelError(null)
+      return
+    }
 
-  useEffect(() => {
+    void refreshChannels()
     const intervalId = setInterval(() => void refreshChannels(), 3000)
     return () => clearInterval(intervalId)
-  }, [refreshChannels])
+  }, [currentUserEmail, refreshChannels])
 
   const toggleParticipation = useCallback(
     async (eventId: string, eventTitle: string): Promise<'going' | 'removed' | false> => {

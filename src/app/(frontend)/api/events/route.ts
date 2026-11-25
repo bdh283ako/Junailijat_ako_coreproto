@@ -35,6 +35,7 @@ const LINKED_EVENTS_ENDPOINTS = [
     key: 'helsinki' as const,
     city: 'Helsinki',
     sourceTag: 'linked-events-helsinki',
+    division: 'kunta:helsinki',
     baseUrl: 'https://api.hel.fi/linkedevents/v1/event/',
     defaultPageSize: 25,
   },
@@ -42,14 +43,16 @@ const LINKED_EVENTS_ENDPOINTS = [
     key: 'espoo' as const,
     city: 'Espoo',
     sourceTag: 'linked-events-espoo',
-    baseUrl: 'https://api.espoo.fi/linkedevents/v1/event/',
+    division: 'kunta:espoo',
+    baseUrl: 'https://api.hel.fi/linkedevents/v1/event/',
     defaultPageSize: 25,
   },
   {
     key: 'vantaa' as const,
     city: 'Vantaa',
     sourceTag: 'linked-events-vantaa',
-    baseUrl: 'https://api.vantaa.fi/linkedevents/v1/event/',
+    division: 'kunta:vantaa',
+    baseUrl: 'https://api.hel.fi/linkedevents/v1/event/',
     defaultPageSize: 25,
   },
 ] as const
@@ -426,6 +429,7 @@ async function fetchLinkedEventsForMunicipality(
   config: {
     city: string
     sourceTag: string
+    division: string
     baseUrl: string
     defaultPageSize: number
   },
@@ -440,6 +444,7 @@ async function fetchLinkedEventsForMunicipality(
       url.searchParams.set('sort', 'start_time')
       url.searchParams.set('page_size', String(options.pageSize))
       url.searchParams.set('page', String(options.page))
+      url.searchParams.set('division', config.division)
 
       const res = await fetch(url.toString(), {
         cache: 'no-store',
@@ -473,6 +478,7 @@ async function fetchLinkedEventsForMunicipality(
       url.searchParams.set('sort', 'start_time')
       url.searchParams.set('super_event_type', 'none')
       url.searchParams.set('page_size', String(targetSize))
+      url.searchParams.set('division', config.division)
       if (useFamilyKeywords) {
         url.searchParams.set('keyword', FAMILY_YSO_KEYWORDS)
       }

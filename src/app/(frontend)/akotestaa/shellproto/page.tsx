@@ -104,6 +104,31 @@ function parseApiFamily(value: unknown): ApiFamilyProfile {
   }
 }
 
+function areApiFamilyProfilesEqual(
+  current: ApiFamilyProfile[],
+  next: ApiFamilyProfile[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((family, index) => {
+      const candidate = next[index]
+      return (
+        family.id === candidate.id &&
+        family.familyName === candidate.familyName &&
+        family.area === candidate.area &&
+        family.childrenSummary === candidate.childrenSummary &&
+        family.bio === candidate.bio &&
+        family.updatedAt === candidate.updatedAt &&
+        family.likedByMe === candidate.likedByMe &&
+        family.likedMe === candidate.likedMe &&
+        family.isMutualMatch === candidate.isMutualMatch &&
+        family.passedByMe === candidate.passedByMe &&
+        family.matchChannelId === candidate.matchChannelId
+      )
+    })
+  )
+}
+
 function getCoarseCity(area: string, fallbackCity: string): string {
   const normalized = area.toLowerCase()
   if (normalized.includes('helsinki')) return 'Helsinki'
@@ -346,7 +371,10 @@ export default function PerheAppPrototypePage() {
     ) {
       throw new Error('Perheiden hakuvastaus ei kelpaa.')
     }
-    setApiFamilyProfiles(payload.families.map(parseApiFamily))
+    const nextProfiles = payload.families.map(parseApiFamily)
+    setApiFamilyProfiles((current) =>
+      areApiFamilyProfilesEqual(current, nextProfiles) ? current : nextProfiles,
+    )
   }, [currentUser?.id])
 
   useEffect(() => {
@@ -571,7 +599,10 @@ export default function PerheAppPrototypePage() {
   }
 
   const safeEvents = Array.isArray(events) ? events : INITIAL_EVENTS
-  const safeHomeCoords = resolveCoordsTuple(profile?.homeCoords, DEFAULT_PKS_COORDS)
+  const safeHomeCoords = useMemo(
+    () => resolveCoordsTuple(profile.homeCoords, DEFAULT_PKS_COORDS),
+    [profile.homeCoords],
+  )
 
   const baseAreaSortedEvents = useMemo(() => {
     const resolved = resolveEventsForMap(safeEvents, safeHomeCoords)
@@ -686,30 +717,34 @@ export default function PerheAppPrototypePage() {
 
   const sourceBadge = getSourceStatusBadge(eventFeedStatus, eventFeedSources)
 
-  const familiesWithDistance: ScoredApiFamily[] = apiFamilyProfiles.map((family) => {
-    const city = getCoarseCity(family.area, profile.homeCity)
-    const famCoords = resolveCoordsTuple(COARSE_CITY_COORDS[city], DEFAULT_PKS_COORDS)
-    const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
-    const familyProfile: FamilyProfile = {
-      id: family.id,
-      name: family.familyName,
-      area: family.area,
-      city,
-      coords: famCoords,
-      childrenAges: family.childrenSummary || 'Ikäryhmää ei ilmoitettu',
-      ageGroups: getAgeGroups(family.childrenSummary),
-      bio: family.bio || '',
-      interests: [],
-      hasCloseRelatives: false,
-    }
-    const match = calcFamilyMatch(profile, familyProfile, distanceKm, attendingIds)
-    return {
-      ...family,
-      ...familyProfile,
-      distanceKm,
-      match,
-    }
-  })
+  const familiesWithDistance: ScoredApiFamily[] = useMemo(
+    () =>
+      apiFamilyProfiles.map((family) => {
+        const city = getCoarseCity(family.area, profile.homeCity)
+        const famCoords = resolveCoordsTuple(COARSE_CITY_COORDS[city], DEFAULT_PKS_COORDS)
+        const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
+        const familyProfile: FamilyProfile = {
+          id: family.id,
+          name: family.familyName,
+          area: family.area,
+          city,
+          coords: famCoords,
+          childrenAges: family.childrenSummary || 'Ikäryhmää ei ilmoitettu',
+          ageGroups: getAgeGroups(family.childrenSummary),
+          bio: family.bio || '',
+          interests: [],
+          hasCloseRelatives: false,
+        }
+        const match = calcFamilyMatch(profile, familyProfile, distanceKm, attendingIds)
+        return {
+          ...family,
+          ...familyProfile,
+          distanceKm,
+          match,
+        }
+      }),
+    [apiFamilyProfiles, profile, safeHomeCoords, attendingIds],
+  )
 
   const filteredDeck = familiesWithDistance
     .filter((fam) => {
@@ -730,7 +765,10 @@ export default function PerheAppPrototypePage() {
     .sort((a, b) => b.match.percent - a.match.percent)
 
   const currentCard = filteredDeck[0]
-  const matchedFamilies = familiesWithDistance.filter((family) => family.isMutualMatch)
+  const matchedFamilies = useMemo(
+    () => familiesWithDistance.filter((family) => family.isMutualMatch),
+    [familiesWithDistance],
+  )
   const syncInferredAges = (prev: UserProfileState, nextChildren: ChildItem[]): string[] => {
     if (!prev.defaultPreset.useChildrenAgeInference) {
       return prev.filters.targetAgeGroups

@@ -5,15 +5,20 @@ import { calcDistanceKm, FamilyEvent, FamilyProfile, PKS_MLL_FAMILY_CAFES } from
 import { DEFAULT_PKS_COORDS, resolveEventsForMap, type CityOnlyGroup } from './mapGeoResolver'
 
 interface LeafletCircleMarker {
-  addTo: (map: LeafletMapInstance) => LeafletCircleMarker
+  addTo: (target: LeafletMapInstance | LeafletLayerGroup) => LeafletCircleMarker
   bindPopup: (html: string) => LeafletCircleMarker
   on: (event: string, handler: () => void) => LeafletCircleMarker
 }
 
 interface LeafletDivIconMarker {
-  addTo: (map: LeafletMapInstance) => LeafletDivIconMarker
+  addTo: (target: LeafletMapInstance | LeafletLayerGroup) => LeafletDivIconMarker
   bindPopup: (html: string) => LeafletDivIconMarker
   on: (event: string, handler: () => void) => LeafletDivIconMarker
+}
+
+interface LeafletLayerGroup {
+  addTo: (map: LeafletMapInstance) => LeafletLayerGroup
+  clearLayers: () => LeafletLayerGroup
 }
 
 interface LeafletMapInstance {
@@ -28,6 +33,7 @@ interface LeafletGlobal {
     url: string,
     options?: { attribution?: string; maxZoom?: number },
   ) => { addTo: (map: LeafletMapInstance) => void }
+  layerGroup: () => LeafletLayerGroup
   latLngBounds: (sw: [number, number], ne: [number, number]) => unknown
   divIcon: (options: {
     className?: string
@@ -113,6 +119,8 @@ export function PksMapView({
 }: PksMapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<LeafletMapInstance | null>(null)
+  const markerLayerRef = useRef<LeafletLayerGroup | null>(null)
+  const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState(false)
   const [selectedCityGroup, setSelectedCityGroup] = useState<CityOnlyGroup<MapEventRecord> | null>(
     null,
@@ -215,18 +223,16 @@ export function PksMapView({
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    let cancelled = false
+    let script: HTMLScriptElement | null = null
     setMapError(false)
 
     const initLeaflet = () => {
+      if (cancelled) return
       const L = (window as unknown as { L?: LeafletGlobal }).L
       if (!L || !mapContainerRef.current) {
         setMapError(true)
         return
-      }
-
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove()
-        mapInstanceRef.current = null
       }
 
       const map = L.map(mapContainerRef.current, { zoomSnap: 0.25 })
@@ -237,217 +243,249 @@ export function PksMapView({
         { attribution: '© Esri / OSM', maxZoom: 19 },
       ).addTo(map)
 
-      const defaultBounds = L.latLngBounds(PKS_SEUTULA_BOUNDS[0], PKS_SEUTULA_BOUNDS[1])
-
-      if (focusCoords) {
-        map.setView(focusCoords, 14)
-      } else {
-        map.fitBounds(defaultBounds, { padding: [12, 12] })
-      }
-
-      // Oma koti: oranssi
-      L.circleMarker(safeHome, {
-        radius: 12,
-        fillColor: '#f97316',
-        color: '#ffffff',
-        weight: 3,
-        fillOpacity: 0.98,
+      markerLayerRef.current = L.layerGroup().addTo(map)
+      map.fitBounds(L.latLngBounds(PKS_SEUTULA_BOUNDS[0], PKS_SEUTULA_BOUNDS[1]), {
+        padding: [12, 12],
       })
-        .addTo(map)
-        .bindPopup(
-          `<strong>🟠 Oma koti (${familyName})</strong><br/>${homeLabel}<br/><span style="font-size:11px;color:#ea580c;">Klikkaus zoomaa oletusnäkymään</span>`,
-        )
-        .on('click', () => {
-          map.fitBounds(defaultBounds, { padding: [12, 12] })
-          onResetBounds()
-        })
-
-      // Only events at exactly the same coordinates share a marker.
-      const exactPinGroups = new Map<string, typeof resolvedMap.exactPins>()
-      resolvedMap.exactPins.forEach((pin) => {
-        if (!pin.plotCoords) return
-        const key = `${pin.plotCoords[0]},${pin.plotCoords[1]}`
-        const group = exactPinGroups.get(key)
-        if (group) {
-          group.push(pin)
-        } else {
-          exactPinGroups.set(key, [pin])
-        }
-      })
-
-      exactPinGroups.forEach((pins) => {
-        const firstPin = pins[0]
-        const coords = firstPin?.plotCoords
-        if (!firstPin || !coords) return
-        const eventCount = pins.length
-
-        if (eventCount > 1) {
-          const badgeIcon = L.divIcon({
-            className: 'perhepiiri-event-cluster',
-            html: `<div role="img" aria-label="${eventCount} tapahtumaa samassa sijainnissa" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#1d4ed8;color:#fff;border:2px solid #fff;border-radius:9999px;box-shadow:0 2px 8px rgba(15,23,42,.4);font-size:10px;font-weight:800;">${eventCount}</div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
-          })
-          const eventRows = pins
-            .map(({ event: evt }) => {
-              const time = getEventTimeLabel(evt)
-              const venue = getEventVenueLabel(evt)
-              const isGoing = attendingIds.includes(evt.id)
-              return `<li style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>${escapeHtml(evt.title)}</strong><br/><span style="font-size:11px;color:#475569;">${escapeHtml(venue)}${time ? ` • ${escapeHtml(time)}` : ''}${isGoing ? ' • ✅ Olet menossa mukaan' : ''}</span></li>`
-            })
-            .join('')
-
-          L.marker(coords, { icon: badgeIcon })
-            .addTo(map)
-            .bindPopup(
-              `<strong>${eventCount} tapahtumaa samassa sijainnissa</strong><ul style="max-height:240px;overflow-y:auto;list-style:none;padding:0;margin:6px 0 0;">${eventRows}</ul>`,
-            )
-          return
-        }
-
-        const evt = firstPin.event
-        const isGoing = attendingIds.includes(evt.id)
-        const venueText = getEventVenueLabel(evt)
-        const timeText = getEventTimeLabel(evt)
-        const descHtml = evt.description
-          ? `<br/><span style="font-size:11px;color:#475569;">${evt.description}</span>`
-          : ''
-        const linkHtml = evt.url
-          ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#1d4ed8;text-decoration:underline;">Lisätiedot ↗</a>`
-          : ''
-
-        L.circleMarker(coords, {
-          radius: 9.5,
-          fillColor: '#1d4ed8',
-          color: '#1e3a8a',
-          weight: 2.5,
-          fillOpacity: 0.96,
-        })
-          .addTo(map)
-          .bindPopup(
-            `<span style="font-size:10px;font-weight:700;color:#1d4ed8;">TARKKA SIJAINTI (${evt.city})</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
-              isGoing ? '✅ Olet menossa mukaan' : timeText
-            }${descHtml}${linkHtml}`,
-          )
-      })
-
-      // 2. Kaupunginosa / tunnettu alue: vaaleansininen (#93c5fd)
-      resolvedMap.districtPins.forEach(({ event: evt, district, city, plotCoords }) => {
-        if (!plotCoords) return
-        const isGoing = attendingIds.includes(evt.id)
-        const venueText = getEventVenueLabel(evt)
-        const timeText = getEventTimeLabel(evt)
-        const descHtml = evt.description
-          ? `<br/><span style="font-size:11px;color:#475569;">${evt.description}</span>`
-          : ''
-        const linkHtml = evt.url
-          ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#2563eb;text-decoration:underline;">Lisätiedot ↗</a>`
-          : ''
-
-        L.circleMarker(plotCoords, {
-          radius: 8.5,
-          fillColor: '#93c5fd',
-          color: '#2563eb',
-          weight: 2,
-          fillOpacity: 0.9,
-        })
-          .addTo(map)
-          .bindPopup(
-            `<span style="font-size:10px;font-weight:700;color:#2563eb;">ALUE: ${district || city}</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
-              isGoing ? '✅ Olet menossa mukaan' : timeText
-            }${descHtml}${linkHtml}`,
-          )
-      })
-
-      // 3. Vain kaupunki: sininen kaupunkilistamarkkeri
-      resolvedMap.cityGroups.forEach((group) => {
-        const badgeIcon = L.divIcon({
-          className: 'perhepiiri-city-list-badge',
-          html: `<div style="background:#eff6ff;color:#1e3a8a;border:2px solid #2563eb;border-radius:9999px;padding:3px 8px;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,0.18);white-space:nowrap;cursor:pointer;">${group.city}: ${group.items.length} (lista)</div>`,
-          iconSize: [112, 24],
-          iconAnchor: [56, 12],
-        })
-
-        L.marker(group.coords, { icon: badgeIcon })
-          .addTo(map)
-          .bindPopup(
-            `<strong>${group.city} — ${group.items.length} tapahtumaa</strong><br/><span style="font-size:11px;color:#475569;">Vain kaupunkitieto (ei tarkkaa osoitetta tai kaupunginosaa).</span>`,
-          )
-          .on('click', () => {
-            setSelectedCityGroup(group)
-          })
-      })
-
-      // 4. MLL-perhekahvilat: violetti (#7c3aed) — vain kun filtteri on päällä
-      if (showMllCafes) {
-        visibleMllCafes.forEach((cafe) => {
-          const linkHtml = cafe.url
-            ? `<br/><a href="${cafe.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#6d28d9;text-decoration:underline;">Yhdistyksen sivu ↗</a>`
-            : ''
-
-          L.circleMarker(cafe.coords, {
-            radius: 9,
-            fillColor: '#7c3aed',
-            color: '#4c1d95',
-            weight: 2.5,
-            fillOpacity: 0.94,
-          })
-            .addTo(map)
-            .bindPopup(
-              `<span style="font-size:10px;font-weight:700;color:#6d28d9;">MLL-PERHEKAHVILA (${cafe.city})</span><br/><strong>☕ ${cafe.name}</strong><br/>${cafe.venue}, ${cafe.address}<br/><span style="font-size:11px;color:#475569;">🕒 ${cafe.schedule} • ${cafe.ageGroup} (${cafe.distanceKm} km)</span>${linkHtml}`,
-            )
-        })
-      }
-
-      // Perheosumat: vihreä (#059669)
-      visibleMatchedFamilies.forEach((fam) => {
-        const linkedTitle = fam.attendingEventId
-          ? eventTitleById.get(fam.attendingEventId) || ''
-          : ''
-        const eventNote =
-          shareEventsWithMatches && linkedTitle
-            ? `<br/><span style="font-size:11px;color:#059669;">Tapahtuma: ${linkedTitle}</span>`
-            : ''
-
-        const relativesNote =
-          showCloseRelativesInMatches && fam.hasCloseRelatives && fam.closeRelativesSummary
-            ? `<br/><span style="font-size:11px;color:#475569;">🫂 Läheiset: ${fam.closeRelativesSummary}</span>`
-            : ''
-
-        L.circleMarker(fam.coords, {
-          radius: 11,
-          fillColor: '#059669',
-          color: '#ffffff',
-          weight: 2.5,
-          fillOpacity: 0.96,
-        })
-          .addTo(map)
-          .bindPopup(
-            `<strong>🤝 ${fam.name}</strong><br/>${fam.area} (${fam.childrenAges})${eventNote}${relativesNote}`,
-          )
-      })
+      setMapReady(true)
     }
 
     if ((window as unknown as { L?: LeafletGlobal }).L) {
       initLeaflet()
-      return
+    } else {
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link')
+        link.id = 'leaflet-css'
+        link.rel = 'stylesheet'
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+        document.head.appendChild(link)
+      }
+
+      script = document.createElement('script')
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      script.async = true
+      script.onload = initLeaflet
+      script.onerror = () => {
+        if (!cancelled) setMapError(true)
+      }
+      document.body.appendChild(script)
     }
 
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link')
-      link.id = 'leaflet-css'
-      link.rel = 'stylesheet'
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-      document.head.appendChild(link)
+    return () => {
+      cancelled = true
+      script?.remove()
+      mapInstanceRef.current?.remove()
+      mapInstanceRef.current = null
+      markerLayerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!mapReady) return
+    const L = (window as unknown as { L?: LeafletGlobal }).L
+    const map = mapInstanceRef.current
+    if (!L || !map) return
+
+    if (focusCoords) {
+      map.setView(focusCoords, 14)
+    } else {
+      map.fitBounds(L.latLngBounds(PKS_SEUTULA_BOUNDS[0], PKS_SEUTULA_BOUNDS[1]), {
+        padding: [12, 12],
+      })
+    }
+  }, [mapReady, focusCoords])
+
+  useEffect(() => {
+    if (!mapReady) return
+    const L = (window as unknown as { L?: LeafletGlobal }).L
+    const map = mapInstanceRef.current
+    const markerLayer = markerLayerRef.current
+    if (!L || !map || !markerLayer) return
+    markerLayer.clearLayers()
+
+    const defaultBounds = L.latLngBounds(PKS_SEUTULA_BOUNDS[0], PKS_SEUTULA_BOUNDS[1])
+
+    // Oma koti: oranssi
+    L.circleMarker(safeHome, {
+      radius: 12,
+      fillColor: '#f97316',
+      color: '#ffffff',
+      weight: 3,
+      fillOpacity: 0.98,
+    })
+      .addTo(markerLayer)
+      .bindPopup(
+        `<strong>🟠 Oma koti (${familyName})</strong><br/>${homeLabel}<br/><span style="font-size:11px;color:#ea580c;">Klikkaus zoomaa oletusnäkymään</span>`,
+      )
+      .on('click', () => {
+        map.fitBounds(defaultBounds, { padding: [12, 12] })
+        onResetBounds()
+      })
+
+    // Only events at exactly the same coordinates share a marker.
+    const exactPinGroups = new Map<string, typeof resolvedMap.exactPins>()
+    resolvedMap.exactPins.forEach((pin) => {
+      if (!pin.plotCoords) return
+      const key = `${pin.plotCoords[0]},${pin.plotCoords[1]}`
+      const group = exactPinGroups.get(key)
+      if (group) {
+        group.push(pin)
+      } else {
+        exactPinGroups.set(key, [pin])
+      }
+    })
+
+    exactPinGroups.forEach((pins) => {
+      const firstPin = pins[0]
+      const coords = firstPin?.plotCoords
+      if (!firstPin || !coords) return
+      const eventCount = pins.length
+
+      if (eventCount > 1) {
+        const badgeIcon = L.divIcon({
+          className: 'perhepiiri-event-cluster',
+          html: `<div role="img" aria-label="${eventCount} tapahtumaa samassa sijainnissa" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#1d4ed8;color:#fff;border:2px solid #fff;border-radius:9999px;box-shadow:0 2px 8px rgba(15,23,42,.4);font-size:10px;font-weight:800;">${eventCount}</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        })
+        const eventRows = pins
+          .map(({ event: evt }) => {
+            const time = getEventTimeLabel(evt)
+            const venue = getEventVenueLabel(evt)
+            const isGoing = attendingIds.includes(evt.id)
+            return `<li style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>${escapeHtml(evt.title)}</strong><br/><span style="font-size:11px;color:#475569;">${escapeHtml(venue)}${time ? ` • ${escapeHtml(time)}` : ''}${isGoing ? ' • ✅ Olet menossa mukaan' : ''}</span></li>`
+          })
+          .join('')
+
+        L.marker(coords, { icon: badgeIcon })
+          .addTo(markerLayer)
+          .bindPopup(
+            `<strong>${eventCount} tapahtumaa samassa sijainnissa</strong><ul style="max-height:240px;overflow-y:auto;list-style:none;padding:0;margin:6px 0 0;">${eventRows}</ul>`,
+          )
+        return
+      }
+
+      const evt = firstPin.event
+      const isGoing = attendingIds.includes(evt.id)
+      const venueText = getEventVenueLabel(evt)
+      const timeText = getEventTimeLabel(evt)
+      const descHtml = evt.description
+        ? `<br/><span style="font-size:11px;color:#475569;">${evt.description}</span>`
+        : ''
+      const linkHtml = evt.url
+        ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#1d4ed8;text-decoration:underline;">Lisätiedot ↗</a>`
+        : ''
+
+      L.circleMarker(coords, {
+        radius: 9.5,
+        fillColor: '#1d4ed8',
+        color: '#1e3a8a',
+        weight: 2.5,
+        fillOpacity: 0.96,
+      })
+        .addTo(markerLayer)
+        .bindPopup(
+          `<span style="font-size:10px;font-weight:700;color:#1d4ed8;">TARKKA SIJAINTI (${evt.city})</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
+            isGoing ? '✅ Olet menossa mukaan' : timeText
+          }${descHtml}${linkHtml}`,
+        )
+    })
+
+    // 2. Kaupunginosa / tunnettu alue: vaaleansininen (#93c5fd)
+    resolvedMap.districtPins.forEach(({ event: evt, district, city, plotCoords }) => {
+      if (!plotCoords) return
+      const isGoing = attendingIds.includes(evt.id)
+      const venueText = getEventVenueLabel(evt)
+      const timeText = getEventTimeLabel(evt)
+      const descHtml = evt.description
+        ? `<br/><span style="font-size:11px;color:#475569;">${evt.description}</span>`
+        : ''
+      const linkHtml = evt.url
+        ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#2563eb;text-decoration:underline;">Lisätiedot ↗</a>`
+        : ''
+
+      L.circleMarker(plotCoords, {
+        radius: 8.5,
+        fillColor: '#93c5fd',
+        color: '#2563eb',
+        weight: 2,
+        fillOpacity: 0.9,
+      })
+        .addTo(markerLayer)
+        .bindPopup(
+          `<span style="font-size:10px;font-weight:700;color:#2563eb;">ALUE: ${district || city}</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
+            isGoing ? '✅ Olet menossa mukaan' : timeText
+          }${descHtml}${linkHtml}`,
+        )
+    })
+
+    // 3. Vain kaupunki: sininen kaupunkilistamarkkeri
+    resolvedMap.cityGroups.forEach((group) => {
+      const badgeIcon = L.divIcon({
+        className: 'perhepiiri-city-list-badge',
+        html: `<div style="background:#eff6ff;color:#1e3a8a;border:2px solid #2563eb;border-radius:9999px;padding:3px 8px;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,0.18);white-space:nowrap;cursor:pointer;">${group.city}: ${group.items.length} (lista)</div>`,
+        iconSize: [112, 24],
+        iconAnchor: [56, 12],
+      })
+
+      L.marker(group.coords, { icon: badgeIcon })
+        .addTo(markerLayer)
+        .bindPopup(
+          `<strong>${group.city} — ${group.items.length} tapahtumaa</strong><br/><span style="font-size:11px;color:#475569;">Vain kaupunkitieto (ei tarkkaa osoitetta tai kaupunginosaa).</span>`,
+        )
+        .on('click', () => {
+          setSelectedCityGroup(group)
+        })
+    })
+
+    // 4. MLL-perhekahvilat: violetti (#7c3aed) — vain kun filtteri on päällä
+    if (showMllCafes) {
+      visibleMllCafes.forEach((cafe) => {
+        const linkHtml = cafe.url
+          ? `<br/><a href="${cafe.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#6d28d9;text-decoration:underline;">Yhdistyksen sivu ↗</a>`
+          : ''
+
+        L.circleMarker(cafe.coords, {
+          radius: 9,
+          fillColor: '#7c3aed',
+          color: '#4c1d95',
+          weight: 2.5,
+          fillOpacity: 0.94,
+        })
+          .addTo(markerLayer)
+          .bindPopup(
+            `<span style="font-size:10px;font-weight:700;color:#6d28d9;">MLL-PERHEKAHVILA (${cafe.city})</span><br/><strong>☕ ${cafe.name}</strong><br/>${cafe.venue}, ${cafe.address}<br/><span style="font-size:11px;color:#475569;">🕒 ${cafe.schedule} • ${cafe.ageGroup} (${cafe.distanceKm} km)</span>${linkHtml}`,
+          )
+      })
     }
 
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-    script.async = true
-    script.onload = initLeaflet
-    script.onerror = () => setMapError(true)
-    document.body.appendChild(script)
+    // Perheosumat: vihreä (#059669)
+    visibleMatchedFamilies.forEach((fam) => {
+      const linkedTitle = fam.attendingEventId ? eventTitleById.get(fam.attendingEventId) || '' : ''
+      const eventNote =
+        shareEventsWithMatches && linkedTitle
+          ? `<br/><span style="font-size:11px;color:#059669;">Tapahtuma: ${linkedTitle}</span>`
+          : ''
+
+      const relativesNote =
+        showCloseRelativesInMatches && fam.hasCloseRelatives && fam.closeRelativesSummary
+          ? `<br/><span style="font-size:11px;color:#475569;">🫂 Läheiset: ${fam.closeRelativesSummary}</span>`
+          : ''
+
+      L.circleMarker(fam.coords, {
+        radius: 11,
+        fillColor: '#059669',
+        color: '#ffffff',
+        weight: 2.5,
+        fillOpacity: 0.96,
+      })
+        .addTo(markerLayer)
+        .bindPopup(
+          `<strong>🤝 ${fam.name}</strong><br/>${fam.area} (${fam.childrenAges})${eventNote}${relativesNote}`,
+        )
+    })
   }, [
+    mapReady,
     resolvedMap,
     visibleMllCafes,
     showMllCafes,
@@ -459,7 +497,6 @@ export function PksMapView({
     familyName,
     shareEventsWithMatches,
     showCloseRelativesInMatches,
-    focusCoords,
     onResetBounds,
   ])
 
