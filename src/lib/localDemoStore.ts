@@ -60,6 +60,12 @@ export interface ListParticipationsOptions {
   participantEmail?: string
 }
 
+export interface ParticipationSummary {
+  docs: ParticipationDoc[]
+  joinedEventIds: string[]
+  countsByEventId: Record<string, number>
+}
+
 export interface ParticipationInput {
   eventId: string
   eventTitle: string
@@ -268,9 +274,52 @@ export function listParticipations(
   })
 }
 
-export function upsertParticipation(
-  input: ParticipationInput,
-): Promise<UpsertParticipationResult> {
+export function getParticipationSummary(
+  options: ListParticipationsOptions = {},
+): Promise<ParticipationSummary> {
+  return serialize(async () => {
+    const store = await readStore()
+    const eventIds = options.eventIds ? new Set(options.eventIds) : null
+    const participantEmail = options.participantEmail?.trim().toLowerCase()
+    const docs = store.participations
+      .filter(
+        (participation) =>
+          (!eventIds || eventIds.has(participation.eventId)) &&
+          (!participantEmail ||
+            participation.participantEmail.trim().toLowerCase() === participantEmail),
+      )
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+
+    const counts = new Map<string, number>()
+    for (const participation of store.participations) {
+      if (
+        participation.status !== 'going' ||
+        (eventIds !== null && !eventIds.has(participation.eventId))
+      ) {
+        continue
+      }
+      counts.set(participation.eventId, (counts.get(participation.eventId) ?? 0) + 1)
+    }
+
+    const joinedEventIds = participantEmail
+      ? Array.from(
+          new Set(
+            docs
+              .filter((participation) => participation.status === 'going')
+              .map((participation) => participation.eventId),
+          ),
+        )
+      : []
+
+    return {
+      docs,
+      joinedEventIds,
+      countsByEventId: Object.fromEntries(counts),
+    }
+  })
+}
+
+export function upsertParticipation(input: ParticipationInput): Promise<UpsertParticipationResult> {
   return serialize(async () => {
     const store = await readStore()
     const normalizedEmail = input.participantEmail.trim().toLowerCase()
@@ -306,10 +355,7 @@ export function upsertParticipation(
   })
 }
 
-export function removeParticipation(
-  eventId: string,
-  participantEmail: string,
-): Promise<number> {
+export function removeParticipation(eventId: string, participantEmail: string): Promise<number> {
   return serialize(async () => {
     const store = await readStore()
     const normalizedEmail = participantEmail.trim().toLowerCase()
@@ -408,9 +454,7 @@ function ensureExampleFamilies(store: DemoStore): boolean {
   return false
 }
 
-export function upsertFamilyProfile(
-  input: DemoFamilyProfileInput,
-): Promise<DemoFamilyProfile> {
+export function upsertFamilyProfile(input: DemoFamilyProfileInput): Promise<DemoFamilyProfile> {
   return serialize(async () => {
     const store = await readStore()
     ensureExampleFamilies(store)
@@ -419,9 +463,7 @@ export function upsertFamilyProfile(
       email,
       familyName: input.familyName.trim(),
       area: input.area.trim(),
-      ...(input.childrenSummary?.trim()
-        ? { childrenSummary: input.childrenSummary.trim() }
-        : {}),
+      ...(input.childrenSummary?.trim() ? { childrenSummary: input.childrenSummary.trim() } : {}),
       ...(input.bio?.trim() ? { bio: input.bio.trim() } : {}),
       updatedAt: new Date().toISOString(),
     }
@@ -463,10 +505,7 @@ export function listFamiliesForUser(viewerEmail: string): Promise<DemoFamilyForU
   })
 }
 
-export function toggleFamilyLike(
-  fromEmail: string,
-  toEmail: string,
-): Promise<DemoFamilyLikeState> {
+export function toggleFamilyLike(fromEmail: string, toEmail: string): Promise<DemoFamilyLikeState> {
   return serialize(async () => {
     const store = await readStore()
     ensureExampleFamilies(store)
@@ -498,9 +537,7 @@ export function toggleFamilyLike(
     const likedByMe = store.familyLikes.some(
       (like) => like.fromEmail === from && like.toEmail === to,
     )
-    const likedMe = store.familyLikes.some(
-      (like) => like.fromEmail === to && like.toEmail === from,
-    )
+    const likedMe = store.familyLikes.some((like) => like.fromEmail === to && like.toEmail === from)
     await writeStore(store)
     return {
       likedByMe,

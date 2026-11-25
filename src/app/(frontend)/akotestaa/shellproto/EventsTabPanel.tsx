@@ -1,7 +1,6 @@
 'use client'
 
 import { buildGoogleCalendarUrl } from './googleCalendar'
-import type { EventParticipationRecord } from './hooks/useEventChatAndParticipations'
 import type { FamilyEvent, FamilyProfile, UserProfileState } from './protoData'
 
 export type EventAgeQuickFilter = 'all' | '0-3' | '4-6' | '7-12' | 'all-ages'
@@ -23,8 +22,8 @@ interface EventsTabPanelProps {
   filteredSortedEvents: EventsTabEvent[]
   baseAreaSortedEventsCount: number
   matchedFamilies: Pick<FamilyProfile, 'attendingEventId' | 'name'>[]
-  participations: EventParticipationRecord[]
-  currentUserEmail: string
+  joinedEventIds: ReadonlySet<string>
+  countsByEventId: Readonly<Record<string, number>>
   pendingEventIds: ReadonlySet<string>
   isLoadingParticipations: boolean
   participationError: string | null
@@ -39,7 +38,7 @@ interface EventsTabPanelProps {
   onClearEventFilters: () => void
   onShowAllEvents: () => void
   onOpenProfileSettings: () => void
-  onToggleParticipation: (eventId: string, eventTitle: string) => void
+  onToggleParticipation: (eventId: string, eventTitle: string, isGoing: boolean) => void
   onOpenEventChat: (eventId: string, eventTitle: string) => void
   onLogSelection: (action: string, detail: string) => void
   onOpenMap: (coords: [number, number], label?: string) => void
@@ -60,8 +59,8 @@ export function EventsTabPanel({
   filteredSortedEvents,
   baseAreaSortedEventsCount,
   matchedFamilies,
-  participations,
-  currentUserEmail,
+  joinedEventIds,
+  countsByEventId,
   pendingEventIds,
   isLoadingParticipations,
   participationError,
@@ -133,7 +132,10 @@ export function EventsTabPanel({
       </div>
 
       {participationError && (
-        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+        <p
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
+        >
           {participationError}
         </p>
       )}
@@ -218,14 +220,14 @@ export function EventsTabPanel({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {filteredSortedEvents.map((evt) => {
-            const eventParticipations = participations.filter(
-              (participation) => participation.eventId === evt.id && participation.status === 'going',
-            )
-            const isGoing = eventParticipations.some(
-              (participation) =>
-                participation.participantEmail.trim().toLowerCase() ===
-                currentUserEmail.trim().toLowerCase(),
-            )
+            const isGoing = joinedEventIds.has(evt.id)
+            const participantCount = Object.hasOwn(countsByEventId, evt.id)
+              ? countsByEventId[evt.id]
+              : undefined
+            const visibleParticipantCount =
+              isLoadingParticipations && participantCount === undefined
+                ? '…'
+                : (participantCount ?? 0)
             const matchedGoing = profile.privacy.shareEventsWithMatches
               ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
               : []
@@ -259,8 +261,7 @@ export function EventsTabPanel({
                   </div>
 
                   <p className="text-xs text-slate-600">
-                    📍 {evt.venue || evt.city} <br />
-                    🕒 {evt.time}
+                    📍 {evt.venue || evt.city} <br />🕒 {evt.time}
                   </p>
 
                   {evt.description && (
@@ -282,7 +283,7 @@ export function EventsTabPanel({
                     type="button"
                     disabled={pendingEventIds.has(evt.id)}
                     aria-pressed={isGoing}
-                    onClick={() => onToggleParticipation(evt.id, evt.title)}
+                    onClick={() => onToggleParticipation(evt.id, evt.title, isGoing)}
                     className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-bold transition-colors disabled:cursor-wait disabled:opacity-60 ${
                       isGoing
                         ? 'bg-emerald-600 text-white'
@@ -290,8 +291,8 @@ export function EventsTabPanel({
                     }`}
                   >
                     {pendingEventIds.has(evt.id)
-                      ? 'Tallennetaan...'
-                      : `${isGoing ? '✓ Menossa' : '+ Menossa'} (${isLoadingParticipations ? '…' : eventParticipations.length})`}
+                      ? `Tallennetaan... (${visibleParticipantCount})`
+                      : `${isGoing ? '✓ Menossa' : '+ Menossa'} (${visibleParticipantCount})`}
                   </button>
                   <button
                     type="button"

@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import PerheAppPrototypePage from '@shellproto/page'
 
 export default function HomePage() {
-  redirect('/akotestaa/shellproto')
+  return <PerheAppPrototypePage />
 }

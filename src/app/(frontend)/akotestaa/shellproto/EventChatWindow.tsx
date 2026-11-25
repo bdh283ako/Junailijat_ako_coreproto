@@ -22,6 +22,7 @@ interface EventChatWindowProps {
   error: string | null
   onSelectChannel: (channel: ActiveEventChatChannel | null) => void
   onSendMessage: (body: string) => Promise<boolean>
+  onRequestOpen: (onReady: () => void) => void
 }
 
 export function EventChatWindow({
@@ -37,6 +38,7 @@ export function EventChatWindow({
   error,
   onSelectChannel,
   onSendMessage,
+  onRequestOpen,
 }: EventChatWindowProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [draft, setDraft] = useState('')
@@ -57,7 +59,7 @@ export function EventChatWindow({
     return (
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => onRequestOpen(() => setIsOpen(true))}
         className="fixed bottom-20 right-4 z-40 rounded-full border border-amber-300 bg-amber-500 px-4 py-2 text-xs font-bold text-amber-950 shadow-lg hover:bg-amber-400"
       >
         💬 Tapahtumachatit ({channels.length})
@@ -89,9 +91,7 @@ export function EventChatWindow({
               <button
                 key={channel.id}
                 type="button"
-                onClick={() =>
-                  onSelectChannel({ id: channel.id, title: channel.title })
-                }
+                onClick={() => onSelectChannel({ id: channel.id, title: channel.title })}
                 aria-pressed={activeChannel?.id === channel.id}
                 className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left ${
                   activeChannel?.id === channel.id
@@ -126,7 +126,10 @@ export function EventChatWindow({
             </div>
 
             {error && (
-              <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/60 p-2 text-rose-200">
+              <p
+                role="alert"
+                className="rounded-lg border border-rose-700 bg-rose-950/60 p-2 text-rose-200"
+              >
                 {error}
               </p>
             )}

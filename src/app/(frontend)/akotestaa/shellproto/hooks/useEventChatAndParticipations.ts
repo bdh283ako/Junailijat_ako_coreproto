@@ -13,6 +13,11 @@ export interface EventParticipationRecord {
   updatedAt?: string
 }
 
+interface ParticipationSummary {
+  joinedEventIds: string[]
+  countsByEventId: Record<string, number>
+}
+
 export interface EventChatMessage {
   id: string | number
   channelId: string
@@ -132,6 +137,32 @@ function parseParticipation(value: unknown): EventParticipationRecord | null {
   }
 }
 
+function parseParticipationSummary(value: unknown): ParticipationSummary {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.joinedEventIds) ||
+    !isRecord(value.countsByEventId)
+  ) {
+    throw new Error('Osallistumisten yhteenveto on virheellinen.')
+  }
+  if (!value.joinedEventIds.every((eventId) => typeof eventId === 'string')) {
+    throw new Error('Osallistumisvastauksen tapahtumatunniste on virheellinen.')
+  }
+
+  const countsByEventId = Object.create(null) as Record<string, number>
+  for (const [eventId, count] of Object.entries(value.countsByEventId)) {
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+      throw new Error('Osallistujamäärän palvelinvastaus on virheellinen.')
+    }
+    countsByEventId[eventId] = count
+  }
+
+  return {
+    joinedEventIds: value.joinedEventIds,
+    countsByEventId,
+  }
+}
+
 function parseMessage(value: unknown): EventChatMessage | null {
   if (!isRecord(value)) return null
   const { id, channelId, channelTitle, senderEmail, senderName, body, createdAt } = value
@@ -184,11 +215,7 @@ function parseChannel(value: unknown): Omit<EventChatChannel, 'isEventActive'> |
   }
 }
 
-function parseRecords<T>(
-  value: unknown,
-  parser: (item: unknown) => T | null,
-  label: string,
-): T[] {
+function parseRecords<T>(value: unknown, parser: (item: unknown) => T | null, label: string): T[] {
   if (!Array.isArray(value)) throw new Error(`Palvelimen vastaus ei sisällä ${label}-listaa.`)
   return value.map((item, index) => {
     const parsed = parser(item)
@@ -260,13 +287,13 @@ export function useEventChatAndParticipations({
   const participationEmail = effectiveIdentity?.email ?? ''
 
   const [participations, setParticipations] = useState<EventParticipationRecord[]>([])
+  const [joinedEventIds, setJoinedEventIds] = useState<string[]>([])
+  const [countsByEventId, setCountsByEventId] = useState<Record<string, number>>({})
   const [isLoadingParticipations, setIsLoadingParticipations] = useState(false)
   const [pendingEventIds, setPendingEventIds] = useState<Set<string>>(() => new Set())
   const [participationError, setParticipationError] = useState<string | null>(null)
 
-  const [rawChannels, setRawChannels] = useState<
-    Omit<EventChatChannel, 'isEventActive'>[]
-  >([])
+  const [rawChannels, setRawChannels] = useState<Omit<EventChatChannel, 'isEventActive'>[]>([])
   const [activeChannel, setActiveChannel] = useState<ActiveEventChatChannel | null>(null)
   const [messages, setMessages] = useState<EventChatMessage[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
@@ -274,7 +301,9 @@ export function useEventChatAndParticipations({
   const [chatError, setChatError] = useState<string | null>(null)
   const [channelError, setChannelError] = useState<string | null>(null)
   const activeChannelRef = useRef(activeChannel)
+  const participationMutationVersionRef = useRef(0)
   activeChannelRef.current = activeChannel
+  const joinedEventIdSet = useMemo(() => new Set(joinedEventIds), [joinedEventIds])
 
   const channels = useMemo(
     () =>
@@ -282,8 +311,7 @@ export function useEventChatAndParticipations({
         const isEventChannel = channel.id.startsWith('event:')
         return {
           ...channel,
-          isEventActive:
-            !isEventChannel || activeEventIdSet.has(channel.id.slice('event:'.length)),
+          isEventActive: !isEventChannel || activeEventIdSet.has(channel.id.slice('event:'.length)),
         }
       }),
     [activeEventIdSet, rawChannels],
@@ -292,6 +320,8 @@ export function useEventChatAndParticipations({
   useEffect(() => {
     if (!participationEmail) {
       setParticipations([])
+      setJoinedEventIds([])
+      setCountsByEventId({})
       setIsLoadingParticipations(false)
       setParticipationError(null)
       return
@@ -299,6 +329,7 @@ export function useEventChatAndParticipations({
 
     const controller = new AbortController()
     let cancelled = false
+    const mutationVersion = participationMutationVersionRef.current
 
     const loadParticipations = async () => {
       setIsLoadingParticipations(true)
@@ -315,7 +346,12 @@ export function useEventChatAndParticipations({
         const result: unknown = await response.json()
         if (!isRecord(result)) throw new Error('Osallistumisten palvelinvastaus on virheellinen.')
         const docs = parseRecords(result.docs, parseParticipation, 'osallistumis')
-        if (!cancelled) setParticipations(docs)
+        const summary = parseParticipationSummary(result)
+        if (!cancelled && mutationVersion === participationMutationVersionRef.current) {
+          setParticipations(docs)
+          setJoinedEventIds(summary.joinedEventIds)
+          setCountsByEventId(summary.countsByEventId)
+        }
       } catch (error) {
         if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) {
           setParticipationError(
@@ -362,45 +398,75 @@ export function useEventChatAndParticipations({
   }, [refreshChannels])
 
   const toggleParticipation = useCallback(
-    async (
-      eventId: string,
-      eventTitle: string,
-    ): Promise<'going' | 'removed' | false> => {
+    async (eventId: string, eventTitle: string): Promise<'going' | 'removed' | false> => {
       const identity = resolveIdentity()
       if (pendingEventIds.has(eventId)) return false
 
+      const participantMatches = (participation: EventParticipationRecord) =>
+        participation.eventId === eventId &&
+        participation.participantEmail.trim().toLowerCase() === identity.email
+      const existing = participations.find(participantMatches)
+      const wasGoing = joinedEventIdSet.has(eventId) || existing?.status === 'going'
+      const previousCount = countsByEventId[eventId] ?? 0
+      const optimisticParticipation: EventParticipationRecord = {
+        id: `optimistic-${eventId}-${Date.now()}`,
+        eventId,
+        eventTitle,
+        participantEmail: identity.email,
+        participantName: identity.name,
+        status: 'going',
+        createdAt: new Date().toISOString(),
+      }
+
+      participationMutationVersionRef.current += 1
       setPendingEventIds((current) => new Set(current).add(eventId))
       setParticipationError(null)
-      try {
-        const existing = participations.find(
-          (participation) =>
-            participation.eventId === eventId &&
-            participation.participantEmail.trim().toLowerCase() === identity.email,
-        )
+      setJoinedEventIds((current) => {
+        const remaining = current.filter((id) => id !== eventId)
+        return wasGoing ? remaining : [...remaining, eventId]
+      })
+      setCountsByEventId((current) => ({
+        ...current,
+        [eventId]: Math.max(0, previousCount + (wasGoing ? -1 : 1)),
+      }))
+      setParticipations((current) => {
+        const remaining = current.filter((participation) => !participantMatches(participation))
+        return wasGoing ? remaining : [...remaining, optimisticParticipation]
+      })
 
-        if (existing) {
+      try {
+        if (wasGoing) {
           const params = new URLSearchParams({
             eventId,
             participantEmail: identity.email,
           })
-          const response = await fetch(`/api/participations?${params}`, { method: 'DELETE' })
+          const response = await fetch(`/api/participations?${params}`, {
+            method: 'DELETE',
+            cache: 'no-store',
+          })
           if (!response.ok) {
             throw new Error(await getResponseError(response, 'Osallistumisen poisto epäonnistui'))
           }
+          const result: unknown = await response.json()
+          const summary = parseParticipationSummary(result)
+          participationMutationVersionRef.current += 1
+          setJoinedEventIds((current) => {
+            const remaining = current.filter((id) => id !== eventId)
+            return summary.joinedEventIds.includes(eventId) ? [...remaining, eventId] : remaining
+          })
+          setCountsByEventId((current) => ({
+            ...current,
+            [eventId]: summary.countsByEventId[eventId] ?? 0,
+          }))
           setParticipations((current) =>
-            current.filter(
-              (participation) =>
-                !(
-                  participation.eventId === eventId &&
-                  participation.participantEmail.trim().toLowerCase() === identity.email
-                ),
-            ),
+            current.filter((participation) => !participantMatches(participation)),
           )
           return 'removed'
         }
 
         const response = await fetch('/api/participations', {
           method: 'POST',
+          cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             eventId,
@@ -416,18 +482,32 @@ export function useEventChatAndParticipations({
         const result: unknown = await response.json()
         const participation = isRecord(result) ? parseParticipation(result.doc) : null
         if (!participation) throw new Error('Palvelin palautti virheellisen osallistumistiedon.')
+        const summary = parseParticipationSummary(result)
+        participationMutationVersionRef.current += 1
+        setJoinedEventIds((current) => {
+          const remaining = current.filter((id) => id !== eventId)
+          return summary.joinedEventIds.includes(eventId) ? [...remaining, eventId] : remaining
+        })
+        setCountsByEventId((current) => ({
+          ...current,
+          [eventId]: summary.countsByEventId[eventId] ?? 0,
+        }))
         setParticipations((current) => [
-          ...current.filter(
-            (item) =>
-              !(
-                item.eventId === eventId &&
-                item.participantEmail.trim().toLowerCase() === identity.email
-              ),
-          ),
+          ...current.filter((item) => !participantMatches(item)),
           participation,
         ])
         return 'going'
       } catch (error) {
+        participationMutationVersionRef.current += 1
+        setJoinedEventIds((current) => {
+          const remaining = current.filter((id) => id !== eventId)
+          return wasGoing ? [...remaining, eventId] : remaining
+        })
+        setCountsByEventId((current) => ({ ...current, [eventId]: previousCount }))
+        setParticipations((current) => {
+          const remaining = current.filter((participation) => !participantMatches(participation))
+          return existing ? [...remaining, existing] : remaining
+        })
         setParticipationError(
           error instanceof Error ? error.message : 'Osallistumisen päivitys epäonnistui',
         )
@@ -440,7 +520,7 @@ export function useEventChatAndParticipations({
         })
       }
     },
-    [participations, pendingEventIds, resolveIdentity],
+    [countsByEventId, joinedEventIdSet, participations, pendingEventIds, resolveIdentity],
   )
 
   const activeChannelId = activeChannel?.id ?? null
@@ -554,6 +634,9 @@ export function useEventChatAndParticipations({
 
   return {
     participations,
+    joinedEventIds,
+    joinedEventIdSet,
+    countsByEventId,
     isLoadingParticipations,
     pendingEventIds,
     participationError,

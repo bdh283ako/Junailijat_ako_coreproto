@@ -29,6 +29,7 @@ export interface FamilyDefaultPreset {
 
 export interface UserProfileState {
   familyName: string
+  parentDisplayName: string
   homeCity: string
   area: string
   homeCoords: [number, number]
@@ -169,6 +170,7 @@ export const NERD_DB_QUIPS: string[] = [
 
 export const BASE_DEFAULT_PROFILE: UserProfileState = {
   familyName: 'Oma perhe',
+  parentDisplayName: 'Vanhempi',
   homeCity: 'Espoo',
   area: 'Espoo • Leppävaara',
   homeCoords: [60.2185, 24.8126],
@@ -176,12 +178,7 @@ export const BASE_DEFAULT_PROFILE: UserProfileState = {
   children: [{ id: 'c-1', ageLabel: '5 v', group: '4-6v' }],
   closeRelatives: [],
   coParents: [],
-  interests: [
-    'Ulkoilu & puistot',
-    'Kirjasto & sadut',
-    'Uiminen & vesi',
-    'Retket & luonto',
-  ],
+  interests: ['Ulkoilu & puistot', 'Kirjasto & sadut', 'Uiminen & vesi', 'Retket & luonto'],
   defaultPreset: {
     enabled: true,
     useChildrenAgeInference: true,
@@ -235,13 +232,12 @@ export function emailToUserId(email: string): string {
   return (safe || 'google_user').slice(0, 80)
 }
 
-export function buildInitialProfileForGoogleUser(
-  user: AuthenticatedGoogleUser,
-): UserProfileState {
+export function buildInitialProfileForGoogleUser(user: AuthenticatedGoogleUser): UserProfileState {
   const firstName = user.displayName.split(/\s+/)[0] || 'Oma'
   return {
     ...BASE_DEFAULT_PROFILE,
     familyName: `${firstName}n perhe`,
+    parentDisplayName: user.displayName,
     onboardingCompleted: false,
     children: [{ id: 'c-1', ageLabel: '5 v', group: '4-6v' }],
     closeRelatives: [],
@@ -290,15 +286,16 @@ export function normalizeProfile(
   const homeCity =
     typeof obj.homeCity === 'string' && obj.homeCity.trim()
       ? obj.homeCity
-      : areaMeta?.city ?? fallback.homeCity
+      : (areaMeta?.city ?? fallback.homeCity)
 
-  const rawCoords = Array.isArray(obj.homeCoords) && obj.homeCoords.length >= 2 ? obj.homeCoords : null
+  const rawCoords =
+    Array.isArray(obj.homeCoords) && obj.homeCoords.length >= 2 ? obj.homeCoords : null
   const lat = rawCoords && typeof rawCoords[0] === 'number' ? rawCoords[0] : undefined
   const lng = rawCoords && typeof rawCoords[1] === 'number' ? rawCoords[1] : undefined
   const homeCoords: [number, number] =
     typeof lat === 'number' && typeof lng === 'number'
       ? [lat, lng]
-      : areaMeta?.coords ?? fallback.homeCoords
+      : (areaMeta?.coords ?? fallback.homeCoords)
 
   const children: ChildItem[] = Array.isArray(obj.children)
     ? obj.children
@@ -307,9 +304,7 @@ export function normalizeProfile(
           id: typeof c.id === 'string' ? c.id : `c-${i + 1}`,
           ageLabel: typeof c.ageLabel === 'string' ? c.ageLabel : '4 v',
           group:
-            typeof c.group === 'string' && AGE_GROUP_OPTIONS.includes(c.group)
-              ? c.group
-              : '4-6v',
+            typeof c.group === 'string' && AGE_GROUP_OPTIONS.includes(c.group) ? c.group : '4-6v',
         }))
     : [...fallback.children]
 
@@ -318,8 +313,7 @@ export function normalizeProfile(
         .filter((r): r is Record<string, unknown> => Boolean(r && typeof r === 'object'))
         .map((r, i) => ({
           id: typeof r.id === 'string' ? r.id : `r-${i + 1}`,
-          relationLabel:
-            typeof r.relationLabel === 'string' ? r.relationLabel : 'Isovanhempi',
+          relationLabel: typeof r.relationLabel === 'string' ? r.relationLabel : 'Isovanhempi',
           note: typeof r.note === 'string' ? r.note : '',
         }))
     : [...fallback.closeRelatives]
@@ -333,8 +327,7 @@ export function normalizeProfile(
           email: typeof p.email === 'string' ? p.email : '',
           status: p.status === 'accepted' ? 'accepted' : 'pending',
           invitedAt: typeof p.invitedAt === 'string' ? p.invitedAt : '',
-          inviteCode:
-            typeof p.inviteCode === 'string' ? p.inviteCode : generateInviteCode(),
+          inviteCode: typeof p.inviteCode === 'string' ? p.inviteCode : generateInviteCode(),
         }))
     : [...fallback.coParents]
 
@@ -353,9 +346,7 @@ export function normalizeProfile(
 
   const defaultPreset: FamilyDefaultPreset = {
     enabled:
-      typeof rawPreset.enabled === 'boolean'
-        ? rawPreset.enabled
-        : fallback.defaultPreset.enabled,
+      typeof rawPreset.enabled === 'boolean' ? rawPreset.enabled : fallback.defaultPreset.enabled,
     useChildrenAgeInference:
       typeof rawPreset.useChildrenAgeInference === 'boolean'
         ? rawPreset.useChildrenAgeInference
@@ -375,9 +366,7 @@ export function normalizeProfile(
   }
 
   const rawFilters =
-    obj.filters && typeof obj.filters === 'object'
-      ? (obj.filters as Record<string, unknown>)
-      : {}
+    obj.filters && typeof obj.filters === 'object' ? (obj.filters as Record<string, unknown>) : {}
 
   const inferredAges = inferAgeGroupsFromChildren(children)
   const targetAgeGroups = Array.isArray(rawFilters.targetAgeGroups)
@@ -387,15 +376,17 @@ export function normalizeProfile(
       : [...fallback.filters.targetAgeGroups]
 
   const rawPrivacy =
-    obj.privacy && typeof obj.privacy === 'object'
-      ? (obj.privacy as Record<string, unknown>)
-      : {}
+    obj.privacy && typeof obj.privacy === 'object' ? (obj.privacy as Record<string, unknown>) : {}
 
   return {
     familyName:
       typeof obj.familyName === 'string' && obj.familyName.trim()
         ? obj.familyName
         : fallback.familyName,
+    parentDisplayName:
+      typeof obj.parentDisplayName === 'string' && obj.parentDisplayName.trim()
+        ? obj.parentDisplayName
+        : fallback.parentDisplayName,
     homeCity,
     area,
     homeCoords,
@@ -539,15 +530,17 @@ export function calcFamilyMatch(
   distancePts: number
   agePts: number
   eventPts: number
-} 
-{
+} {
   const activeTags =
     userProfile.defaultPreset.favoriteActivities.length > 0
       ? userProfile.defaultPreset.favoriteActivities
       : userProfile.interests
 
   const commonTags = candidate.interests.filter((t) => activeTags.includes(t))
-  const interestsPts = Math.min(40, Math.round((commonTags.length / Math.max(1, activeTags.length)) * 40))
+  const interestsPts = Math.min(
+    40,
+    Math.round((commonTags.length / Math.max(1, activeTags.length)) * 40),
+  )
 
   const maxD = Math.max(1, userProfile.filters.maxDistanceKm || 15)
   const distancePts = Math.max(0, Math.min(30, Math.round((1 - distanceKm / maxD) * 30)))

@@ -2,19 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CommunityHubPanel, type HubSection } from './CommunityHubPanel'
-import {
-  DebugMonitorPanels,
-  type FeedSourcesMeta,
-} from './DebugMonitorPanels'
+import { DebugMonitorPanels, type FeedSourcesMeta } from './DebugMonitorPanels'
 import { EventChatWindow } from './EventChatWindow'
 import { EventsTabPanel, type EventAgeQuickFilter } from './EventsTabPanel'
 import { FamiliesTabPanel, type FamilySubTab } from './FamiliesTabPanel'
 import { FamilyMembersPanel } from './FamilyMembersPanel'
-import {
-  DEFAULT_PKS_COORDS,
-  resolveCoordsTuple,
-  resolveEventsForMap,
-} from './mapGeoResolver'
+import { DEFAULT_PKS_COORDS, resolveCoordsTuple, resolveEventsForMap } from './mapGeoResolver'
 import { PksMapView } from './PksMapView'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import { StoreInspectorPanel } from './StoreInspectorPanel'
@@ -22,6 +15,12 @@ import { useEventsFeed, type EventFeedStatus } from './useEventsFeed'
 import { useEventChatAndParticipations } from './hooks/useEventChatAndParticipations'
 import { useFamilyProfileSync } from './useFamilyProfileSync'
 import { useGoogleSession } from './useGoogleSession'
+import { FamilyEnrollmentModal } from '@/components/FamilyEnrollmentModal'
+import {
+  isFamilyProfileComplete,
+  useEnrollmentFlow,
+  type PendingEnrollmentIntent,
+} from '@/hooks/useEnrollmentFlow'
 import {
   buildInviteUrl,
   calcDistanceKm,
@@ -112,7 +111,10 @@ function getCoarseCity(area: string, fallbackCity: string): string {
 }
 
 function getAgeGroups(summary?: string): string[] {
-  const normalized = (summary ?? '').toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, '')
+  const normalized = (summary ?? '')
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, '')
   return ['0-3v', '4-6v', '7-12v', '13+v'].filter((group) => {
     const digits = group.replace('v', '')
     return normalized.includes(group) || normalized.includes(digits)
@@ -135,8 +137,7 @@ function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQui
 
   if (filter === 'all-ages') return false
 
-  const [bucketMin, bucketMax] =
-    filter === '0-3' ? [0, 3] : filter === '4-6' ? [4, 6] : [7, 12]
+  const [bucketMin, bucketMax] = filter === '0-3' ? [0, 3] : filter === '4-6' ? [4, 6] : [7, 12]
 
   const rangeMatch = normalized.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/)
   if (rangeMatch) {
@@ -156,10 +157,7 @@ function matchesEventAgeFilter(ageGroup: string | undefined, filter: EventAgeQui
   return false
 }
 
-function getSourceStatusBadge(
-  status: EventFeedStatus,
-  sources: FeedSourcesMeta | null,
-) {
+function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta | null) {
   if (status === 'loading') {
     return {
       label: 'Ladataan tapahtumalähteitä...',
@@ -176,10 +174,9 @@ function getSourceStatusBadge(
     }
   }
 
-  const activeSourceCount = [
-    sources.karoCount > 0,
-    sources.linkedEventsCount > 0,
-  ].filter(Boolean).length
+  const activeSourceCount = [sources.karoCount > 0, sources.linkedEventsCount > 0].filter(
+    Boolean,
+  ).length
 
   const summaryParts = [
     sources.linkedEventsCount > 0
@@ -295,6 +292,7 @@ export default function PerheAppPrototypePage() {
   const {
     profile,
     setProfile,
+    isHydrated: isProfileHydrated,
     profileSavedToast,
     dbSyncStatus,
     mongoInstanceLabel,
@@ -306,16 +304,12 @@ export default function PerheAppPrototypePage() {
     dismissedIds,
     setDismissedIds,
     saveProfileFeedback,
+    saveFamilyProfile,
     resetTransientData,
   } = useFamilyProfileSync({ currentUser })
 
-  const {
-    events,
-    eventFeedStatus,
-    eventFeedSources,
-    eventFeedDebug,
-    loadEventsFeed,
-  } = useEventsFeed({ onLogSelection: recordDemoSelection })
+  const { events, eventFeedStatus, eventFeedSources, eventFeedDebug, loadEventsFeed } =
+    useEventsFeed({ onLogSelection: recordDemoSelection })
 
   const activeEventIds = useMemo(() => events.map((event) => event.id), [events])
   const eventChat = useEventChatAndParticipations({
@@ -359,14 +353,15 @@ export default function PerheAppPrototypePage() {
       return
     }
 
-    const response = await fetch(
-      `/api/families?viewerEmail=${encodeURIComponent(viewerEmail)}`,
-      { cache: 'no-store' },
-    )
+    const response = await fetch(`/api/families?viewerEmail=${encodeURIComponent(viewerEmail)}`, {
+      cache: 'no-store',
+    })
     const payload: unknown = await response.json()
     if (!response.ok) {
       const message =
-        payload && typeof payload === 'object' && 'error' in payload &&
+        payload &&
+        typeof payload === 'object' &&
+        'error' in payload &&
         typeof payload.error === 'string'
           ? payload.error
           : `Perheiden haku epäonnistui (HTTP ${response.status}).`
@@ -410,7 +405,9 @@ export default function PerheAppPrototypePage() {
       if (!response.ok) {
         const payload: unknown = await response.json()
         const message =
-          payload && typeof payload === 'object' && 'error' in payload &&
+          payload &&
+          typeof payload === 'object' &&
+          'error' in payload &&
           typeof payload.error === 'string'
             ? payload.error
             : `Perheprofiilin tallennus epäonnistui (HTTP ${response.status}).`
@@ -516,10 +513,7 @@ export default function PerheAppPrototypePage() {
             if (!channel.id.startsWith('event:') && !channel.id.startsWith('family:')) {
               return false
             }
-            if (
-              channel.id.startsWith('family:') &&
-              !mutualFamilyChannelIds.has(channel.id)
-            ) {
+            if (channel.id.startsWith('family:') && !mutualFamilyChannelIds.has(channel.id)) {
               return false
             }
             if (
@@ -734,8 +728,7 @@ export default function PerheAppPrototypePage() {
     return true
   })
 
-  const hasActiveQuickEventFilter =
-    eventAgeFilter !== 'all' || normalizedEventQuery.length > 0
+  const hasActiveQuickEventFilter = eventAgeFilter !== 'all' || normalizedEventQuery.length > 0
 
   const sourceBadge = getSourceStatusBadge(eventFeedStatus, eventFeedSources)
 
@@ -982,25 +975,85 @@ export default function PerheAppPrototypePage() {
     }))
   }
 
-  const toggleDatabaseParticipation = async (eventId: string, eventTitle: string) => {
-    const result = await eventChat.toggleParticipation(eventId, eventTitle)
-    if (!result) return
+  const toggleDatabaseParticipation = useCallback(
+    async (eventId: string, eventTitle: string) => {
+      const result = await eventChat.toggleParticipation(eventId, eventTitle)
+      if (!result) return false
 
-    const isGoing = result === 'going'
-    setAttendingIds((current) => {
-      const alreadyGoing = current.includes(eventId)
-      if (alreadyGoing === isGoing) return current
-      return isGoing
-        ? [...current, eventId]
-        : current.filter((id) => id !== eventId)
-    })
-    recordDemoSelection('EVENT_ATTENDANCE', `${eventId} -> ${isGoing ? 'GOING' : 'SKIPPED'}`)
-  }
+      const isGoing = result === 'going'
+      setAttendingIds((current) => {
+        const alreadyGoing = current.includes(eventId)
+        if (alreadyGoing === isGoing) return current
+        return isGoing ? [...current, eventId] : current.filter((id) => id !== eventId)
+      })
+      recordDemoSelection('EVENT_ATTENDANCE', `${eventId} -> ${isGoing ? 'GOING' : 'SKIPPED'}`)
+      return result
+    },
+    [eventChat.toggleParticipation, recordDemoSelection],
+  )
 
-  const openPersistedEventChat = (eventId: string, eventTitle: string) => {
-    eventChat.setActiveChannel({ id: `event:${eventId}`, title: eventTitle })
-    recordDemoSelection('EVENT_CHAT_OPEN', eventId)
-  }
+  const ensureEventParticipation = useCallback(
+    async (eventId: string, eventTitle: string) => {
+      if (eventChat.joinedEventIdSet.has(eventId)) return
+      const result = await toggleDatabaseParticipation(eventId, eventTitle)
+      if (result !== 'going') {
+        throw new Error(eventChat.participationError || 'Tapahtumaan liittyminen epäonnistui.')
+      }
+    },
+    [eventChat.joinedEventIdSet, eventChat.participationError, toggleDatabaseParticipation],
+  )
+
+  const openPersistedEventChat = useCallback(
+    (eventId: string, eventTitle: string) => {
+      eventChat.setActiveChannel({ id: `event:${eventId}`, title: eventTitle })
+      recordDemoSelection('EVENT_CHAT_OPEN', eventId)
+    },
+    [eventChat.setActiveChannel, recordDemoSelection],
+  )
+
+  const fulfillPendingIntent = useCallback(
+    async (intent: PendingEnrollmentIntent) => {
+      switch (intent.type) {
+        case 'join_event': {
+          const eventTitle =
+            intent.eventTitle ??
+            events.find((event) => event.id === intent.eventId)?.title ??
+            intent.eventId
+          await ensureEventParticipation(intent.eventId, eventTitle)
+          break
+        }
+        case 'open_event_chat': {
+          const eventTitle =
+            intent.eventTitle ??
+            events.find((event) => event.id === intent.eventId)?.title ??
+            intent.eventId
+          await ensureEventParticipation(intent.eventId, eventTitle)
+          openPersistedEventChat(intent.eventId, eventTitle)
+          break
+        }
+        case 'switch_tab':
+          if (intent.tab === 'families') {
+            setActiveTab('families')
+            recordDemoSelection('TAB_SELECT', 'families')
+          } else {
+            openHubChannel('event_chat')
+            recordDemoSelection('TAB_SELECT', 'hub')
+          }
+          break
+      }
+    },
+    [events, ensureEventParticipation, openHubChannel, openPersistedEventChat, recordDemoSelection],
+  )
+
+  const enrollmentFlow = useEnrollmentFlow({
+    authStatus,
+    currentUser,
+    profile,
+    isProfileHydrated,
+    saveFamilyProfile,
+    startGoogleSignIn,
+    onFulfillPendingIntent: fulfillPendingIntent,
+  })
 
   const handleSwipe = (liked: boolean) => {
     if (!currentCard) return
@@ -1026,7 +1079,9 @@ export default function PerheAppPrototypePage() {
           const payload: unknown = await response.json()
           if (!response.ok) {
             const message =
-              payload && typeof payload === 'object' && 'error' in payload &&
+              payload &&
+              typeof payload === 'object' &&
+              'error' in payload &&
               typeof payload.error === 'string'
                 ? payload.error
                 : `Tykkäyksen tallennus epäonnistui (HTTP ${response.status}).`
@@ -1081,463 +1136,494 @@ export default function PerheAppPrototypePage() {
   const totalParentsCount = 1 + profile.coParents.length
   const activePreviewInvite = profile.coParents.find((p) => p.id === previewInviteId) ?? null
   const latestDbEntry = dbFeedLog[0] ?? null
+  const requestProtectedTab = useCallback(
+    (tab: 'families' | 'conversations') => {
+      enrollmentFlow.requireEnrolledAction({ type: 'switch_tab', tab }, () => {
+        if (tab === 'families') {
+          setActiveTab('families')
+          recordDemoSelection('TAB_SELECT', 'families')
+        } else {
+          openHubChannel('event_chat')
+          recordDemoSelection('TAB_SELECT', 'hub')
+        }
+      })
+    },
+    [enrollmentFlow.requireEnrolledAction, openHubChannel, recordDemoSelection],
+  )
+
+  const protectedTabPrompt = (tab: 'families' | 'conversations') => (
+    <section className="mx-auto my-8 max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+      <h2 className="text-base font-bold text-slate-900">Löydä sopivaa seuraa</h2>
+      <p className="mt-2 text-sm text-slate-600">
+        Kirjaudu ja luo perheprofiili nähdäksesi sopivat perheet ja keskustelut.
+      </p>
+      <button
+        className="mt-4 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700"
+        onClick={() => requestProtectedTab(tab)}
+        type="button"
+      >
+        {authStatus === 'authenticated' ? 'Täydennä perheprofiili' : 'Kirjaudu ja jatka'}
+      </button>
+    </section>
+  )
 
   return (
     <div className="min-h-dvh bg-zinc-900 sm:py-5 sm:px-4 flex justify-center items-center">
       <div className="w-full max-w-[430px] sm:max-w-4xl bg-slate-50 h-dvh sm:h-[92dvh] sm:max-h-[1180px] flex flex-col shadow-2xl border-x sm:border-[3px] border-slate-800 sm:rounded-[2rem] relative overflow-hidden transition-all duration-300">
-        {authStatus === 'loading' ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-xs text-slate-600">
-            <span className="text-2xl animate-pulse">🔐</span>
-            <p>Tarkistetaan Google-kirjautumista...</p>
-          </div>
-        ) : authStatus === 'unauthenticated' || !currentUser ? (
-          <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col justify-center">
-            <div className="max-w-md mx-auto w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-lg space-y-6 text-center">
-              <div className="space-y-2">
-                <span className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
-                  PerhePiiri • Google OAuth 2.0
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  Perhe<span className="text-emerald-600">Piiri</span>
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  Kirjaudu sisään omalla Google-tililläsi, niin asetat oman kotiseudun, hallitset
-                  omia perheenjäseniä ja tallennat tietosi omaan profiiliisi.
-                </p>
-              </div>
-
-              {authErrorMessage && (
-                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 text-left">
-                  {authErrorMessage}
-                </div>
-              )}
-
-              <button
-                type="button"
-                disabled={authRedirecting}
-                onClick={() => void startGoogleSignIn()}
-                className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-slate-50 active:bg-slate-100 border-2 border-slate-300 text-slate-900 font-bold text-sm shadow-sm flex items-center justify-center gap-3 transition-all disabled:opacity-60"
-              >
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="#4285F4"
-                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-                  />
-                </svg>
-                <span>
-                  {authRedirecting
-                    ? 'Siirrytään Google-kirjautumiseen...'
-                    : 'Kirjaudu Google-tilillä'}
-                </span>
-              </button>
+        <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <div className="flex flex-col">
+              <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+                Perhe<span className="text-emerald-600">Piiri</span>
+              </h1>
             </div>
+            <p className="text-[10px] text-slate-500 truncate sm:text-xs">
+              🟠 {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
+            </p>
           </div>
-        ) : (
-          <>
-            <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
-                    Perhe<span className="text-emerald-600">Piiri</span>
-                  </h1>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[10px] font-bold truncate">
-                    {currentUser.avatarUrl ? (
-                      <img
-                        src={currentUser.avatarUrl}
-                        alt=""
-                        className="w-3.5 h-3.5 rounded-full"
-                      />
-                    ) : (
-                      <span>G</span>
-                    )}
-                    <span className="truncate">{currentUser.displayName}</span>
+          {authStatus === 'authenticated' && currentUser ? (
+            <div className="flex min-w-0 items-center justify-end gap-1.5">
+              <div className="flex min-w-0 items-center gap-1.5">
+                {currentUser.avatarUrl ? (
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt=""
+                    className="h-6 w-6 shrink-0 rounded-full"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800"
+                  >
+                    {currentUser.displayName.slice(0, 1).toUpperCase()}
                   </span>
-                </div>
-                <p className="text-[11px] sm:text-xs text-slate-500 truncate">
-                  🟠 {profile.homeCity} ({profile.area}) • haku max {profile.filters.maxDistanceKm}{' '}
-                  km
-                </p>
+                )}
+                <span className="max-w-24 truncate text-xs font-semibold text-slate-800">
+                  {currentUser.displayName}
+                </span>
+                <span
+                  className={`max-w-[76px] truncate rounded-full px-1.5 py-1 text-[9px] font-bold sm:max-w-none sm:px-2 sm:text-[10px] ${
+                    isFamilyProfileComplete(profile)
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-900'
+                  }`}
+                >
+                  {isFamilyProfileComplete(profile) ? 'Profiili valmis' : 'Täydennä profiili'}
+                </span>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="hidden items-center gap-1.5 lg:flex">
                 <button
                   type="button"
                   onClick={() => setShowDemoMonitor((prev) => !prev)}
-                  className="px-2 py-1 rounded-full bg-zinc-900 text-amber-400 text-[10px] font-mono font-bold hover:bg-zinc-800"
+                  className="rounded-full bg-zinc-900 px-2 py-1 text-[10px] font-mono font-bold text-amber-400 hover:bg-zinc-800"
                 >
                   {showDemoMonitor ? '◼ Demo-Log' : '◻ Demo-Log'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowNerdDbFloat((prev) => !prev)}
-                  className="px-2 py-1 rounded-full bg-indigo-950 text-cyan-300 text-[10px] font-mono font-bold hover:bg-indigo-900"
+                  className="rounded-full bg-indigo-950 px-2 py-1 text-[10px] font-mono font-bold text-cyan-300 hover:bg-indigo-900"
                 >
                   {showNerdDbFloat ? '◼ DB-Feed' : '◻ DB-Feed'}
                 </button>
+              </div>
+              <button
+                type="button"
+                disabled={authRedirecting}
+                onClick={() => void signOutGoogleSession()}
+                className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-60"
+              >
+                Kirjaudu ulos
+              </button>
+            </div>
+          ) : (
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 sm:inline">
+                Vierailija
+              </span>
+              <button
+                type="button"
+                disabled={authRedirecting}
+                onClick={() => void startGoogleSignIn()}
+                className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 transition-colors hover:bg-slate-50 disabled:opacity-60"
+              >
+                {authRedirecting ? 'Siirrytään...' : 'Kirjaudu Googlella'}
+              </button>
+            </div>
+          )}
+        </header>
+        {authErrorMessage && (
+          <p
+            className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-800"
+            role="alert"
+          >
+            {authErrorMessage}
+          </p>
+        )}
+
+        {latestMatch && (
+          <div className="bg-emerald-600 text-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+            <div className="text-xs sm:text-sm">
+              <p className="font-bold">🎉 Uusi perheosuma: {latestMatch.name}!</p>
+              <p className="opacity-90 text-xs">{latestMatch.area}</p>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = latestMatch
+                  setLatestMatch(null)
+                  openHubChannel('matches', { directTargetId: target.id })
+                }}
+                className="px-3 py-1.5 bg-white text-emerald-800 rounded-lg text-xs font-bold"
+              >
+                Avaa chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setLatestMatch(null)}
+                className="px-2.5 py-1.5 text-white/80 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 overflow-y-auto">
+          {activeTab === 'events' && (
+            <EventsTabPanel
+              profile={profile}
+              sourceBadge={sourceBadge}
+              eventFeedStatus={eventFeedStatus}
+              filteredSortedEvents={filteredSortedEvents}
+              baseAreaSortedEventsCount={baseAreaSortedEvents.length}
+              matchedFamilies={matchedFamilies}
+              joinedEventIds={eventChat.joinedEventIdSet}
+              countsByEventId={eventChat.countsByEventId}
+              pendingEventIds={eventChat.pendingEventIds}
+              isLoadingParticipations={eventChat.isLoadingParticipations}
+              participationError={eventChat.participationError}
+              eventAgeFilter={eventAgeFilter}
+              onEventAgeFilterChange={setEventAgeFilter}
+              eventSearchQuery={eventSearchQuery}
+              onEventSearchQueryChange={setEventSearchQuery}
+              hasActiveQuickEventFilter={hasActiveQuickEventFilter}
+              ignoreDefaultPresetTemp={ignoreDefaultPresetTemp}
+              onToggleDefaultPreset={() => setIgnoreDefaultPresetTemp((prev) => !prev)}
+              onRefreshEvents={() => void loadEventsFeed(true)}
+              onClearEventFilters={() => {
+                setEventAgeFilter('all')
+                setEventSearchQuery('')
+              }}
+              onShowAllEvents={() => setIgnoreDefaultPresetTemp(true)}
+              onOpenProfileSettings={() => {
+                setActiveTab('profile')
+                setProfileSubView('main')
+              }}
+              onToggleParticipation={(eventId, eventTitle, isGoing) => {
+                if (isGoing) {
+                  void toggleDatabaseParticipation(eventId, eventTitle)
+                  return
+                }
+                enrollmentFlow.requireEnrolledAction(
+                  { type: 'join_event', eventId, eventTitle },
+                  () => ensureEventParticipation(eventId, eventTitle),
+                )
+              }}
+              onOpenEventChat={(eventId, eventTitle) =>
+                enrollmentFlow.requireEnrolledAction(
+                  { type: 'open_event_chat', eventId, eventTitle },
+                  async () => {
+                    await ensureEventParticipation(eventId, eventTitle)
+                    openPersistedEventChat(eventId, eventTitle)
+                  },
+                )
+              }
+              onLogSelection={recordDemoSelection}
+              onOpenMap={openOnMap}
+            />
+          )}
+
+          {activeTab === 'families' && currentUser && isFamilyProfileComplete(profile) && (
+            <FamiliesTabPanel
+              familySubTab={familySubTab}
+              filteredDeckCount={filteredDeck.length}
+              matchedFamilies={matchedFamilies}
+              currentCard={currentCard}
+              profile={profile}
+              familyApiError={familyApiError}
+              safeEvents={safeEvents}
+              attendingIds={attendingIds}
+              onFamilySubTabChange={setFamilySubTab}
+              onLogSelection={recordDemoSelection}
+              onSwipe={handleSwipe}
+              onOpenProfileSettings={() => {
+                setActiveTab('profile')
+                setProfileSubView('main')
+              }}
+              onResetDismissed={() => {
+                setDismissedIds([])
+                recordDemoSelection('DISMISSED_RESET', currentUser.id)
+              }}
+              onOpenMap={openOnMap}
+              onOpenMatchesChat={(familyId) =>
+                openHubChannel('matches', { directTargetId: familyId })
+              }
+            />
+          )}
+          {activeTab === 'families' &&
+            (!currentUser || !isFamilyProfileComplete(profile)) &&
+            protectedTabPrompt('families')}
+
+          {activeTab === 'hub' && currentUser && isFamilyProfileComplete(profile) && (
+            <CommunityHubPanel
+              key={hubMountKey}
+              currentUser={currentUser}
+              profile={profile}
+              events={baseAreaSortedEvents}
+              matchedIds={matchedIds}
+              allFamilies={familiesWithDistance}
+              initialSection={hubInitialSection}
+              initialEventId={hubEventId}
+              initialDirectTargetId={hubDirectTargetId}
+              chatChannels={eventChat.channels}
+              participations={eventChat.participations}
+              pendingParticipationEventIds={eventChat.pendingEventIds}
+              participationError={eventChat.participationError}
+              activeChatChannel={eventChat.activeChannel}
+              chatMessages={eventChat.messages}
+              currentUserEmail={eventChat.participantEmail}
+              unreadChatChannelIds={unreadChatChannelIds}
+              isLoadingChatMessages={eventChat.isLoadingMessages}
+              isSendingChatMessage={eventChat.isSendingMessage}
+              chatError={[eventChat.chatError, chatReadError].filter(Boolean).join(' ') || null}
+              onActiveChatChannelChange={eventChat.setActiveChannel}
+              onSendChatMessage={eventChat.sendMessage}
+              onToggleParticipation={eventChat.toggleParticipation}
+            />
+          )}
+          {activeTab === 'hub' &&
+            (!currentUser || !isFamilyProfileComplete(profile)) &&
+            protectedTabPrompt('conversations')}
+
+          {activeTab === 'map' && (
+            <PksMapView
+              events={safeEvents}
+              attendingIds={attendingIds}
+              matchedFamilies={matchedFamilies}
+              homeCoords={safeHomeCoords}
+              homeLabel={`${profile.area}, ${profile.homeCity}`}
+              familyName={profile.familyName}
+              shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
+              showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
+              focusCoords={mapFocusCoords}
+              onResetBounds={handleResetMapBounds}
+              selectedCity={profile.filters.targetCity}
+              onChangeSelectedCity={(nextCity) =>
+                setProfile((prev) => ({
+                  ...prev,
+                  filters: { ...prev.filters, targetCity: nextCity },
+                }))
+              }
+            />
+          )}
+
+          {activeTab === 'profile' && profileSubView === 'main' && currentUser && (
+            <ProfileSettingsPanel
+              currentUser={currentUser}
+              profile={profile}
+              onChangeProfile={setProfile}
+              totalParentsCount={totalParentsCount}
+              filteredDeckCount={filteredDeck.length}
+              dbFeedCount={dbFeedLog.length}
+              profileSavedToast={profileSavedToast}
+              transientResetToast={transientResetToast}
+              authRedirecting={authRedirecting}
+              onOpenMembers={() => setProfileSubView('members')}
+              onOpenStoreInspector={() => setProfileSubView('store_inspector')}
+              onSaveProfile={() => void saveProfileFeedback()}
+              onResetTransientData={resetTransientDemoData}
+              onSignOut={() => void signOutGoogleSession()}
+              onLogSelection={recordDemoSelection}
+            />
+          )}
+          {activeTab === 'profile' && !currentUser && protectedTabPrompt('families')}
+
+          {activeTab === 'profile' && profileSubView === 'members' && currentUser && (
+            <FamilyMembersPanel
+              currentUser={currentUser}
+              profile={profile}
+              totalParentsCount={totalParentsCount}
+              inviteBanner={inviteBanner}
+              inviteParentName={inviteParentName}
+              inviteParentEmail={inviteParentEmail}
+              inviteError={inviteError}
+              newChildAge={newChildAge}
+              newChildGroup={newChildGroup}
+              childError={childError}
+              newRelativeRole={newRelativeRole}
+              newRelativeNote={newRelativeNote}
+              editingChildId={editingChildId}
+              editChildAge={editChildAge}
+              editChildGroup={editChildGroup}
+              editingRelativeId={editingRelativeId}
+              editRelativeRole={editRelativeRole}
+              editRelativeNote={editRelativeNote}
+              onChangeProfile={setProfile}
+              onBack={() => {
+                setEditingChildId(null)
+                setEditingRelativeId(null)
+                setProfileSubView('main')
+              }}
+              onPreviewInvite={setPreviewInviteId}
+              onSimulateAcceptCoParent={simulateAcceptCoParent}
+              onResendCoParentInvite={resendCoParentInvite}
+              onRemoveCoParent={removeCoParent}
+              onInviteParentNameChange={setInviteParentName}
+              onInviteParentEmailChange={(email) => {
+                setInviteParentEmail(email)
+                if (inviteError) setInviteError('')
+              }}
+              onSendCoParentInvite={sendCoParentInvite}
+              onEditChildAgeChange={setEditChildAge}
+              onEditChildGroupChange={setEditChildGroup}
+              onCancelEditChild={() => setEditingChildId(null)}
+              onSaveEditChild={saveEditChild}
+              onStartEditChild={startEditChild}
+              onRemoveChild={removeChild}
+              onNewChildAgeChange={(age) => {
+                setNewChildAge(age)
+                if (childError) setChildError('')
+              }}
+              onNewChildGroupChange={setNewChildGroup}
+              onAddChild={addChild}
+              onEditRelativeRoleChange={setEditRelativeRole}
+              onEditRelativeNoteChange={setEditRelativeNote}
+              onCancelEditRelative={() => setEditingRelativeId(null)}
+              onSaveEditRelative={saveEditRelative}
+              onStartEditRelative={startEditRelative}
+              onRemoveCloseRelative={removeCloseRelative}
+              onNewRelativeRoleChange={setNewRelativeRole}
+              onNewRelativeNoteChange={setNewRelativeNote}
+              onAddCloseRelative={addCloseRelative}
+            />
+          )}
+
+          {activeTab === 'profile' && profileSubView === 'store_inspector' && currentUser && (
+            <StoreInspectorPanel
+              currentUser={currentUser}
+              dbFeedLog={dbFeedLog}
+              mongoRevision={mongoRevision}
+              mongoInstanceLabel={mongoInstanceLabel}
+              mongoUpdatedAt={mongoUpdatedAt}
+              profile={profile}
+              safeHomeCoords={safeHomeCoords}
+              onBack={() => setProfileSubView('main')}
+            />
+          )}
+        </main>
+
+        {activePreviewInvite && (
+          <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end sm:items-center sm:justify-center sm:p-4">
+            <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">✉️ Kutsulinkin esikatselu</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Vastaanottaja: {activePreviewInvite.name} ({activePreviewInvite.email})
+                  </p>
+                </div>
                 <button
                   type="button"
-                  disabled={authRedirecting}
-                  onClick={() => void signOutGoogleSession()}
-                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+                  onClick={() => setPreviewInviteId(null)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 text-xs font-bold"
                 >
-                  Ulos
+                  Sulje
                 </button>
               </div>
-            </header>
 
-            {latestMatch && (
-              <div className="bg-emerald-600 text-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
-                <div className="text-xs sm:text-sm">
-                  <p className="font-bold">🎉 Uusi perheosuma: {latestMatch.name}!</p>
-                  <p className="opacity-90 text-xs">{latestMatch.area}</p>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-slate-600">Perhe: {profile.familyName}</span>
+                  <span className="font-mono font-bold text-blue-700">
+                    {activePreviewInvite.inviteCode}
+                  </span>
                 </div>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = latestMatch
-                      setLatestMatch(null)
-                      openHubChannel('matches', { directTargetId: target.id })
-                    }}
-                    className="px-3 py-1.5 bg-white text-emerald-800 rounded-lg text-xs font-bold"
-                  >
-                    Avaa chat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLatestMatch(null)}
-                    className="px-2.5 py-1.5 text-white/80 text-xs"
-                  >
-                    ✕
-                  </button>
-                </div>
+
+                <p className="text-[11px] text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 break-all font-mono">
+                  {buildInviteUrl(activePreviewInvite)}
+                </p>
               </div>
-            )}
 
-            <main className="flex-1 overflow-y-auto">
-              {activeTab === 'events' && (
-                <EventsTabPanel
-                  profile={profile}
-                  sourceBadge={sourceBadge}
-                  eventFeedStatus={eventFeedStatus}
-                  filteredSortedEvents={filteredSortedEvents}
-                  baseAreaSortedEventsCount={baseAreaSortedEvents.length}
-                  matchedFamilies={matchedFamilies}
-                  participations={eventChat.participations}
-                  currentUserEmail={eventChat.participantEmail}
-                  pendingEventIds={eventChat.pendingEventIds}
-                  isLoadingParticipations={eventChat.isLoadingParticipations}
-                  participationError={eventChat.participationError}
-                  eventAgeFilter={eventAgeFilter}
-                  onEventAgeFilterChange={setEventAgeFilter}
-                  eventSearchQuery={eventSearchQuery}
-                  onEventSearchQueryChange={setEventSearchQuery}
-                  hasActiveQuickEventFilter={hasActiveQuickEventFilter}
-                  ignoreDefaultPresetTemp={ignoreDefaultPresetTemp}
-                  onToggleDefaultPreset={() =>
-                    setIgnoreDefaultPresetTemp((prev) => !prev)
-                  }
-                  onRefreshEvents={() => void loadEventsFeed(true)}
-                  onClearEventFilters={() => {
-                    setEventAgeFilter('all')
-                    setEventSearchQuery('')
-                  }}
-                  onShowAllEvents={() => setIgnoreDefaultPresetTemp(true)}
-                  onOpenProfileSettings={() => {
-                    setActiveTab('profile')
-                    setProfileSubView('main')
-                  }}
-                  onToggleParticipation={(eventId, eventTitle) =>
-                    void toggleDatabaseParticipation(eventId, eventTitle)
-                  }
-                  onOpenEventChat={openPersistedEventChat}
-                  onLogSelection={recordDemoSelection}
-                  onOpenMap={openOnMap}
-                />
-              )}
-
-              {activeTab === 'families' && (
-                <FamiliesTabPanel
-                  familySubTab={familySubTab}
-                  filteredDeckCount={filteredDeck.length}
-                  matchedFamilies={matchedFamilies}
-                  currentCard={currentCard}
-                  profile={profile}
-                  familyApiError={familyApiError}
-                  safeEvents={safeEvents}
-                  attendingIds={attendingIds}
-                  onFamilySubTabChange={setFamilySubTab}
-                  onLogSelection={recordDemoSelection}
-                  onSwipe={handleSwipe}
-                  onOpenProfileSettings={() => {
-                    setActiveTab('profile')
-                    setProfileSubView('main')
-                  }}
-                  onResetDismissed={() => {
-                    setDismissedIds([])
-                    recordDemoSelection('DISMISSED_RESET', currentUser.id)
-                  }}
-                  onOpenMap={openOnMap}
-                  onOpenMatchesChat={(familyId) =>
-                    openHubChannel('matches', { directTargetId: familyId })
-                  }
-                />
-              )}
-
-              {activeTab === 'hub' && (
-                <CommunityHubPanel
-                  key={hubMountKey}
-                  currentUser={currentUser}
-                  profile={profile}
-                  events={baseAreaSortedEvents}
-                  matchedIds={matchedIds}
-                  allFamilies={familiesWithDistance}
-                  initialSection={hubInitialSection}
-                  initialEventId={hubEventId}
-                  initialDirectTargetId={hubDirectTargetId}
-                  chatChannels={eventChat.channels}
-                  participations={eventChat.participations}
-                  pendingParticipationEventIds={eventChat.pendingEventIds}
-                  participationError={eventChat.participationError}
-                  activeChatChannel={eventChat.activeChannel}
-                  chatMessages={eventChat.messages}
-                  currentUserEmail={eventChat.participantEmail}
-                  unreadChatChannelIds={unreadChatChannelIds}
-                  isLoadingChatMessages={eventChat.isLoadingMessages}
-                  isSendingChatMessage={eventChat.isSendingMessage}
-                  chatError={
-                    [eventChat.chatError, chatReadError].filter(Boolean).join(' ') || null
-                  }
-                  onActiveChatChannelChange={eventChat.setActiveChannel}
-                  onSendChatMessage={eventChat.sendMessage}
-                  onToggleParticipation={eventChat.toggleParticipation}
-                />
-              )}
-
-{activeTab === 'map' && (
-  <PksMapView
-    events={safeEvents}
-    attendingIds={attendingIds}
-    matchedFamilies={matchedFamilies}
-    homeCoords={safeHomeCoords}
-    homeLabel={`${profile.area}, ${profile.homeCity}`}
-    familyName={profile.familyName}
-    shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
-    showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
-    focusCoords={mapFocusCoords}
-    onResetBounds={handleResetMapBounds}
-    selectedCity={profile.filters.targetCity}
-    onChangeSelectedCity={(nextCity) =>
-      setProfile((prev) => ({
-        ...prev,
-        filters: { ...prev.filters, targetCity: nextCity },
-      }))
-    }
-  />
-)}
-
-              {activeTab === 'profile' && profileSubView === 'main' && (
-                <ProfileSettingsPanel
-                  currentUser={currentUser}
-                  profile={profile}
-                  onChangeProfile={setProfile}
-                  totalParentsCount={totalParentsCount}
-                  filteredDeckCount={filteredDeck.length}
-                  dbFeedCount={dbFeedLog.length}
-                  profileSavedToast={profileSavedToast}
-                  transientResetToast={transientResetToast}
-                  authRedirecting={authRedirecting}
-                  onOpenMembers={() => setProfileSubView('members')}
-                  onOpenStoreInspector={() => setProfileSubView('store_inspector')}
-                  onSaveProfile={() => void saveProfileFeedback()}
-                  onResetTransientData={resetTransientDemoData}
-                  onSignOut={() => void signOutGoogleSession()}
-                  onLogSelection={recordDemoSelection}
-                />
-              )}
-
-              {activeTab === 'profile' && profileSubView === 'members' && (
-                <FamilyMembersPanel
-                  currentUser={currentUser}
-                  profile={profile}
-                  totalParentsCount={totalParentsCount}
-                  inviteBanner={inviteBanner}
-                  inviteParentName={inviteParentName}
-                  inviteParentEmail={inviteParentEmail}
-                  inviteError={inviteError}
-                  newChildAge={newChildAge}
-                  newChildGroup={newChildGroup}
-                  childError={childError}
-                  newRelativeRole={newRelativeRole}
-                  newRelativeNote={newRelativeNote}
-                  editingChildId={editingChildId}
-                  editChildAge={editChildAge}
-                  editChildGroup={editChildGroup}
-                  editingRelativeId={editingRelativeId}
-                  editRelativeRole={editRelativeRole}
-                  editRelativeNote={editRelativeNote}
-                  onChangeProfile={setProfile}
-                  onBack={() => {
-                    setEditingChildId(null)
-                    setEditingRelativeId(null)
-                    setProfileSubView('main')
-                  }}
-                  onPreviewInvite={setPreviewInviteId}
-                  onSimulateAcceptCoParent={simulateAcceptCoParent}
-                  onResendCoParentInvite={resendCoParentInvite}
-                  onRemoveCoParent={removeCoParent}
-                  onInviteParentNameChange={setInviteParentName}
-                  onInviteParentEmailChange={(email) => {
-                    setInviteParentEmail(email)
-                    if (inviteError) setInviteError('')
-                  }}
-                  onSendCoParentInvite={sendCoParentInvite}
-                  onEditChildAgeChange={setEditChildAge}
-                  onEditChildGroupChange={setEditChildGroup}
-                  onCancelEditChild={() => setEditingChildId(null)}
-                  onSaveEditChild={saveEditChild}
-                  onStartEditChild={startEditChild}
-                  onRemoveChild={removeChild}
-                  onNewChildAgeChange={(age) => {
-                    setNewChildAge(age)
-                    if (childError) setChildError('')
-                  }}
-                  onNewChildGroupChange={setNewChildGroup}
-                  onAddChild={addChild}
-                  onEditRelativeRoleChange={setEditRelativeRole}
-                  onEditRelativeNoteChange={setEditRelativeNote}
-                  onCancelEditRelative={() => setEditingRelativeId(null)}
-                  onSaveEditRelative={saveEditRelative}
-                  onStartEditRelative={startEditRelative}
-                  onRemoveCloseRelative={removeCloseRelative}
-                  onNewRelativeRoleChange={setNewRelativeRole}
-                  onNewRelativeNoteChange={setNewRelativeNote}
-                  onAddCloseRelative={addCloseRelative}
-                />
-              )}
-
-              {activeTab === 'profile' && profileSubView === 'store_inspector' && (
-                <StoreInspectorPanel
-                  currentUser={currentUser}
-                  dbFeedLog={dbFeedLog}
-                  mongoRevision={mongoRevision}
-                  mongoInstanceLabel={mongoInstanceLabel}
-                  mongoUpdatedAt={mongoUpdatedAt}
-                  profile={profile}
-                  safeHomeCoords={safeHomeCoords}
-                  onBack={() => setProfileSubView('main')}
-                />
-              )}
-            </main>
-
-            {activePreviewInvite && (
-              <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end sm:items-center sm:justify-center sm:p-4">
-                <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900">
-                        ✉️ Kutsulinkin esikatselu
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Vastaanottaja: {activePreviewInvite.name} ({activePreviewInvite.email})
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewInviteId(null)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 text-xs font-bold"
-                    >
-                      Sulje
-                    </button>
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-slate-600">
-                        Perhe: {profile.familyName}
-                      </span>
-                      <span className="font-mono font-bold text-blue-700">
-                        {activePreviewInvite.inviteCode}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 break-all font-mono">
-                      {buildInviteUrl(activePreviewInvite)}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void copyInviteLink(activePreviewInvite)}
-                      className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-800 text-xs font-bold hover:bg-slate-50"
-                    >
-                      {copiedInviteId === activePreviewInvite.id
-                        ? '✓ Linkki kopioitu'
-                        : 'Kopioi linkki'}
-                    </button>
-                    {activePreviewInvite.status === 'pending' && (
-                      <button
-                        type="button"
-                        onClick={() => simulateAcceptCoParent(activePreviewInvite.id)}
-                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
-                      >
-                        Simuloi liittyminen
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <nav className="bg-white border-t border-slate-200 grid grid-cols-5 py-2 shrink-0">
-              {[
-                { key: 'events', icon: '📅', label: 'Tapahtumat' },
-                { key: 'families', icon: '🤝', label: 'Perheet' },
-                { key: 'hub', icon: '💬', label: 'Keskustelut' },
-                { key: 'map', icon: '🗺️', label: 'Kartta' },
-                { key: 'profile', icon: '👤', label: 'Profiili' },
-              ].map((tab) => {
-                const active = activeTab === tab.key
-                return (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copyInviteLink(activePreviewInvite)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-800 text-xs font-bold hover:bg-slate-50"
+                >
+                  {copiedInviteId === activePreviewInvite.id
+                    ? '✓ Linkki kopioitu'
+                    : 'Kopioi linkki'}
+                </button>
+                {activePreviewInvite.status === 'pending' && (
                   <button
-                    key={tab.key}
                     type="button"
-                    onClick={() => {
-                      setActiveTab(tab.key as TabKey)
-                      if (tab.key === 'profile') setProfileSubView('main')
-                      recordDemoSelection('TAB_SELECT', tab.key)
-                    }}
-                    className={`flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
-                      active ? 'text-emerald-600 font-bold' : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    onClick={() => simulateAcceptCoParent(activePreviewInvite.id)}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
                   >
-                    <span className="text-lg leading-none">{tab.icon}</span>
-                    <span className="inline-flex items-center gap-1 text-[11px]">
-                      {tab.label}
-                      {tab.key === 'hub' && unreadChatChannelIds.size > 0 && (
-                        <span className="min-w-4 rounded-full bg-rose-600 px-1 text-[9px] leading-4 text-white">
-                          {unreadChatChannelIds.size}
-                        </span>
-                      )}
-                    </span>
+                    Simuloi liittyminen
                   </button>
-                )
-              })}
-            </nav>
-          </>
+                )}
+              </div>
+            </div>
+          </div>
         )}
+
+        <nav className="bg-white border-t border-slate-200 grid grid-cols-5 py-2 shrink-0">
+          {[
+            { key: 'events', icon: '📅', label: 'Tapahtumat' },
+            { key: 'families', icon: '🤝', label: 'Perheet' },
+            { key: 'hub', icon: '💬', label: 'Keskustelut' },
+            { key: 'map', icon: '🗺️', label: 'Kartta' },
+            { key: 'profile', icon: '👤', label: 'Profiili' },
+          ].map((tab) => {
+            const active = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  const selectTab = () => {
+                    setActiveTab(tab.key as TabKey)
+                    if (tab.key === 'profile') setProfileSubView('main')
+                    recordDemoSelection('TAB_SELECT', tab.key)
+                  }
+                  if (tab.key === 'families') {
+                    requestProtectedTab('families')
+                  } else if (tab.key === 'hub') {
+                    requestProtectedTab('conversations')
+                  } else {
+                    selectTab()
+                  }
+                }}
+                className={`flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
+                  active ? 'text-emerald-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span className="text-lg leading-none">{tab.icon}</span>
+                <span className="inline-flex items-center gap-1 text-[11px]">
+                  {tab.label}
+                  {tab.key === 'hub' && unreadChatChannelIds.size > 0 && (
+                    <span className="min-w-4 rounded-full bg-rose-600 px-1 text-[9px] leading-4 text-white">
+                      {unreadChatChannelIds.size}
+                    </span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
+        </nav>
       </div>
 
       <DebugMonitorPanels
@@ -1568,6 +1654,16 @@ export default function PerheAppPrototypePage() {
           setProfileSubView('store_inspector')
         }}
       />
+      <FamilyEnrollmentModal
+        isOpen={enrollmentFlow.isEnrollmentModalOpen}
+        contextTitle={enrollmentFlow.enrollmentContextTitle}
+        currentUser={currentUser}
+        initialProfile={profile}
+        pendingIntent={enrollmentFlow.pendingIntent}
+        error={enrollmentFlow.enrollmentError}
+        onComplete={enrollmentFlow.completeEnrollment}
+        onCancel={enrollmentFlow.cancelEnrollment}
+      />
       <EventChatWindow
         channels={eventChat.channels.filter((channel) => channel.id.startsWith('event:'))}
         activeChannel={
@@ -1591,6 +1687,12 @@ export default function PerheAppPrototypePage() {
           }
         }}
         onSendMessage={eventChat.sendMessage}
+        onRequestOpen={(onReady) =>
+          enrollmentFlow.requireEnrolledAction(
+            { type: 'switch_tab', tab: 'conversations' },
+            onReady,
+          )
+        }
       />
     </div>
   )
