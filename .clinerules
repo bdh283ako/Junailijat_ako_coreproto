@@ -1,13 +1,13 @@
 # Junailijat_ako_coreproto — Agent & Architecture Rules
 
-## 1. Architecture-as-Code First (PlantUML)
+## 1. Architecture-as-Code First (PlantUML & Mermaid)
 - **Single Source of Truth:** Before proposing or editing any code, always read:
   1. `docs/arkkitehtuuri_localhost.puml` (system, runtime, API routes, Docker/PostgreSQL, and external feeds)
-  2. `docs/arkkitehtuuri_shellproto.puml` (component and hook modularity inside `shellproto/`, if present — create or update it as modules are extracted)
+  2. `docs/arkkitehtuuri_shellproto.puml` (component and hook modularity inside `shellproto/`)
 - **Plan Before Acting:** In `Plan` mode, verify how the requested change maps to existing components, API routes, and the Docker/PostgreSQL persistence layer shown in `docs/arkkitehtuuri_localhost.puml`.
-- **Keep `.puml` Synchronized:**
-  - Whenever you add, rename, or rewire API routes, database persistence, authentication, or external event feeds, update `docs/arkkitehtuuri_localhost.puml`.
-  - Whenever you extract, split, or rewire UI panels or custom hooks inside `src/app/(frontend)/akotestaa/shellproto/`, update `docs/arkkitehtuuri_shellproto.puml` in the same task so architecture diagrams always match code.
+- **Keep Diagrams Synchronized:**
+  - Whenever you add, rename, or rewire API routes, database persistence, authentication, or external event feeds, update `docs/arkkitehtuuri_localhost.puml` AND the corresponding Mermaid diagram (Section 1) in `docs/ARKKITEHTUURI.md`.
+  - Whenever you extract, split, or rewire UI panels or custom hooks inside `src/app/(frontend)/akotestaa/shellproto/`, update `docs/arkkitehtuuri_shellproto.puml` (changing stereotype `<<target>>` to `<<extracted>>` and dashed arrows `..>` to solid `-->`) AND update the corresponding Mermaid diagram (Section 2, moving nodes from `TargetPanels`/`TargetHooks` to `ExtractedPanels`/`ExtractedHooks` with `:::extracted`) in `docs/ARKKITEHTUURI.md` in the same task.
 
 ## 2. Tech Stack & Runtime Boundaries
 - **Stack:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Payload CMS 4 + `@payloadcms/db-postgres` running against PostgreSQL 17 in a local Docker Compose container, and Auth.js / NextAuth Google OAuth 2.0.
@@ -22,6 +22,6 @@
 - **Preserve Existing Behavior:** Keep existing prop contracts, `recordDemoSelection` telemetry calls, multi-stage event filtering (geo -> default preset -> quick age/search), and Finnish UI copy intact unless explicitly asked to change them.
 
 ## 4. Token & Context Efficiency (Mistral API)
-- Read only `docs/arkkitehtuuri_localhost.puml`, `docs/arkkitehtuuri_shellproto.puml` (when relevant), and explicitly referenced target files (`@file`). Never scan `node_modules/`, `.next/`, or `.git/`.
+- Read only `docs/arkkitehtuuri_localhost.puml`, `docs/arkkitehtuuri_shellproto.puml`, `docs/ARKKITEHTUURI.md` (when updating diagrams), and explicitly referenced target files (`@file`). Never scan `node_modules/`, `.next/`, or `.git/`.
 - Before finishing a task, run `npx tsc --noEmit` to verify zero TypeScript errors.
-- Summarize modified files and `.puml` updates concisely in Finnish at the end of the response.
+- Summarize modified files and diagram updates (`*.puml` + `docs/ARKKITEHTUURI.md`) concisely in Finnish at the end of the response.
