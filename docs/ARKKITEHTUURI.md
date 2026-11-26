@@ -18,7 +18,7 @@ flowchart TB
             direction TB
             subgraph AppRouter["Next.js App Router"]
                 UI["React-käyttöliittymä<br/>(React 19.3.1)"]
-                Routes["Sovellus-API:t<br/>/api/events, /api/families,<br/>/api/family-profile, /api/chat,<br/>/api/participations, /api/community-state"]
+                Routes["Sovellus-API:t<br/>/api/auth/[...nextauth], /api/events,<br/>/api/allevents, /api/families,<br/>/api/family-profile, /api/chat,<br/>/api/participations, /api/match,<br/>/api/community-state"]
                 Auth["Auth.js / NextAuth<br/>Google Provider (JWT)"]
                 Payload["Payload CMS 4.0.0-beta.8<br/>Admin + kokoelmat + Local API"]
             end
@@ -65,13 +65,12 @@ flowchart TB
 
 ## 2. Shellproto-komponentti- ja moduuliarkkitehtuuri
 
-Vihreät moduulit on jo eriytetty omiin tiedostoihinsa; siniset ovat refaktoroinnin vaiheittainen työlista (`vaihe 1` → `vaihe 4b`).
+Vihreät moduulit on eriytetty omiin tiedostoihinsa; kaikki suunnitellut paneeli- ja hook-erottelut on toteutettu.
 
 ```mermaid
 flowchart LR
     classDef coordinator fill:#fefce8,stroke:#ca8a04,stroke-width:2px,color:#1e293b
     classDef extracted fill:#ecfdf5,stroke:#059669,stroke-width:1.5px,color:#064e3b
-    classDef target fill:#eff6ff,stroke:#2563eb,stroke-dasharray: 5 5,stroke-width:1.5px,color:#1e3a8a
     classDef api fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,color:#0f172a
 
     Page["page.tsx<br/>(Pääkoordinaattori & välilehtiohjaus)"]:::coordinator
@@ -80,34 +79,48 @@ flowchart LR
         HubPanel["CommunityHubPanel.tsx"]:::extracted
         ProfilePanel["ProfileSettingsPanel.tsx"]:::extracted
         MapView["PksMapView.tsx"]:::extracted
+        DockWindow["FloatingDockWindow.tsx<br/>(Raahattava kehys)"]:::extracted
+        DebugPanels["DebugMonitorPanels.tsx<br/>(Demo-Log & DB-Feed)"]:::extracted
+        InspectorPanel["StoreInspectorPanel.tsx<br/>(Backscroll & JSON)"]:::extracted
+        EventsPanel["EventsTabPanel.tsx<br/>(Tapahtumalista & suodatus)"]:::extracted
+        FamiliesPanel["FamiliesTabPanel.tsx<br/>(Perheiden selaus & osumat)"]:::extracted
+        MembersPanel["FamilyMembersPanel.tsx<br/>(Vanhemmat, lapset & läheiset)"]:::extracted
+        EventChatWindow["EventChatWindow.tsx<br/>(Kelluva tapahtumachat)"]:::extracted
+        EventCard["EventCard.tsx"]:::extracted
+        MapPinLayer["MapPinLayer.tsx"]:::extracted
     end
 
-    subgraph TargetPanels["Refaktoroitavat UI-paneelit (tavoitetila)"]
-        DebugPanels["DebugMonitorPanels.tsx<br/>(Demo-Log & DB-Feed)"]:::target
-        DockWindow["FloatingDockWindow.tsx<br/>(Raahattava kehys)"]:::target
-        InspectorPanel["StoreInspectorPanel.tsx<br/>(Backscroll & JSON)"]:::target
-        EventsPanel["EventsTabPanel.tsx<br/>(Tapahtumalista & suodatus)"]:::target
-        FamiliesPanel["FamiliesTabPanel.tsx<br/>(Perheiden selaus & osumat)"]:::target
-        MembersPanel["FamilyMembersPanel.tsx<br/>(Vanhemmat, lapset & läheiset)"]:::target
-    end
-
-    subgraph TargetHooks["Sivuvaikutus- ja datahookit (tavoitetila)"]
-        HookSession["useGoogleSession.ts"]:::target
-        HookEvents["useEventsFeed.ts"]:::target
-        HookProfileSync["useFamilyProfileSync.ts"]:::target
+    subgraph ExtractedHooks["Jo erotetut hookit"]
+        HookSession["useGoogleSession.ts"]:::extracted
+        HookEvents["useEventsFeed.ts"]:::extracted
+        HookProfileSync["useFamilyProfileSync.ts"]:::extracted
+        HookEventChat["hooks/useEventChatAndParticipations.ts"]:::extracted
     end
 
     subgraph Helpers["Jaetut apumoduulit"]
         ProtoData["protoData.ts"]:::extracted
         FeedClient["eventFeedClient.ts"]:::extracted
         GeoResolver["mapGeoResolver.ts"]:::extracted
+        GeoResolverComp["mapGeoResolver.tsx"]:::extracted
         GCalHelper["googleCalendar.ts"]:::extracted
+        PksAreas["pksAreas.tsx"]:::extracted
+    end
+
+    subgraph ExternalDeps["Ulkoiset riippuvuudet"]
+        EnrollmentFlow["useEnrollmentFlow"]:::extracted
+        EnrollmentModal["FamilyEnrollmentModal"]:::extracted
     end
 
     subgraph ApiLayer["Next.js App Router API-rajapinnat"]
-        ApiAuth["/api/auth/*"]:::api
+        ApiAuth["/api/auth/[...nextauth]"]:::api
         ApiEvents["/api/events"]:::api
+        ApiAllEvents["/api/allevents"]:::api
         ApiProfile["/api/family-profile"]:::api
+        ApiFamilies["/api/families"]:::api
+        ApiChat["/api/chat"]:::api
+        ApiParticipations["/api/participations"]:::api
+        ApiMatch["/api/match"]:::api
+        ApiCommunityState["/api/community-state"]:::api
     end
 
     LocalStorage[("localStorage<br/>(transientti UI-tila)")]:::api
@@ -117,23 +130,34 @@ flowchart LR
     Page --> MapView
     Page --> ProtoData
 
-    Page -.->|vaihe 1| DebugPanels
-    DebugPanels -.-> DockWindow
-    Page -.->|vaihe 1| InspectorPanel
-    Page -.->|vaihe 2a| EventsPanel
-    Page -.->|vaihe 3a| FamiliesPanel
-    Page -.->|vaihe 3b| MembersPanel
+    Page --> DebugPanels
+    Page --> InspectorPanel
+    Page --> EventsPanel
+    Page --> FamiliesPanel
+    Page --> MembersPanel
 
-    Page -.->|vaihe 2b| HookEvents
-    Page -.->|vaihe 4a| HookSession
-    Page -.->|vaihe 4b| HookProfileSync
+    DebugPanels --> DockWindow : käyttää kehystä
+    EventChatWindow --> DockWindow : käyttää kehystä
 
-    EventsPanel -.-> GCalHelper
+    Page --> HookSession
+    Page --> HookEvents
+    Page --> HookProfileSync
+    Page --> HookEventChat
+
+    EventsPanel --> GCalHelper
     MapView --> GeoResolver
-    HookEvents -.-> FeedClient
+    MapView --> GeoResolverComp
+    MapView --> MapPinLayer
+    MapView --> PksAreas
+    HookEvents --> FeedClient
+    HookEventChat --> ApiChat
+    HookEventChat --> ApiParticipations
 
-    HookSession -.-> ApiAuth
-    HookEvents -.-> ApiEvents
-    HookProfileSync -.-> ApiProfile
-    HookProfileSync -.-> LocalStorage
+    Page --> EnrollmentFlow
+    Page --> EnrollmentModal
+
+    HookSession --> ApiAuth : GET session / POST signin & signout
+    HookEvents --> ApiEvents : GET /api/events
+    HookProfileSync --> ApiProfile : GET & PUT /api/family-profile
+    HookProfileSync --> LocalStorage : transientti UI-tila\n(ei PII-dataa)
 ```
