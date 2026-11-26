@@ -9,8 +9,6 @@ title Junailijat – Shellproto-komponentti- ja moduuliarkkitehtuuri
 skinparam component {
   BackgroundColor<<extracted>> #ECFDF5
   BorderColor<<extracted>> #059669
-  BackgroundColor<<target>> #EFF6FF
-  BorderColor<<target>> #2563EB
   BackgroundColor<<coordinator>> #FEFCE8
   BorderColor<<coordinator>> #CA8A04
 }
@@ -23,21 +21,22 @@ package "src/app/(frontend)/akotestaa/shellproto/" as ShellprotoPkg {
     [CommunityHubPanel.tsx\n(Keskustelut, ilmoitustaulu & tapahtumachat)] as HubPanel <<extracted>>
     [ProfileSettingsPanel.tsx\n(Perheprofiilin asetukset & oletusrajaukset)] as ProfilePanel <<extracted>>
     [PksMapView.tsx\n(PKS-karttanäkymä & etäisyysfokukset)] as MapView <<extracted>>
+    [FloatingDockWindow.tsx\n(Raahattava kelluva ikkunakehys)] as DockWindow <<extracted>>
+    [DebugMonitorPanels.tsx\n(Demo-Log & DB-Feed -kelluvat monitorit)] as DebugPanels <<extracted>>
+    [StoreInspectorPanel.tsx\n(Kantaoperaatioiden backscroll & JSON-esikatselu)] as InspectorPanel <<extracted>>
+    [EventsTabPanel.tsx\n(Tapahtumalista, pikahaku & ikäsuodattimet)] as EventsPanel <<extracted>>
+    [FamiliesTabPanel.tsx\n(Perheiden selauskortit & osumat)] as FamiliesPanel <<extracted>>
+    [FamilyMembersPanel.tsx\n(Vanhempien kutsut, lapset & läheiset)] as MembersPanel <<extracted>>
+    [EventChatWindow.tsx\n(Kelluva tapahtumachat-ikkuna)] as EventChatWindow <<extracted>>
+    [EventCard.tsx\n(Tapahtumakortin renderöinti)] as EventCard <<extracted>>
+    [MapPinLayer.tsx\n(Kartan pin-kerros)] as MapPinLayer <<extracted>>
   }
 
-  package "Refaktoroitavat UI-paneelit (tavoitetila)" {
-    [FloatingDockWindow.tsx\n(Raahattava kelluva ikkunakehys)] as DockWindow <<target>>
-    [DebugMonitorPanels.tsx\n(Demo-Log & DB-Feed -kelluvat monitorit)] as DebugPanels <<target>>
-    [StoreInspectorPanel.tsx\n(Kantaoperaatioiden backscroll & JSON-esikatselu)] as InspectorPanel <<target>>
-    [EventsTabPanel.tsx\n(Tapahtumalista, pikahaku & ikäsuodattimet)] as EventsPanel <<target>>
-    [FamiliesTabPanel.tsx\n(Perheiden selauskortit & osumat)] as FamiliesPanel <<target>>
-    [FamilyMembersPanel.tsx\n(Vanhempien kutsut, lapset & läheiset)] as MembersPanel <<target>>
-  }
-
-  package "Sivuvaikutus- ja datahookit (tavoitetila)" {
-    [useGoogleSession.ts\n(OAuth-istuntotarkistus, login & logout)] as HookSession <<target>>
-    [useEventsFeed.ts\n(Tapahtumasyötteen haku & lähdestatus)] as HookEvents <<target>>
-    [useFamilyProfileSync.ts\n(Profiilin hydratointi, debounced PUT & istuntotila)] as HookProfileSync <<target>>
+  package "Jo erotetut hookit" {
+    [useGoogleSession.ts\n(OAuth-istuntotarkistus, login & logout)] as HookSession <<extracted>>
+    [useEventsFeed.ts\n(Tapahtumasyötteen haku & lähdestatus)] as HookEvents <<extracted>>
+    [useFamilyProfileSync.ts\n(Profiilin hydratointi, debounced PUT & istuntotila)] as HookProfileSync <<extracted>>
+    [hooks/useEventChatAndParticipations.ts\n(Chat-viestit & osallistumiset)] as HookEventChat <<extracted>>
   }
 
   package "Jaetut apumoduulit & domain-logiikka" {
@@ -45,13 +44,25 @@ package "src/app/(frontend)/akotestaa/shellproto/" as ShellprotoPkg {
     [eventFeedClient.ts\n(Tapahtuma-API:n kutsu & normalisointi)] as FeedClient <<extracted>>
     [mapGeoResolver.ts\n(PKS-koordinaattien ratkaisu & kaupunginosat)] as GeoResolver <<extracted>>
     [googleCalendar.ts\n(Google Kalenteri -vientilinkin muodostus)] as GCalHelper <<extracted>>
+    [pksAreas.ts\n(PKS-alueiden määrittelyt)] as PksAreas <<extracted>>
   }
 }
 
+package "Ulkoiset riippuvuudet (shellproto)" as ExternalDeps {
+  [useEnrollmentFlow\n(Reittisuojaus & rekisteröintivirta)] as EnrollmentFlow
+  [FamilyEnrollmentModal\n(Perherekisteröintimodaali)] as EnrollmentModal
+}
+
 package "Next.js App Router API-rajapinnat" as ApiLayer {
-  [/api/auth/*\n(Auth.js Google OAuth 2.0)] as ApiAuth
+  [/api/auth/[...nextauth]\n(Auth.js Google OAuth 2.0)] as ApiAuth
   [/api/events\n(Aggregoitu tapahtumasyöte)] as ApiEvents
+  [/api/allevents\n(Linked Events raakasyöte)] as ApiAllEvents
   [/api/family-profile\n(PostgreSQL / Payload profiilitallennus)] as ApiProfile
+  [/api/families\n(Perheiden haku & suodatus)] as ApiFamilies
+  [/api/chat\n(Chat-viestit & kanavat)] as ApiChat
+  [/api/participations\n(Tapahtumaosallistumiset)] as ApiParticipations
+  [/api/match\n(Perhevalinnat & osumat)] as ApiMatch
+  [/api/community-state\n(Yhteisön tila)] as ApiCommunityState
 }
 
 component "localStorage\n(Vain transientti istuntotila:\nswipes, attending, chat)" as LocalStorage
@@ -60,42 +71,55 @@ component "localStorage\n(Vain transientti istuntotila:\nswipes, attending, chat
 PageCoordinator --> HubPanel
 PageCoordinator --> ProfilePanel
 PageCoordinator --> MapView
+PageCoordinator --> ProtoData
 
-' Koordinaattorin yhteydet tavoitetilan paneeleihin
-PageCoordinator ..> DebugPanels : vaihe 1
-DebugPanels ..> DockWindow : käyttää kehystä
-PageCoordinator ..> InspectorPanel : vaihe 1
-PageCoordinator ..> EventsPanel : vaihe 2
-PageCoordinator ..> FamiliesPanel : vaihe 3
-PageCoordinator ..> MembersPanel : vaihe 3
+' Koordinaattorin yhteydet erotettuihin paneeleihin
+PageCoordinator --> DebugPanels
+PageCoordinator --> InspectorPanel
+PageCoordinator --> EventsPanel
+PageCoordinator --> FamiliesPanel
+PageCoordinator --> MembersPanel
+
+' DebugMonitorPanels käyttää FloatingDockWindow-kehystä
+DebugPanels --> DockWindow : käyttää kehystä
+EventChatWindow --> DockWindow : käyttää kehystä
 
 ' Koordinaattorin yhteydet hookkeihin
-PageCoordinator ..> HookSession : vaihe 4a
-PageCoordinator ..> HookEvents : vaihe 2b
-PageCoordinator ..> HookProfileSync : vaihe 4b
+PageCoordinator --> HookSession
+PageCoordinator --> HookEvents
+PageCoordinator --> HookProfileSync
+PageCoordinator --> HookEventChat
 
 ' Apumoduulien riippuvuudet
-PageCoordinator --> ProtoData
-EventsPanel ..> GCalHelper
+EventsPanel --> GCalHelper
 MapView --> GeoResolver
-HookEvents ..> FeedClient
+MapView --> MapPinLayer
+MapView --> PksAreas
+HookEvents --> FeedClient
+HookEventChat --> ApiChat
+HookEventChat --> ApiParticipations
+
+' Ulkoiset riippuvuudet
+PageCoordinator --> EnrollmentFlow
+PageCoordinator --> EnrollmentModal
 
 ' Rajapinta- ja tallennusyhteydet
-HookSession ..> ApiAuth : GET session / POST signin & signout
-HookEvents ..> ApiEvents : GET /api/events
-HookProfileSync ..> ApiProfile : GET & PUT /api/family-profile
-HookProfileSync ..> LocalStorage : transientti UI-tila\n(ei PII-dataa)
+HookSession --> ApiAuth : GET session / POST signin & signout
+HookEvents --> ApiEvents : GET /api/events
+HookProfileSync --> ApiProfile : GET & PUT /api/family-profile
+HookProfileSync --> LocalStorage : transientti UI-tila\n(ei PII-dataa)
 
 note right of PageCoordinator
-  Tavoite: page.tsx toimii vain
-  orkestroijana (välilehdet, valitut
-  suodattimet ja callback-välitys).
-  Nykykoko ~2 720 riviä pilkotaan
-  vaiheissa 1–4.
+  page.tsx toimii koordinaattorina
+  (välilehdet, valitut suodattimet
+  ja callback-välitys).
+  Nykykoko ~1 695 riviä.
+  Kaikki suunnitellut paneeli- ja
+  hook-erottelut toteutettu.
 end note
 
 note bottom of HookProfileSync
-  Riskialttein hookki (erotetaan viimeisenä):
+  Riskialttein hookki:
   sisältää skipNextDbSaveRef-suojan,
   300 ms debouncen ja rev-laskurin.
 end note
@@ -104,7 +128,7 @@ note bottom of EventsPanel
   Tapahtumien 3-vaiheinen suodatus
   (1. alue/etäisyys -> 2. oletusrajaukset
   -> 3. ikä- ja tekstihaku) säilytetään
-  ennallaan erotuksen yhteydessä.
+  ennallaan.
 end note
 
 @enduml

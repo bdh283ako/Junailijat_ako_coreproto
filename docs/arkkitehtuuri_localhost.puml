@@ -15,7 +15,7 @@ node "Kehittäjän kone" as LocalMachine {
   node "Node.js\nNext.js 16.4.6" as AppRuntime {
     package "Next.js App Router" {
       [React-käyttöliittymä\nReact 19.3.1] as UI
-      [Sovellus-API:t\n/api/events, /api/families,\n/api/family-profile, /api/chat,\n/api/participations, /api/community-state] as Routes
+      [Sovellus-API:t\n/api/auth/[...nextauth], /api/events,\n/api/allevents, /api/families,\n/api/family-profile, /api/chat,\n/api/participations, /api/match,\n/api/community-state] as Routes
       [Auth.js / NextAuth\nGoogle Provider\nJWT-istunto] as Auth
       [Payload CMS 4.0.0-beta.8\nAdmin + kokoelmat + Local API] as Payload
     }

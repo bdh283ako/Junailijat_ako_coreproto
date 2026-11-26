@@ -16,17 +16,21 @@ export interface GeoResolvableEvent {
   id: string
   title: string
   venue?: string
+  locationName?: string
   address?: string
   streetAddress?: string
   district?: string
   neighborhood?: string
   city?: string
   time?: string
+  startDate?: string
   ageGroup?: string
+  ageRangeLabel?: string
   price?: string
   description?: string
   url?: string
   coords?: unknown
+  coordinates?: unknown
   keywords?: string[]
   tags?: string[]
 }
@@ -121,6 +125,7 @@ function collectLocationHaystack(evt: GeoResolvableEvent): string {
   const parts = [
     evt.district ?? '',
     evt.neighborhood ?? '',
+    evt.locationName ?? '',
     evt.venue ?? '',
     evt.address ?? '',
     evt.streetAddress ?? '',
@@ -190,7 +195,7 @@ export function resolveEventsForMap<T extends GeoResolvableEvent>(
   const cityGroupMap = new Map<string, CityOnlyGroup<T>>()
 
   for (const evt of events) {
-    const exact = extractExactTuple(evt.coords)
+    const exact = extractExactTuple(evt.coords ?? evt.coordinates)
     const haystack = collectLocationHaystack(evt)
     const city = normalizeCity(evt.city, haystack)
 
