@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev",
     "local:dev": "docker compose up --wait --wait-timeout 60 -d postgres && pnpm dev",
-    "build": "node scripts/build.mjs",
+    "build": "cross-env NODE_OPTIONS=--no-deprecation next build",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose stop postgres",
@@ -53,9 +53,10 @@
     "typescript": "6.0.3"
   },
   "engines": {
-    "node": ">=24.22.1",
+    "node": ">=22.0.0",
     "pnpm": "^9 || ^10 || ^11"
   },
+  "packageManager": "pnpm@10.34.9",
   "pnpm": {
     "onlyBuiltDependencies": [
       "sharp",

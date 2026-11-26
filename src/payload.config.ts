@@ -15,11 +15,11 @@ import { ChatMessages } from './collections/ChatMessages'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
-const databaseUrl = process.env.DATABASE_URL
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
 const payloadSecret = process.env.PAYLOAD_SECRET
 
 if (!databaseUrl) {
-  throw new Error('DATABASE_URL must be set to connect Payload to PostgreSQL.')
+  throw new Error('DATABASE_URL or POSTGRES_URL must be set to connect Payload to PostgreSQL.')
 }
 
 if (!payloadSecret) {

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config as loadDotenv } from 'dotenv'
@@ -14,23 +14,23 @@ if (existsSync(localEnvPath)) {
 process.env.NODE_ENV = 'production'
 process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, '--no-deprecation'].filter(Boolean).join(' ')
 
-function runPayloadCommand(command) {
-  const pnpmScript = process.env.npm_execpath
-  const executable = pnpmScript
-    ? process.execPath
-    : process.platform === 'win32'
-      ? 'pnpm.cmd'
-      : 'pnpm'
-  const args = pnpmScript ? [pnpmScript, 'exec', 'payload', command] : ['exec', 'payload', command]
-  const result = spawnSync(executable, args, {
-    cwd: root,
-    env: process.env,
-    stdio: 'inherit',
-    shell: !pnpmScript && process.platform === 'win32',
-  })
-
-  if (result.error) throw result.error
-  if (result.status !== 0) process.exit(result.status ?? 1)
+const binPath = path.join(root, 'node_modules', '.bin')
+const envWithBinPath = {
+  ...process.env,
+  PATH: `${binPath}${path.delimiter}${process.env.PATH}`,
 }
 
-runPayloadCommand('build')
+try {
+  execSync('payload build', {
+    cwd: root,
+    env: envWithBinPath,
+    stdio: 'inherit',
+    shell: true,
+  })
+} catch (error) {
+  if (error.status !== undefined) {
+    process.exit(error.status)
+  }
+  console.error('Build error:', error)
+  process.exit(1)
+}
