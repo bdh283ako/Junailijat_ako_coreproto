@@ -54,7 +54,7 @@ Auth --> Google : Google-kirjautuminen
 Auth --> Payload : käyttäjän luonti/päivitys\nGoogle sub -tunnisteella
 Routes --> Payload : istuntoon sidotut\nsovellustoiminnot
 Payload --> DBAdapter
-DBAdapter --> Postgres : DATABASE_URL
+DBAdapter --> Postgres : DATABASE_URL || POSTGRES_URL\n(.env.local)
 Postgres --> PGVolume : pysyvä paikallinen data
 
 Routes --> EventPulse : tapahtumahaku
@@ -93,6 +93,13 @@ note bottom of Routes
   Tapahtumat haetaan ulkoisista lähteistä.
   Lähellä.fi ei ole tällä hetkellä kytketty
   tähän tapahtumareittiin.
+end note
+
+note as VercelDemo
+  Demoinstanssi pyörii Vercelillä (CD GitHubista):
+  ks. docs/arkkitehtuuri_vercel.puml.
+  Paikallinen .env.local ja Vercelin env
+  ovat eri ympäristömuuttujakerroksia.
 end note
 
 @enduml

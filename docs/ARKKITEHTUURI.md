@@ -1,10 +1,45 @@
 # Junailijat – Sovellus- ja moduuliarkkitehtuuri
 
-Tämä dokumentti esittää GitHubissa suoraan renderöityvät Mermaid-näkymät projektin paikallisesta kehitysympäristöstä ja `shellproto`-moduulirakenteesta. Tarkemmat Architecture-as-Code-lähteet sijaitsevat tiedostoissa [`docs/arkkitehtuuri_localhost.puml`](./arkkitehtuuri_localhost.puml) ja [`docs/arkkitehtuuri_shellproto.puml`](./arkkitehtuuri_shellproto.puml).
+Tämä dokumentti esittää GitHubissa suoraan renderöityvät Mermaid-näkymät projektin **käyttöympäristöistä** (Vercel-demo + paikallinen localhost), paikallisesta kehitysympäristöstä ja `shellproto`-moduulirakenteesta. Tarkemmat Architecture-as-Code-lähteet sijaitsevat tiedostoissa [`docs/arkkitehtuuri_vercel.puml`](./arkkitehtuuri_vercel.puml), [`docs/arkkitehtuuri_localhost.puml`](./arkkitehtuuri_localhost.puml) ja [`docs/arkkitehtuuri_shellproto.puml`](./arkkitehtuuri_shellproto.puml).
 
 ---
 
-## 1. Paikallinen kehitysympäristö (localhost)
+## 1. Käyttöympäristöt: Vercel-demo (tuotanto) vs localhost-kehitys
+
+Varsinainen demoinstanssi pyörii **Vercelillä** (projekti `junailijat-ako-coreproto`): https://junailijat-ako-coreproto-junailijat.vercel.app — deploy tapahtuu CD-putkella GitHubista (`git push origin main` → Production; PR → Preview). Paikallinen kehitys (`pnpm local:dev`) on ensisijainen devauspaikka; CD-putki hoitaa deploymentin Verceliin.
+
+```mermaid
+flowchart TB
+    Dev([Kehittäjä]) -->|git push origin main| GH[(GitHub<br/>bdh283ako/Junailijat_ako_coreproto)]
+    GH -->|CD: main → Production, PR → Preview| VB["Vercel build: pnpm install + pnpm run build (next build)<br/>.vercelignore + LF (.gitattributes)"]
+    VB --> RT["Vercel Functions:<br/>Next.js 16 App Router + Payload CMS 4 + Auth.js"]
+    RT -->|"DATABASE_URL tai POSTGRES_URL"| Neon[("Neon PostgreSQL<br/>Vercel-integraatio")]
+    DemoUser([Demokäyttäjä]) -->|"junailijat-ako-coreproto-junailijat.vercel.app"| RT
+
+    subgraph Local["localhost-kehitys (ensisijainen)"]
+        LD["pnpm local:dev<br/>(docker compose up --wait postgres + pnpm dev)<br/>.env.local"]
+        DPG[("PostgreSQL 17 Docker<br/>127.0.0.1:5432, volume postgres_data")]
+        LD -->|"DATABASE_URL (.env.local)"| DPG
+    end
+    Dev -->|pnpm local:dev| LD
+```
+
+### Ympäristömuuttujien kerrokset
+
+| Muuttuja | localhost-dev | Vercel (Production / Preview / Development) |
+| --- | --- | --- |
+| `DATABASE_URL` | `.env.local` → Docker PostgreSQL `127.0.0.1:5432` | Vercel env (Neon-integraatio) |
+| `POSTGRES_URL` | ei käytössä paikallisesti | Vercel env (Neon); koodi lukee `process.env.DATABASE_URL \|\| process.env.POSTGRES_URL` (`src/payload.config.ts`) |
+| `PAYLOAD_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | `.env.local` (gitignoretty) | Vercel Secret -muuttujat, ei commitoida |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | Vercelin tuotanto/preview-URL |
+
+- **Tietokannat ovat eri instansseja**: paikallinen Docker-PG ei ole sama kuin Vercelin Neon. Payload ajaa `push: false` -tilassa, joten skeemamigraatiot Vercelin tietokantaan ajetaan tarkoituksella erikseen (`payload migrate` oikeilla env-muuttujilla) — build ei muuta skeemaa.
+- **Deploy-säännöt:** älä käytä `vercel --prod` -CLI:ta Windows-koneelta (CRLF-rivinvaihdot rikkovat buildin: `ELIFECYCLE -2` / `BUILD_UTILS_SPAWN_254`); `.gitattributes` (`* text=auto eol=lf`) pitää LF-muodon ja CD-putki (git push) on ensisijainen tapa. `.vercelignore` estää `.env.*`, `*.ps1`, `node_modules`, `.next` ym. päätymisen deployiin.
+- PlantUML-lähde Vercel-näkymälle: [`docs/arkkitehtuuri_vercel.puml`](./arkkitehtuuri_vercel.puml).
+
+---
+
+## 2. Paikallinen kehitysympäristö (localhost)
 
 ```mermaid
 flowchart TB
@@ -63,7 +98,7 @@ flowchart TB
 
 ---
 
-## 2. Shellproto-komponentti- ja moduuliarkkitehtuuri
+## 3. Shellproto-komponentti- ja moduuliarkkitehtuuri
 
 Vihreät moduulit on eriytetty omiin tiedostoihinsa; kaikki suunnitellut paneeli- ja hook-erottelut on toteutettu.
 

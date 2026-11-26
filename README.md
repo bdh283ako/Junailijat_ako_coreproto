@@ -29,6 +29,7 @@ Sovelluksen rakenne ja kehitysympäristö kuvataan **Architecture-as-Code**-peri
 
 * **[Sovellus- ja moduuliarkkitehtuuri (Mermaid)](./docs/ARKKITEHTUURI.md)** – GitHubissa suoraan renderöityvät kaaviot paikallisesta `localhost`-ympäristöstä sekä `shellproto`-moduulijaosta.
 * **[Paikallinen kehitysympäristö (PlantUML)](./docs/arkkitehtuuri_localhost.puml)** – Next.js 16 App Router-, Payload CMS 4-, Docker/PostgreSQL 17-, Auth.js Google OAuth- ja ulkoisten tapahtumasyötteiden rajapintakuvaus.
+* **[Vercel-demo ja CD-putki (PlantUML)](./docs/arkkitehtuuri_vercel.puml)** – GitHub → Vercel CD -deploy, build-kone, Neon/PostgreSQL ja ympäristömuuttujakerrokset Vercel-ympäristössä.
 * **[Shellproto-komponenttikaavio (PlantUML)](./docs/arkkitehtuuri_shellproto.puml)** – UI-paneelien, custom-hookkien ja apumoduulien nykytila ja refaktorointivaiheet (`vaihe 1` → `vaihe 4b`).
 * **[AI-agenttisäännöt (`.clinerules`)](./.clinerules)** – Ohjeet arkkitehtuurikaavioiden lukemiseen ja synkronoimiseen koodimuutosten yhteydessä.
 
@@ -46,7 +47,7 @@ Sovelluksen rakenne ja kehitysympäristö kuvataan **Architecture-as-Code**-peri
 ## Pika-aloitus paikallisesti (`localhost`)
 
 ### Esivaatimukset
-* Node.js `>= 24.22.1` (kehityksessä käytetty `26.13.1`)
+* Node.js `>= 22.0.0` (kehityksessä käytetty `26.13.1`)
 * `pnpm` (`9`, `10` tai `11`; kehityksessä käytetty `10.34.9`)
 * Docker ja Docker Compose
 
@@ -54,17 +55,17 @@ Sovelluksen rakenne ja kehitysympäristö kuvataan **Architecture-as-Code**-peri
 
 1. **Siirry kehityshaaraan ja asenna riippuvuudet:**
    ```bash
-   git checkout feat/ako
+   git checkout main
    pnpm install
    ```
 
 2. **Käynnistä paikallinen PostgreSQL 17 -tietokanta Dockerilla:**
    ```bash
-   docker compose up -d
+   pnpm db:up   # tai koko paketti kerralla: pnpm local:dev
    ```
 
 3. **Aseta ympäristömuuttujat:**
-   Varmista `.env`-tiedostossa tietokantayhteys (`DATABASE_URL`), Auth.js-salaisuus (`AUTH_SECRET`) sekä Google OAuth -tunnisteet (älä koskaan commitoi `.env`-tiedostoa).
+   Luo `.env.local` kopioimalla `.env.example` ja aseta sinne tietokantayhteys (`DATABASE_URL`, paikallisesti Docker-PG; Vercelillä toimii myös `POSTGRES_URL`), `AUTH_SECRET`, `PAYLOAD_SECRET` sekä Google OAuth -tunnisteet (älä koskaan commitoi `.env*`-tiedostoja).
 
 4. **Käynnistä kehityspalvelin:**
    ```bash
@@ -76,6 +77,19 @@ Sovelluksen rakenne ja kehitysympäristö kuvataan **Architecture-as-Code**-peri
    ```bash
    pnpm data:import-legacy
    ```
+
+---
+
+## Ympäristöt ja deploy (Vercel-demo vs localhost)
+
+Varsinainen **demoinstanssi pyörii nyt Vercelillä**: projekti `junailijat-ako-coreproto`, tuotanto-URL **https://junailijat-ako-coreproto-junailijat.vercel.app**.
+
+- **CD-putki hoitaa deploymentin**: `git push origin main` → Production, PR/feature-haara → Preview. Älä deployaa `vercel --prod` -CLI:lla Windows-koneelta (CRLF-rivinvaihdot rikkovat buildin); `.gitattributes` (`* text=auto eol=lf`) pitää LF-muodon.
+- **Build Vercelillä**: `pnpm run build` (= `next build`), ei `vercel.json`ia; `.vercelignore` rajaa pois `.env.*`, `*.ps1`, `node_modules`, `.next` ym.
+- **Ympäristömuuttujat eri kerroksissa**: paikallisesti `.env.local` (kopio `.env.example`:stä) + Docker PostgreSQL `127.0.0.1:5432`; Vercelillä projektin env-asetuksissa (Production/Preview/Development): `DATABASE_URL`, `POSTGRES_URL` (Neon), `PAYLOAD_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `NEXT_PUBLIC_SITE_URL`. Koodi lukee tietokannan: `process.env.DATABASE_URL || process.env.POSTGRES_URL` (`src/payload.config.ts`).
+- **Eri tietokantainstanssit**: paikallinen Docker-PG ≠ Vercelin Neon; `push: false` → migraatiot hostatulle kannalle ajetaan tarkoituksella (`payload migrate`), ei buildissa.
+- Devaamme pääasiassa **localhost-devissä** (`pnpm local:dev`); git push vie muutokset CD-putken kautta Verceliin.
+- Kaaviot ja tarkempi kuvaus: [docs/ARKKITEHTUURI.md](./docs/ARKKITEHTUURI.md) (osio 1) ja [docs/arkkitehtuuri_vercel.puml](./docs/arkkitehtuuri_vercel.puml).
 
 ---
 

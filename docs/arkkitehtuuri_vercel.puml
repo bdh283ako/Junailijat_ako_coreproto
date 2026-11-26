@@ -1,0 +1,73 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam packageStyle rectangle
+
+title Junailijat – Vercel-demo (tuotanto) ja CD-putki
+
+actor "Kehittäjä" as Developer
+actor "Demokäyttäjä" as DemoUser
+
+cloud "GitHub\nbdh283ako/Junailijat_ako_coreproto" as GitHub {
+  component "main-haara\n(git push origin main)" as MainBranch
+  component "PR / feature-haara" as PrBranch
+}
+
+cloud "Vercel – projekti junailijat-ako-coreproto" as Vercel {
+  component "CD: main → Production\nPR → Preview-deploy" as CD
+  node "Build-kone" as BuildMachine {
+    component "pnpm install\n(pnpm-lock.yaml, packageManager pnpm@10.34.9)" as Install
+    component "pnpm run build = next build (Next.js 16.4.6)\nei vercel.jsonia; .vercelignore rajaa pois\n.env.*, *.ps1, node_modules, .next" as Build
+  }
+  node "Vercel Functions (Node.js)" as Runtime {
+    package "Next.js App Router" {
+      [React-käyttöliittymä] as UI
+      [Sovellus-API:t /api/*] as Routes
+      [Auth.js / NextAuth\nGoogle Provider] as Auth
+      [Payload CMS 4.0.0-beta.8] as Payload
+    }
+    component "PostgreSQL-adapteri\n@payloadcms/db-postgres" as DBAdapter
+  }
+}
+
+database "Neon PostgreSQL\n(Vercel-integraatio)" as Neon
+
+cloud "Google Identity\nOAuth 2.0 / OIDC" as Google
+cloud "EventPulse / Linked Events / Kauniainen" as Feeds
+
+Developer --> GitHub : git push
+MainBranch --> CD
+PrBranch --> CD
+CD --> Install
+Install --> Build
+Build --> Runtime : deployment
+DemoUser --> UI : https://junailijat-ako-coreproto-junailijat.vercel.app
+UI --> Routes
+UI --> Auth
+Auth --> Google
+Routes --> Payload
+Payload --> DBAdapter
+DBAdapter --> Neon : DATABASE_URL || POSTGRES_URL
+Routes --> Feeds
+
+note right of Neon
+  Ympäristömuuttujat Vercelissä (Production/Preview/Development):
+  DATABASE_URL, POSTGRES_URL (+ Neonin POSTGRES_*),
+  PAYLOAD_SECRET, AUTH_SECRET, AUTH_GOOGLE_ID,
+  AUTH_GOOGLE_SECRET, NEXT_PUBLIC_SITE_URL.
+  Hallinta: Vercel-dashboard tai `vercel env` – ei koskaan commitiin.
+  Skeema: push=false → migraatiot ajetaan tarkoituksella
+  Neonia vastaan (payload migrate), ei automaattisesti buildissa.
+  Paikallinen Docker-PG ja Neon ovat eri tietokantoja.
+end note
+
+note bottom of Build
+  Älä deployaa `vercel --prod` -CLI:lla Windows-koneelta:
+  CRLF-rivinvaihdot rikkovat buildin
+  (ELIFECYCLE -2 / BUILD_UTILS_SPAWN_254).
+  .gitattributes (* text=auto eol=lf) pitää LF-muodon;
+  ensisijainen deploy-tapa on CD-putki (git push).
+end note
+
+@enduml
