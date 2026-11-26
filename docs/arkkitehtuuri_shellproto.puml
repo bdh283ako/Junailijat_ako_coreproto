@@ -43,9 +43,8 @@ package "src/app/(frontend)/akotestaa/shellproto/" as ShellprotoPkg {
     [protoData.ts\n(Tyypit, oletusprofiili, match-laskenta & kutsukoodit)] as ProtoData <<extracted>>
     [eventFeedClient.ts\n(Tapahtuma-API:n kutsu & normalisointi)] as FeedClient <<extracted>>
     [mapGeoResolver.ts\n(PKS-koordinaattien ratkaisu & kaupunginosat)] as GeoResolver <<extracted>>
-    [mapGeoResolver.tsx\n(PKS-koordinaattien React-komponentti)] as GeoResolverComp <<extracted>>
     [googleCalendar.ts\n(Google Kalenteri -vientilinkin muodostus)] as GCalHelper <<extracted>>
-    [pksAreas.tsx\n(PKS-alueiden määrittelyt)] as PksAreas <<extracted>>
+    [pksAreas.ts\n(PKS-alueiden määrittelyt)] as PksAreas <<extracted>>
   }
 }
 
@@ -94,7 +93,6 @@ PageCoordinator --> HookEventChat
 ' Apumoduulien riippuvuudet
 EventsPanel --> GCalHelper
 MapView --> GeoResolver
-MapView --> GeoResolverComp
 MapView --> MapPinLayer
 MapView --> PksAreas
 HookEvents --> FeedClient

@@ -101,9 +101,8 @@ flowchart LR
         ProtoData["protoData.ts"]:::extracted
         FeedClient["eventFeedClient.ts"]:::extracted
         GeoResolver["mapGeoResolver.ts"]:::extracted
-        GeoResolverComp["mapGeoResolver.tsx"]:::extracted
         GCalHelper["googleCalendar.ts"]:::extracted
-        PksAreas["pksAreas.tsx"]:::extracted
+        PksAreas["pksAreas.ts"]:::extracted
     end
 
     subgraph ExternalDeps["Ulkoiset riippuvuudet"]
@@ -146,7 +145,6 @@ flowchart LR
 
     EventsPanel --> GCalHelper
     MapView --> GeoResolver
-    MapView --> GeoResolverComp
     MapView --> MapPinLayer
     MapView --> PksAreas
     HookEvents --> FeedClient
