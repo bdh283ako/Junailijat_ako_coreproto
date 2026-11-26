@@ -1,0 +1,98 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam packageStyle rectangle
+
+title Junailijat – paikallinen kehitysympäristö (localhost)
+
+actor "Kehittäjä" as Developer
+actor "Käyttäjä" as User
+
+node "Kehittäjän kone" as LocalMachine {
+  component "VS Code -terminaali\npnpm dev" as DevCommand
+
+  node "Node.js\nNext.js 16.4.6" as AppRuntime {
+    package "Next.js App Router" {
+      [React-käyttöliittymä\nReact 19.3.1] as UI
+      [Sovellus-API:t\n/api/events, /api/families,\n/api/family-profile, /api/chat,\n/api/participations, /api/community-state] as Routes
+      [Auth.js / NextAuth\nGoogle Provider\nJWT-istunto] as Auth
+      [Payload CMS 4.0.0-beta.8\nAdmin + kokoelmat + Local API] as Payload
+    }
+
+    component "PostgreSQL-adapteri\n@payloadcms/db-postgres" as DBAdapter
+    component "TypeScript 6.0.3\nGraphQL 16.15.0 (lockfile)" as Toolchain
+  }
+
+  node "Docker Compose" as Docker {
+    database "PostgreSQL 17\npostgres:17-alpine\n127.0.0.1:5432" as Postgres
+    folder "postgres_data\nDocker-pysyvyysvolume" as PGVolume
+  }
+
+  folder "data/" as LegacyData {
+    file "demo-store.json\nvain vanhan datan tuontiin" as LegacyJson
+  }
+}
+
+node "Käyttäjän selain" as Browser {
+  component "localStorage\nvain kokeilunäkymien\npaikallinen tila" as BrowserStorage
+}
+
+cloud "Google Identity\nOAuth 2.0 / OIDC" as Google
+cloud "EventPulse\nJSON-LD-syöte" as EventPulse
+cloud "Linked Events API\nHelsinki, Espoo, Vantaa" as LinkedEvents
+cloud "Kauniaisten tapahtumasivu\nHTML-haku" as Kauniainen
+
+Developer --> DevCommand : käynnistää
+DevCommand --> AppRuntime : Next.js dev -palvelin
+User --> Browser
+Browser --> UI : localhost:3000
+UI --> Routes : HTTP-pyynnöt
+UI --> Auth : kirjautuminen
+
+Auth --> Google : Google-kirjautuminen
+Auth --> Payload : käyttäjän luonti/päivitys\nGoogle sub -tunnisteella
+Routes --> Payload : istuntoon sidotut\nsovellustoiminnot
+Payload --> DBAdapter
+DBAdapter --> Postgres : DATABASE_URL
+Postgres --> PGVolume : pysyvä paikallinen data
+
+Routes --> EventPulse : tapahtumahaku
+Routes --> LinkedEvents : tapahtumahaku
+Routes --> Kauniainen : tapahtumahaku
+UI --> BrowserStorage : vain akotestaa-prototyypit\nja lukukuittaukset
+
+DevCommand ..> LegacyJson : pnpm data:import-legacy\nvain kertaluonteinen tuonti
+
+note right of AppRuntime
+  Käytössä Node.js 26.13.1
+  (vaatimus >=24.22.1)
+  Käytössä pnpm 10.34.9
+  (sallittu pääversio 9, 10 tai 11)
+  Auth.js (next-auth) 5.0.0-beta.32
+  Payload ja @payloadcms/db-postgres:
+  4.0.0-beta.8
+end note
+
+note bottom of Postgres
+  Docker Compose sitoo portin vain
+  kehittäjän localhost-osoitteeseen.
+  Volume säilyttää datan kontin
+  uudelleenkäynnistyksen yli.
+end note
+
+note bottom of BrowserStorage
+  Kokeilunäkymien selainmuisti ei ole
+  PostgreSQL-tallennusta eikä synkronoidu
+  käyttäjien tai laitteiden välillä.
+  Demoihin ei pidä syöttää oikeaa
+  kotiosoitetta tai muita henkilötietoja.
+end note
+
+note bottom of Routes
+  Tapahtumat haetaan ulkoisista lähteistä.
+  Lähellä.fi ei ole tällä hetkellä kytketty
+  tähän tapahtumareittiin.
+end note
+
+@enduml

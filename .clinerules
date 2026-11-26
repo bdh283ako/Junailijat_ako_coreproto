@@ -1,0 +1,22 @@
+# Junailijat_ako_coreproto — Agent & Architecture Rules
+
+## 1. Architecture-as-Code First (PlantUML)
+- **Single Source of Truth:** Before proposing or editing any code, locate and read the project's `.puml` architecture diagram(s) (e.g. `docs/*.puml` or root `*.puml`).
+- **Plan Before Acting:** In `Plan` mode, verify how the requested change maps to existing components, API routes, and the Docker/PostgreSQL persistence layer shown in the `.puml` diagram.
+- **Keep `.puml` Synchronized:** Whenever you add, rename, split, or rewire a UI panel, custom hook, API route, database table/collection, or external feed integration, update the `.puml` diagram(s) in the same task so documentation always matches code.
+
+## 2. Tech Stack & Runtime Boundaries
+- **Stack:** Next.js (App Router), TypeScript, Tailwind CSS, PostgreSQL running in local Docker container (`docker-compose`), and Google OAuth 2.0 session handling.
+- **No Regression to Legacy Storage:** Never reintroduce old Figma Make static JSON-blob persistence or hardcoded mock fallbacks where PostgreSQL/API routes are already wired.
+- **Protected Paths:** Never read, modify, or expose `.env`, `.env.local`, `.npmrc`, or credentials. Keep `data/` and local artifacts ignored per `.gitignore`.
+
+## 3. Modularity & Refactoring Discipline (`shellproto`)
+- **Target Area:** `src/app/(frontend)/akotestaa/shellproto/`
+- **Keep `page.tsx` Thin:** `page.tsx` is a top-level coordinator. Place self-contained UI sections into dedicated `*Panel.tsx` / `*View.tsx` components and side effects/data fetching into `use*.ts` hooks.
+- **Incremental Changes:** Make one focused, atomic change per task. Do not combine UI extraction, filtering logic rewrites, and state-sync hook refactors in a single step.
+- **Preserve Existing Behavior:** Keep existing prop contracts, `recordDemoSelection` telemetry calls, multi-stage event filtering (geo -> default preset -> quick age/search), and Finnish UI copy intact unless explicitly asked to change them.
+
+## 4. Token & Context Efficiency (Mistral API)
+- Read only the `.puml` file(s) and explicitly referenced target files (`@file`). Never scan `node_modules/`, `.next/`, or `.git/`.
+- Before finishing a task, run `npx tsc --noEmit` (or project typecheck) to ensure zero TypeScript errors.
+- Summarize modified files and `.puml` updates concisely in Finnish at the end of the response.
