@@ -19,5 +19,14 @@ logs/
 .npmrc
 .vercel
 
+# salaisuudet/avaimet eivät saa päätyä repoon
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+*.env.local
+.env.local.*
+
 # paikallinen varmuuskopio/synkka, ei repoon (avaimet ovat Vercelin salaisuuksissa)
 scripts/sync-secrets-vercel.mjs

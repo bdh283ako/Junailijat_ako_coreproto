@@ -17,7 +17,9 @@
     "format": "oxfmt",
     "generate:importmap": "dotenv -e .env.local -- cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
     "generate:types": "dotenv -e .env.local -- cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
-    "payload": "dotenv -e .env.local -- cross-env NODE_OPTIONS=--no-deprecation payload"
+    "payload": "dotenv -e .env.local -- cross-env NODE_OPTIONS=--no-deprecation payload",
+    "prepare": "node scripts/setup-git-hooks.mjs",
+    "scan:secrets": "node scripts/check-secrets.mjs --all"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "4.0.0-beta.8",

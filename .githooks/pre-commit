@@ -1,0 +1,9 @@
+#!/bin/sh
+# Estää secretien päätymisen commitiin: skannaa stagetut muutokset.
+# Asetetaan käyttöön automaattisesti: pnpm install ajaa "prepare"-skriptin,
+# joka asettaa core.hooksPath=.githooks (katso scripts/setup-git-hooks.mjs).
+node scripts/check-secrets.mjs --staged || {
+  echo ""
+  echo "Commit peruttu: stagetut muutokset sisältävät mahdollisia salaisuuksia."
+  exit 1
+}

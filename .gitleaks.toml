@@ -1,0 +1,37 @@
+title = "Junailijat gitleaks -konfiguraatio"
+
+# Sallitut placeholderit (esim. .env.example)
+[allowlist]
+  description = "Sallitut esimerkki/placeholder-arvot"
+  paths = [
+    '''\.env\.example$''',
+    '''docs/''',
+  ]
+  regexes = [
+    '''(?i)(replace-with|changeme|placeholder|dummy|example|your[-_]|local-only|process\.env|\$\{|\w+\.\w+)''',
+  ]
+
+# Google OAuth client secret (GOCSPX-...) ja muut projektin avaimet
+[[rules]]
+  id = "google-oauth-client-secret"
+  description = "Google OAuth Client Secret (GOCSPX-)"
+  regex = '''GOCSPX-[A-Za-z0-9_-]{20,}'''
+  tags = ["secret", "google"]
+
+[[rules]]
+  id = "google-api-key"
+  description = "Google API Key"
+  regex = '''AIza[0-9A-Za-z_-]{35}'''
+  tags = ["secret", "google"]
+
+[[rules]]
+  id = "private-key"
+  description = "Private Key"
+  regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----'''
+  tags = ["secret"]
+
+[[rules]]
+  id = "generic-secret-assignment"
+  description = "Kovakoodattu secret/token (SECRET|PASSWORD|TOKEN|API_KEY|CLIENT_SECRET = pitkä arvo)"
+  regex = '''(?i)(SECRET|PASSWORD|PASSWD|API_?KEY|CLIENT_?SECRET|PRIVATE_?KEY|ACCESS_?TOKEN)["']?\s*[:=]\s*["'`]?[A-Za-z0-9_./+=-]{16,}'''
+  tags = ["secret"]
