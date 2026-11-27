@@ -106,10 +106,10 @@ export function EventsTabPanel({
   onOpenMap,
 }: EventsTabPanelProps) {
   return (
-    <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="space-y-1">
-          <h2 className="text-sm sm:text-base font-bold text-[var(--color-ink)]">
+    <div className="min-w-0 p-4 md:p-6 space-y-3 md:space-y-4">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <h2 className="text-sm md:text-base font-bold text-[var(--color-ink)]">
             Lähialueen tapahtumat (lähin ensin)
           </h2>
           <p className="text-[11px] text-[var(--color-ink-muted)]">
@@ -122,7 +122,7 @@ export function EventsTabPanel({
               className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${sourceBadge.className}`}
             >
               <span className={`w-2 h-2 rounded-full ${sourceBadge.dotClass}`} />
-              <span>{sourceBadge.label}</span>
+              <span className="min-w-0 break-words">{sourceBadge.label}</span>
             </div>
             {profile.defaultPreset.enabled && (
               <button
@@ -141,7 +141,7 @@ export function EventsTabPanel({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-slate-500">
             {filteredSortedEvents.length}/{baseAreaSortedEventsCount}
           </span>
@@ -166,7 +166,7 @@ export function EventsTabPanel({
       )}
 
       <div className="bg-[var(--color-surface)] rounded-3xl p-3 border border-[var(--color-border)] shadow-xs space-y-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col md:flex-row md:items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
             {EVENT_AGE_QUICK_FILTERS.map((item) => {
               const active = eventAgeFilter === item.id
@@ -190,14 +190,14 @@ export function EventsTabPanel({
             })}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <input
               type="search"
               value={eventSearchQuery}
               onChange={(e) => onEventSearchQueryChange(e.target.value)}
               placeholder="Hae tapahtumaa tai paikkaa..."
               aria-label="Hae tapahtumaa tai paikkaa"
-              className="w-full sm:w-52 min-h-11 px-3 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] focus:bg-[var(--color-surface-strong)] text-xs text-[var(--color-ink)] placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+              className="w-full min-w-0 flex-1 md:w-52 min-h-11 px-3 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] focus:bg-[var(--color-surface-strong)] text-xs text-[var(--color-ink)] placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-accent)] focus:outline-none"
             />
             {hasActiveQuickEventFilter && (
               <button
@@ -243,7 +243,7 @@ export function EventsTabPanel({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
           {filteredSortedEvents.map((evt) => {
             const isGoing = joinedEventIds.has(evt.id)
             const dateLabel = parseEventDateLabel(evt.time)
@@ -262,7 +262,7 @@ export function EventsTabPanel({
             return (
               <div
                 key={evt.id}
-                className="bg-[var(--color-surface)] rounded-3xl p-4 border border-[var(--color-border)] shadow-sm flex items-start gap-3"
+                className="min-w-0 bg-[var(--color-surface)] rounded-3xl p-4 border border-[var(--color-border)] shadow-sm flex items-start gap-3"
               >
                 {dateLabel && (
                   <div
@@ -277,8 +277,8 @@ export function EventsTabPanel({
                 )}
                 <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2.5">
                 <div className="space-y-2">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="space-y-1">
+                  <div className="flex min-w-0 flex-wrap justify-between items-start gap-2">
+                    <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[11px] font-semibold text-[var(--color-ink-muted)] uppercase">
                           {evt.district ? `${evt.district} (${evt.city})` : evt.city} •{' '}
@@ -289,7 +289,7 @@ export function EventsTabPanel({
                           👶 {evt.ageGroup || 'Kaikki ikäryhmät'}
                         </span>
                       </div>
-                      <h3 className="text-base font-bold text-[var(--color-ink)] leading-snug">
+                      <h3 className="min-w-0 break-words text-base font-bold text-[var(--color-ink)] leading-snug">
                         {evt.title}
                       </h3>
                     </div>

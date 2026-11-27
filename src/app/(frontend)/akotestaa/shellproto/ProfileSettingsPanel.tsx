@@ -153,15 +153,15 @@ export function ProfileSettingsPanel({
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 pb-8">
+    <div className="min-w-0 p-4 md:p-6 space-y-4 pb-8">
       {/* Onboarding-kortti perheen oletusrajauksille */}
       <section className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 rounded-2xl p-4 border-2 border-emerald-200 shadow-sm space-y-3">
         <div className="flex items-start justify-between gap-2">
-          <div>
+          <div className="min-w-0">
             <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
               {profile.onboardingCompleted ? '✓ Perheen oletusrajaukset tallennettu' : '🚀 Perheen oletusrajaukset (Onboarding)'}
             </span>
-            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 mt-1">
+            <h2 className="break-words text-sm md:text-base font-extrabold text-slate-900 mt-1">
               Rajaa tapahtumatulva perheenne näköiseksi
             </h2>
             <p className="text-xs text-slate-600">
@@ -184,7 +184,7 @@ export function ProfileSettingsPanel({
 
         {!profile.onboardingCompleted && (
           <div className="space-y-3 pt-1 border-t border-emerald-200/70">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
               <div className="bg-white/90 rounded-xl p-2.5 border border-emerald-100">
                 <span className="font-bold text-slate-800 block">1. Kotiseutu & säde (15 km)</span>
                 <span className="text-slate-600">
@@ -247,7 +247,7 @@ export function ProfileSettingsPanel({
         )}
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+      <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <div className="space-y-4">
           <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -401,7 +401,7 @@ export function ProfileSettingsPanel({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-xs">
               <label className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
                 <span>Vain maksuttomat</span>
                 <input
@@ -535,7 +535,7 @@ export function ProfileSettingsPanel({
               Perheprofiili ja oletusfiltterit tallentuvat automaattisesti{' '}
               <code className="text-[10px]">family-{currentUser.id}</code>-tietueeseen.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={onSaveProfile}
@@ -551,7 +551,7 @@ export function ProfileSettingsPanel({
                 {transientResetToast ? '✓ Selaussessio nollattu!' : 'Nollaa selaussessio'}
               </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {

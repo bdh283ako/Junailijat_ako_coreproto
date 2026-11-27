@@ -628,14 +628,14 @@ export function CommunityHubPanel({
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 pb-8">
+    <div className="min-w-0 p-4 md:p-6 space-y-4 pb-8">
       {communitySyncError && (
         <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
           Yhteisötilan tietokantatallennus epäonnistui: {communitySyncError}
         </p>
       )}
       {/* Ylänavigaatio: emoji-ikonit ilman A/B/C-koodeja */}
-      <div className="bg-white rounded-2xl p-2 border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs font-bold">
+      <div className="bg-white rounded-2xl p-2 border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs font-bold">
         <button
           type="button"
           onClick={() => setHubSection('matches')}
@@ -684,7 +684,7 @@ export function CommunityHubPanel({
 
       {/* Yksityisviestit vain mätsänneiden perheiden kesken */}
       {section === 'matches' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+        <div className="grid min-w-0 grid-cols-1 md:grid-cols-3 gap-4 items-start">
           <div className="bg-white rounded-2xl p-3 border border-slate-200 space-y-2">
             <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide px-1">
               Mätsänneet perheet
@@ -736,7 +736,7 @@ export function CommunityHubPanel({
             )}
           </div>
 
-          <div className="sm:col-span-2 bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
+          <div className="min-w-0 md:col-span-2 bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
             {activeDirectFamily ? (
               <>
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -826,7 +826,7 @@ export function CommunityHubPanel({
       {/* Keskustelupalsta — Yleinen + aihehuoneet, nimimerkki tai oma nimi */}
       {section === 'board' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-3.5 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="bg-white rounded-2xl p-3.5 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
             <div className="space-y-0.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
@@ -887,7 +887,7 @@ export function CommunityHubPanel({
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+          <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 items-start">
             <div className="space-y-3">
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-2">
                 <h3 className="text-xs font-bold text-slate-800 uppercase">
@@ -1011,7 +1011,7 @@ export function CommunityHubPanel({
       {/* Tapahtumachat käyttää vain event:-kanavia. */}
       {section === 'event_chat' && (
         <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">
@@ -1247,7 +1247,7 @@ export function CommunityHubPanel({
 
       {/* EU-tietosuoja- ja läpinäkyvyysnäkymä */}
       {section === 'data_transparency' && (
-        <div className="bg-slate-950 text-indigo-50 rounded-2xl p-4 sm:p-5 border border-indigo-700/60 space-y-4 text-xs">
+        <div className="bg-slate-950 text-indigo-50 rounded-2xl p-4 md:p-5 border border-indigo-700/60 space-y-4 text-xs">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="space-y-1">
               <span className="inline-block px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold">
@@ -1316,7 +1316,7 @@ export function CommunityHubPanel({
             </section>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <section className="rounded-xl border border-indigo-700/50 bg-indigo-950/80 p-3 space-y-2">
               <h3 className="font-bold text-cyan-300">📍 Sijaintitietojen minimointi</h3>
               <p className="text-[11px] text-indigo-100/90">

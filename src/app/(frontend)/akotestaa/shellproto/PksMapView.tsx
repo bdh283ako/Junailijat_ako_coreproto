@@ -501,8 +501,8 @@ export function PksMapView({
   ])
 
   return (
-    <div className="h-full flex flex-col relative bg-slate-50">
-      <div className="flex-none h-[52%] sm:h-[54%] sm:max-h-[480px] flex flex-col min-h-[240px] border-b border-slate-200 bg-white">
+    <div className="h-full min-w-0 flex flex-col relative bg-slate-50">
+      <div className="flex-none h-[52%] md:h-[54%] md:max-h-[480px] flex flex-col min-h-[240px] border-b border-slate-200 bg-white">
         {mapError ? (
           <div className="flex-1 flex items-center justify-center p-6 text-center text-xs text-slate-600 bg-slate-100">
             Karttakirjaston lataus ei onnistunut. Tarkista verkkoyhteys ja avaa kartta uudelleen.
@@ -512,7 +512,7 @@ export function PksMapView({
         )}
 
         {/* Geneerinen kaupunkifiltteri + karttaselitteet + MLL-kahviloiden erillinen kytkin */}
-        <div className="bg-white border-t border-slate-200 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+        <div className="bg-white border-t border-slate-200 px-4 md:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
           <div className="flex flex-wrap items-center gap-2 font-medium text-slate-700">
             {/* Geneerinen kaupunkivalitsin */}
             <label className="inline-flex items-center gap-1.5 font-bold text-slate-800">
@@ -587,7 +587,7 @@ export function PksMapView({
       </div>
 
       {selectedCityGroup && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 sm:px-6 py-3 text-xs max-h-44 overflow-y-auto shrink-0">
+        <div className="bg-blue-50 border-b border-blue-200 px-4 md:px-6 py-3 text-xs max-h-44 overflow-y-auto shrink-0">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="font-bold text-blue-950">
               {selectedCityGroup.city} — vain kaupunkitason tapahtumat (
@@ -634,7 +634,7 @@ export function PksMapView({
       )}
 
       {/* Kartan alla oleva sivutettu listaus (25 tai 50 erissä kaikki valitun kaupungin tapahtumat) */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3 space-y-2.5">
+      <div className="min-w-0 flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-3 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="font-bold text-slate-800">
             Tapahtumalista ({activeCityFilter}): {cityFilteredAllEvents.length} kpl{' '}
@@ -694,7 +694,7 @@ export function PksMapView({
             Ei tapahtumia valitussa kaupungissa ({activeCityFilter}).
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {paginatedBottomEvents.map((evt) => (
               <div
                 key={evt.id}

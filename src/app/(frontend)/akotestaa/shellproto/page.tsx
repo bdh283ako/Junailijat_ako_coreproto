@@ -1146,22 +1146,22 @@ export default function PerheAppPrototypePage() {
   )
 
   return (
-    <div className="min-h-dvh bg-zinc-900 px-3 py-0 sm:px-6 sm:py-5 flex justify-center items-center">
-      <div className="w-full max-w-[430px] sm:max-w-2xl md:max-w-3xl bg-slate-50 h-dvh sm:h-[92dvh] sm:max-h-[1180px] flex flex-col shadow-2xl border-x sm:border-[3px] border-slate-800 sm:rounded-[2rem] relative overflow-hidden transition-all duration-300">
-        <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
-          <div className="min-w-0">
+    <div className="min-h-dvh w-full overflow-x-hidden bg-zinc-900 px-3.5 py-0 flex justify-center items-center sm:px-6 md:py-5">
+      <div className="mx-auto flex h-dvh w-full min-w-0 max-w-[430px] flex-col overflow-hidden border-x border-slate-800 bg-slate-50 shadow-2xl relative transition-all duration-300 sm:max-w-2xl md:max-w-3xl md:h-[92dvh] md:max-h-[1180px] md:rounded-[2rem] md:border-[3px]">
+        <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-col">
-              <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+              <h1 className="text-base md:text-lg font-extrabold text-slate-900 tracking-tight">
                 Perhe<span className="text-emerald-600">Piiri</span>
               </h1>
             </div>
-            <p className="text-[10px] text-slate-500 truncate sm:text-xs">
+            <p className="text-[10px] text-slate-500 truncate md:text-xs">
               🟠 {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
             </p>
           </div>
           {authStatus === 'authenticated' && currentUser ? (
-            <div className="flex min-w-0 items-center justify-end gap-1.5">
-              <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 {currentUser.avatarUrl ? (
                   <img
                     src={currentUser.avatarUrl}
@@ -1180,7 +1180,7 @@ export default function PerheAppPrototypePage() {
                   {currentUser.displayName}
                 </span>
                 <span
-                  className={`max-w-[76px] truncate rounded-full px-1.5 py-1 text-[9px] font-bold sm:max-w-none sm:px-2 sm:text-[10px] ${
+                  className={`max-w-[76px] truncate rounded-full px-1.5 py-1 text-[9px] font-bold md:max-w-none md:px-2 md:text-[10px] ${
                     isFamilyProfileComplete(profile)
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-amber-100 text-amber-900'
@@ -1215,8 +1215,8 @@ export default function PerheAppPrototypePage() {
               </button>
             </div>
           ) : (
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 sm:inline">
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
+              <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 md:inline">
                 Vierailija
               </span>
               <button
@@ -1240,7 +1240,7 @@ export default function PerheAppPrototypePage() {
         )}
 
         {latestMatch && (
-          <div className="bg-emerald-600 text-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+          <div className="bg-emerald-600 text-white px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
             <div className="text-xs sm:text-sm">
               <p className="font-bold">🎉 Uusi perheosuma: {latestMatch.name}!</p>
               <p className="opacity-90 text-xs">{latestMatch.area}</p>
@@ -1268,7 +1268,7 @@ export default function PerheAppPrototypePage() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           {activeTab === 'events' && (
             <EventsTabPanel
               profile={profile}
@@ -1521,8 +1521,8 @@ export default function PerheAppPrototypePage() {
         </main>
 
         {activePreviewInvite && (
-          <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end sm:items-center sm:justify-center sm:p-4">
-            <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
+          <div className="absolute inset-0 bg-slate-900/50 z-50 flex items-end md:items-center md:justify-center md:p-4">
+            <div className="bg-white w-full md:max-w-lg rounded-t-3xl md:rounded-3xl p-4 md:p-5 space-y-3 shadow-xl">
               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                 <div>
                   <h3 className="font-bold text-sm text-slate-900">✉️ Kutsulinkin esikatselu</h3>
@@ -1576,7 +1576,7 @@ export default function PerheAppPrototypePage() {
           </div>
         )}
 
-        <nav className="bg-[var(--color-surface)] border-t border-[var(--color-border)] grid grid-cols-5 gap-1 px-2 py-2 shrink-0">
+        <nav className="mx-auto w-full min-w-0 max-w-[430px] bg-[var(--color-surface)] border-t border-[var(--color-border)] grid grid-cols-5 gap-1 px-2 py-2 shrink-0 sm:max-w-2xl md:max-w-3xl">
           {[
             { key: 'events', icon: '📅', label: 'Tapahtumat' },
             { key: 'families', icon: '🤝', label: 'Perheet' },
@@ -1603,15 +1603,15 @@ export default function PerheAppPrototypePage() {
                     selectTab()
                   }
                 }}
-                className={`flex flex-col items-center justify-center gap-0.5 min-h-11 py-1 px-1 rounded-2xl transition-colors ${
+                className={`flex min-w-0 w-full flex-col items-center justify-center gap-0.5 min-h-11 py-1 px-1 rounded-2xl transition-colors ${
                   active
                     ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] font-bold'
                     : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] hover:bg-[var(--color-bg)]'
                 }`}
               >
                 <span className="text-lg leading-none">{tab.icon}</span>
-                <span className="inline-flex items-center gap-1 text-[11px]">
-                  {tab.label}
+                <span className="flex w-full min-w-0 items-center justify-center gap-1 text-center text-[11px] leading-tight sm:text-xs">
+                  <span className="min-w-0 truncate">{tab.label}</span>
                   {tab.key === 'hub' && unreadChatChannelIds.size > 0 && (
                     <span className="min-w-4 rounded-full bg-rose-600 px-1 text-[9px] leading-4 text-white">
                       {unreadChatChannelIds.size}

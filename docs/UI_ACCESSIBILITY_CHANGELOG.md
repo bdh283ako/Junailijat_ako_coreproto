@@ -85,4 +85,14 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 
 **Miksi suuria terrakotta-valinta-alueita (2x2 "Löydä perheitä / Tapahtumat / Palvelut / Vertaistuki") ei vielä toteutettu:** isot täysväriset #9E4B16 -pinnat toimivat tekstillä (6.05:1), mutta suuret väripinnat korostuvat liikaa Jutan mallikuvasta ja vaatisivat erillisen layout-muutoksen; tehdään vaiheittain pienemmillä korostuksilla (napit, pillit, aktiivinen välilehti) ensin.
 
+## 2026-11-27 — Shellproton mobiili- ja tablettiasettelu
+
+- Shellin leveys mukautuu jatkuvasti näkymään 16/24 px sivumarginaaleilla ja pysyy keskitettynä enintään 48 rem leveänä; näkymän sisältö saa kutistua ilman vaakasuuntaista ylivuotoa.
+- Tapahtuma-, perhe-, yhteisö-, profiili- ja jäsenkorttinäkymien monisarakkeet alkavat vasta 768 px:n kohdalla, jotta kapea mobiili/tabletti säilyy yksipalstaisena. Pienet kosketuskohteet ovat vähintään 44 px korkeita 767 px:iin asti.
+- Alapalkin kohteet ja muokkauslomakkeiden rivit saavat rivittyä kapeassa leveydessä. Väritokenit, 3 px:n `:focus-visible`-kehys, toiminnallisuus, reititys, tilanhallinta ja propit säilyvät ennallaan.
+
+## 2026-11-27 — Mobiilirajauksen viimeistely (375–639 px)
+
+- Ulompi shell keskitetään enintään 430 px leveäksi, ja sivuille jää 14 px marginaali; tablettileveydellä säiliö laajenee hallitusti `sm:max-w-2xl` / `md:max-w-3xl` -rajoihin. Juuritasolla estetään vaakasuuntainen ylivuoto.
+- Yläpalkki ja tapahtumakorttien otsake/sisärivit sallivat rivittymisen ja kutistumisen. Alapalkki rajautuu shellin leveyteen, ja välilehtitekstit katkaistaan hallitusti; painikkeiden 44 px minimikorkeus ja fokuskehykset säilyvät.
 

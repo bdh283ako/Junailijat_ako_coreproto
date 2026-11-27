@@ -26,7 +26,7 @@ export function StoreInspectorPanel({
   onBack: () => void
 }) {
   return (
-    <div className="p-4 sm:p-6 space-y-4 pb-8 bg-gradient-to-b from-indigo-950 via-slate-950 to-purple-950 min-h-full text-indigo-50">
+    <div className="min-w-0 p-4 md:p-6 space-y-4 pb-8 bg-gradient-to-b from-indigo-950 via-slate-950 to-purple-950 min-h-full text-indigo-50">
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -40,7 +40,7 @@ export function StoreInspectorPanel({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+      <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <section className="rounded-2xl p-4 bg-indigo-950/90 border border-indigo-500/50 space-y-2.5 shadow-lg">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-cyan-300">
@@ -51,7 +51,7 @@ export function StoreInspectorPanel({
             </span>
           </div>
 
-          <div className="max-h-72 sm:max-h-[460px] overflow-y-auto space-y-2 pr-1 font-mono">
+          <div className="max-h-72 md:max-h-[460px] overflow-y-auto space-y-2 pr-1 font-mono">
             {dbFeedLog.length === 0 ? (
               <p className="text-[11px] text-indigo-300/80 py-4 text-center">
                 Ei vielä kantakirjauksia tässä istunnossa.
@@ -81,7 +81,7 @@ export function StoreInspectorPanel({
             </span>
           </div>
 
-          <pre className="mt-2 p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 sm:max-h-[420px] leading-relaxed">
+          <pre className="mt-2 max-w-full p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 md:max-h-[420px] leading-relaxed">
             {JSON.stringify(
               {
                 id: currentUser.id,

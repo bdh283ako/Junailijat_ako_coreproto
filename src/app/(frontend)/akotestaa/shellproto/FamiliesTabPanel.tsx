@@ -58,13 +58,13 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
   } = props
 
   return (
-    <div className="p-4 sm:p-6 space-y-4">
+    <div className="min-w-0 p-4 md:p-6 space-y-4">
       {familyApiError && (
         <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
           Perheiden synkronointi epäonnistui: {familyApiError}
         </p>
       )}
-      <div className="grid grid-cols-2 sm:hidden bg-slate-200 p-1 rounded-xl text-xs font-bold">
+      <div className="grid grid-cols-2 md:hidden bg-slate-200 p-1 rounded-xl text-xs font-bold">
         <button
           type="button"
           onClick={() => {
@@ -95,9 +95,9 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 items-start">
-        <div className={familySubTab === 'discover' ? 'block' : 'hidden sm:block'}>
-          <div className="hidden sm:flex items-center justify-between mb-2">
+      <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
+        <div className={familySubTab === 'discover' ? 'block min-w-0' : 'hidden min-w-0 md:block'}>
+          <div className="hidden md:flex items-center justify-between mb-2">
             <h2 className="text-sm font-bold text-slate-800">
               Selaa lähialueen perheitä ({filteredDeckCount})
             </h2>
@@ -111,7 +111,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                   <span>{currentCard.distanceKm} km kotoa</span>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-2xl font-extrabold">{currentCard.name}</h2>
+                  <h2 className="min-w-0 break-words text-2xl font-extrabold">{currentCard.name}</h2>
                   <span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-xs font-extrabold shadow-sm shrink-0">
                     {currentCard.match.percent} % match
                   </span>
@@ -248,8 +248,8 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
           )}
         </div>
 
-        <div className={familySubTab === 'matches' ? 'block' : 'hidden sm:block'}>
-          <div className="hidden sm:flex items-center justify-between mb-2">
+        <div className={familySubTab === 'matches' ? 'block min-w-0' : 'hidden min-w-0 md:block'}>
+          <div className="hidden md:flex items-center justify-between mb-2">
             <h2 className="text-sm font-bold text-slate-800">
               Osumat ({matchedFamilies.length})
             </h2>
@@ -268,9 +268,9 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                   key={fam.id}
                   className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-3"
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <h3 className="font-bold text-sm text-slate-900">{fam.name}</h3>
+                      <h3 className="break-words font-bold text-sm text-slate-900">{fam.name}</h3>
                       <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
                         {fam.match.percent} %
                       </span>
