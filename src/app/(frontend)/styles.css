@@ -54,6 +54,24 @@
     font-size: 100%; /* rem-yksiköt skaalautuvat selaimen tekstikoon mukaan (WCAG 1.4.4, 200 % zoom) */
   }
 
+  /* Ei vaakasuuntaista ylivuotoa kapeilla näytöillä (WCAG 1.4.10 Reflow) */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  /* Kapeassa näkymässä (mobiili) mikään interaktiivinen elementti ei kutistu alle 44px (WCAG 2.5.5/2.5.8) */
+  @media (max-width: 640px) {
+    button,
+    [role='button'],
+    input,
+    select,
+    textarea,
+    summary {
+      min-height: var(--touch-target-min);
+    }
+  }
+
   /* Globaali, korkean kontrastin :focus-visible kaikille interaktiivisille
      elementeille — WCAG 2.4.7 (AA) ja 1.4.11 (indikaattori >= 3:1). */
   a:focus-visible,

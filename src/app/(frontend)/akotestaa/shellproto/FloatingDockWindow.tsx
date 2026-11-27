@@ -80,7 +80,7 @@ export function FloatingDockWindow({
           ? { position: 'fixed', left: `${pos.x}px`, top: `${pos.y}px`, right: 'auto' }
           : undefined
       }
-      className={`fixed right-3 z-40 w-[290px] sm:w-[320px] rounded-2xl shadow-2xl border ${borderToneClass} bg-zinc-950/95 text-zinc-100 overflow-hidden backdrop-blur-sm`}
+      className={`fixed right-3 z-40 w-[290px] sm:w-[320px] max-w-[calc(100vw-1.5rem)] rounded-2xl shadow-2xl border ${borderToneClass} bg-zinc-950/95 text-zinc-100 overflow-hidden backdrop-blur-sm`}
     >
       <div
         onPointerDown={handlePointerDown}

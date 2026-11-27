@@ -1146,8 +1146,8 @@ export default function PerheAppPrototypePage() {
   )
 
   return (
-    <div className="min-h-dvh bg-zinc-900 sm:py-5 sm:px-4 flex justify-center items-center">
-      <div className="w-full max-w-[430px] sm:max-w-4xl bg-slate-50 h-dvh sm:h-[92dvh] sm:max-h-[1180px] flex flex-col shadow-2xl border-x sm:border-[3px] border-slate-800 sm:rounded-[2rem] relative overflow-hidden transition-all duration-300">
+    <div className="min-h-dvh bg-zinc-900 px-3 py-0 sm:px-6 sm:py-5 flex justify-center items-center">
+      <div className="w-full max-w-[430px] sm:max-w-2xl md:max-w-3xl bg-slate-50 h-dvh sm:h-[92dvh] sm:max-h-[1180px] flex flex-col shadow-2xl border-x sm:border-[3px] border-slate-800 sm:rounded-[2rem] relative overflow-hidden transition-all duration-300">
         <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
           <div className="min-w-0">
             <div className="flex flex-col">
