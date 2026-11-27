@@ -78,6 +78,18 @@ function familyChannelId(firstId: string, secondId: string): string {
   return `family:${[firstId, secondId].sort().join('__')}`
 }
 
+type UserDoc = { id: number | string; email?: unknown; providerId?: unknown; familyProfile?: unknown }
+
+function isMoreCanonicalUser(a: UserDoc, b: UserDoc): boolean {
+  const aReal = typeof a.providerId === 'string' && !a.providerId.startsWith('legacy-demo:')
+  const bReal = typeof b.providerId === 'string' && !b.providerId.startsWith('legacy-demo:')
+  if (aReal !== bReal) return aReal
+  const aProfile = profileData(a.familyProfile) ? 1 : 0
+  const bProfile = profileData(b.familyProfile) ? 1 : 0
+  if (aProfile !== bProfile) return aProfile > bProfile
+  return Number(a.id) < Number(b.id)
+}
+
 async function findPair(payload: Awaited<ReturnType<typeof getPayload>>, fromId: number, toId: number) {
   const result = await payload.find({
     collection: 'family-matches',
@@ -121,7 +133,20 @@ export async function listFamiliesForUser(viewer: UserIdentity): Promise<FamilyD
     if (from && to) matchByPair.set(`${from}__${to}`, match.status)
   }
 
-  return users.docs.flatMap((user) => {
+  // Yksi perhe (sähköposti) näkyy pakassa vain kerran, vaikka tietokannassa
+  // olisi vahingossa duplikaattitilejä (esim. legacy-demo + Google).
+  // Kanoninen tili: mieluiten oikea (ei legacy-demo) providerId, sitten
+  // profiilin omaava, sitten pienin id.
+  const canonicalByEmail = new Map<string, (typeof users.docs)[number]>()
+  for (const user of users.docs) {
+    const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : ''
+    const key = email || `id:${String(user.id)}`
+    const current = canonicalByEmail.get(key)
+    if (!current || isMoreCanonicalUser(user, current)) canonicalByEmail.set(key, user)
+  }
+  const dedupedUsers = [...canonicalByEmail.values()]
+
+  return dedupedUsers.flatMap((user) => {
     const targetId = String(user.id)
     const profile = profileData(user.familyProfile)
     if (targetId === viewerId || !profile) return []
