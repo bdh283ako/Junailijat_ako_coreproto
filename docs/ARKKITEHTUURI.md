@@ -12,7 +12,7 @@ Varsinainen demoinstanssi pyörii **Vercelillä** (projekti `junailijat-ako-core
 flowchart TB
     Dev([Kehittäjä]) -->|git push origin main| GH[(GitHub<br/>bdh283ako/Junailijat_ako_coreproto)]
     GH -->|CD: main → Production, PR → Preview| VB["Vercel build: pnpm install + pnpm run build (next build)<br/>.vercelignore + LF (.gitattributes)"]
-    VB --> RT["Vercel Functions:<br/>Next.js 16 App Router + Payload CMS 4 + Auth.js"]
+    VB --> RT["Vercel Functions:<br/>Next.js 16 App Router + Payload CMS 4 + Auth.js + Vercel Analytics"]
     RT -->|"DATABASE_URL tai POSTGRES_URL"| Neon[("Neon PostgreSQL<br/>Vercel-integraatio")]
     DemoUser([Demokäyttäjä]) -->|"junailijat-ako-coreproto-junailijat.vercel.app"| RT
 

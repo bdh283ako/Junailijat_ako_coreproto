@@ -37,7 +37,7 @@ Sovelluksen rakenne ja kehitysympäristö kuvataan **Architecture-as-Code**-peri
 
 ## Teknologiapino
 
-* **Frontend & Fullstack:** Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript `6.0.3`, Tailwind CSS
+* **Frontend & Fullstack:** Next.js `16.4.6` (App Router), React `19.3.1`, TypeScript `6.0.3`, Tailwind CSS, Vercel Web Analytics (`@vercel/analytics`)
 * **CMS & Tietokanta:** Payload CMS `4.0.0-beta.8` (`@payloadcms/db-postgres`), PostgreSQL `17` (`postgres:17-alpine`) Docker Compose -kontissa
 * **Autentikointi:** Auth.js / NextAuth (`5.0.0-beta.32`) Google OAuth 2.0 / OIDC
 * **Ulkoiset tapahtumalähteet:** EventPulse (JSON-LD), Linked Events API (Helsinki, Espoo, Vantaa) sekä Kauniaisten tapahtumahaku
