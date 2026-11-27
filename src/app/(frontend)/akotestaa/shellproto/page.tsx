@@ -277,9 +277,12 @@ export default function PerheAppPrototypePage() {
 
   const [showDemoMonitor, setShowDemoMonitor] = useState(true)
   const [showNerdDbFloat, setShowNerdDbFloat] = useState(true)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [demoFloatPos, setDemoFloatPos] = useState<FloatingPos | null>(null)
   const [dbFloatPos, setDbFloatPos] = useState<FloatingPos | null>(null)
   const [chatFloatPos, setChatFloatPos] = useState<FloatingPos | null>(null)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
+  const accountMenuTriggerRef = useRef<HTMLButtonElement>(null)
 
   const [demoSelections, setDemoSelections] = useState<DemoSelectionEvent[]>([
     { id: 'init-1', time: '--.--.--', action: 'OAUTH_CHECK', detail: 'checking /api/auth/session' },
@@ -323,6 +326,29 @@ export default function PerheAppPrototypePage() {
     startGoogleSignIn,
     signOutGoogleSession,
   } = useGoogleSession({ onLogSelection: recordDemoSelection })
+
+  useEffect(() => {
+    if (!accountMenuOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !accountMenuRef.current?.contains(event.target)) {
+        setAccountMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAccountMenuOpen(false)
+        accountMenuTriggerRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [accountMenuOpen])
 
   const {
     profile,
@@ -1176,39 +1202,89 @@ export default function PerheAppPrototypePage() {
                 Perhe<span className="text-emerald-600">Piiri</span>
               </h1>
             </div>
-            <p className="text-[10px] text-slate-500 truncate md:text-xs">
-              🟠 {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
-            </p>
+            <button
+              type="button"
+              onClick={() => openOnMap(safeHomeCoords, 'home-location')}
+              aria-label={`Avaa kartta: ${profile.homeCity} (${profile.area}), enintään ${profile.filters.maxDistanceKm} km`}
+              className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 text-left text-[10px] text-slate-500 hover:text-[var(--color-ink)] md:text-xs"
+            >
+              <span aria-hidden="true">🟠</span>
+              <span className="min-w-0 truncate">
+                {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
+              </span>
+            </button>
           </div>
           {authStatus === 'authenticated' && currentUser ? (
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                {currentUser.avatarUrl ? (
-                  <img
-                    src={currentUser.avatarUrl}
-                    alt=""
-                    className="h-6 w-6 shrink-0 rounded-full"
-                  />
-                ) : (
-                  <span
-                    aria-hidden="true"
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800"
-                  >
-                    {currentUser.displayName.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-                <span className="max-w-24 truncate text-xs font-semibold text-slate-800">
-                  {currentUser.displayName}
-                </span>
-                <span
-                  className={`max-w-[76px] truncate rounded-full px-1.5 py-1 text-[9px] font-bold md:max-w-none md:px-2 md:text-[10px] ${
-                    isFamilyProfileComplete(profile)
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-900'
-                  }`}
+              <div ref={accountMenuRef} className="relative min-w-0 max-w-full">
+                <button
+                  ref={accountMenuTriggerRef}
+                  type="button"
+                  aria-expanded={accountMenuOpen}
+                  aria-controls="account-menu"
+                  onClick={() => setAccountMenuOpen((open) => !open)}
+                  className="flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-xl px-1.5 text-left hover:bg-[var(--color-bg)]"
                 >
-                  {isFamilyProfileComplete(profile) ? 'Profiili valmis' : 'Täydennä profiili'}
-                </span>
+                  {currentUser.avatarUrl ? (
+                    <img
+                      src={currentUser.avatarUrl}
+                      alt=""
+                      className="h-6 w-6 shrink-0 rounded-full"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800"
+                    >
+                      {currentUser.displayName.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="max-w-24 min-w-0 truncate text-xs font-semibold text-slate-800">
+                    {currentUser.displayName}
+                  </span>
+                  <span
+                    className={`max-w-[76px] truncate rounded-full border px-1.5 py-1 text-[9px] font-bold md:max-w-none md:px-2 md:text-[10px] ${
+                      isFamilyProfileComplete(profile)
+                        ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+                        : 'border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {isFamilyProfileComplete(profile) ? 'Profiili valmis' : 'Täydennä profiili'}
+                  </span>
+                  <span aria-hidden="true" className="shrink-0 text-xs text-[var(--color-ink)]">
+                    ▾
+                  </span>
+                </button>
+                <div
+                  id="account-menu"
+                  aria-label="Käyttäjävalikko"
+                  hidden={!accountMenuOpen}
+                  className="absolute right-0 top-full z-30 mt-2 w-52 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountMenuOpen(false)
+                      setActiveTab('profile')
+                      setProfileSubView('main')
+                      recordDemoSelection('TAB_SELECT', 'profile')
+                    }}
+                    className="min-h-11 w-full rounded-xl px-3 text-left text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-bg)]"
+                  >
+                    Profiili
+                  </button>
+                  <button
+                    type="button"
+                    disabled={authRedirecting}
+                    onClick={() => {
+                      setAccountMenuOpen(false)
+                      void signOutGoogleSession()
+                    }}
+                    className="min-h-11 w-full rounded-xl px-3 text-left text-sm font-semibold text-[var(--color-ink)] hover:bg-[var(--color-bg)] disabled:opacity-60"
+                  >
+                    Kirjaudu ulos
+                  </button>
+                </div>
               </div>
               <div className="hidden items-center gap-1.5 lg:flex">
                 <button
@@ -1226,14 +1302,6 @@ export default function PerheAppPrototypePage() {
                   {showNerdDbFloat ? '◼ DB-Feed' : '◻ DB-Feed'}
                 </button>
               </div>
-              <button
-                type="button"
-                disabled={authRedirecting}
-                onClick={() => void signOutGoogleSession()}
-                className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-60"
-              >
-                Kirjaudu ulos
-              </button>
             </div>
           ) : (
             <div className="flex min-w-0 shrink-0 items-center gap-2">
