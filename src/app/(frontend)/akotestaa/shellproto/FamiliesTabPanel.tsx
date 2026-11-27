@@ -20,6 +20,110 @@ type ScoredFamily = FamilyProfile & {
   match: ReturnType<typeof calcFamilyMatch>
 }
 
+type FamilyHomeCard = ScoredFamily & {
+  familyName: string
+  updatedAt: string
+}
+
+interface FamilyHomeCarouselProps {
+  families: FamilyHomeCard[]
+  familyApiError: string | null
+  pendingFamilyLikeId: string | null
+  onSwipe: (family: FamilyHomeCard, liked: boolean) => void
+}
+
+export function FamilyHomeCarousel({
+  families,
+  familyApiError,
+  pendingFamilyLikeId,
+  onSwipe,
+}: FamilyHomeCarouselProps) {
+  return (
+    <section
+      aria-labelledby="nearby-families-heading"
+      className="mx-auto min-w-0 w-full max-w-[430px] px-4 pt-4 sm:max-w-2xl sm:px-6 md:max-w-3xl"
+    >
+      <h2
+        id="nearby-families-heading"
+        className="mb-2 text-sm font-bold text-[var(--color-ink)]"
+      >
+        Perheitä lähelläsi
+      </h2>
+      {familyApiError && (
+        <p
+          role="alert"
+          className="mb-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+        >
+          Perheiden synkronointi epäonnistui: {familyApiError}
+        </p>
+      )}
+      {families.length === 0 ? (
+        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-ink-muted)]">
+          Ei tällä hetkellä hakuehtoihin sopivia perheitä.
+        </p>
+      ) : (
+        <div
+          role="region"
+          aria-label="Lähialueen perheet"
+          tabIndex={0}
+          className="flex min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-2 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+        >
+          {families.map((family) => (
+            <article
+              key={family.id}
+              className="w-[82%] shrink-0 snap-start overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm sm:w-[340px] md:w-[380px]"
+            >
+              <div className="p-4">
+                <div className="mb-2 flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-[var(--color-ink-muted)]">
+                      📍 {family.area} · {family.distanceKm} km
+                    </p>
+                    <h3 className="mt-1 break-words text-lg font-bold text-[var(--color-ink)]">
+                      {family.name}
+                    </h3>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-[var(--color-accent)] px-2.5 py-1 text-xs font-bold text-white">
+                    {family.match.percent} % match
+                  </span>
+                </div>
+                <p className="mb-2 text-xs text-[var(--color-ink-muted)]">
+                  👶 Lapset: {family.childrenAges}
+                </p>
+                {family.bio && (
+                  <p className="line-clamp-2 min-h-10 text-sm leading-5 text-[var(--color-ink)]">
+                    {family.bio}
+                  </p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    aria-label={`Ohita ${family.name}`}
+                    disabled={pendingFamilyLikeId !== null}
+                    onClick={() => onSwipe(family, false)}
+                    className="min-h-11 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-bold text-[var(--color-ink)] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    ✕ Ohita
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${family.likedByMe ? 'Jo kiinnostunut' : 'Verkostoidu'}: ${family.name}`}
+                    disabled={pendingFamilyLikeId !== null}
+                    onClick={() => onSwipe(family, true)}
+                    className="min-h-11 flex-1 rounded-xl bg-[var(--color-accent)] px-3 py-2 text-sm font-bold text-white hover:brightness-95 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {family.likedByMe ? '❤️ Jo kiinnostunut' : '🤝 Verkostoidu'}
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export interface FamiliesTabPanelProps {
   familySubTab: FamilySubTab
   filteredDeckCount: number
@@ -97,9 +201,9 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
 
       <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
         <div className={familySubTab === 'discover' ? 'block min-w-0' : 'hidden min-w-0 md:block'}>
-          <div className="hidden md:flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-bold text-slate-800">
-              Selaa lähialueen perheitä ({filteredDeckCount})
+              Perheitä lähelläsi ({filteredDeckCount})
             </h2>
           </div>
 

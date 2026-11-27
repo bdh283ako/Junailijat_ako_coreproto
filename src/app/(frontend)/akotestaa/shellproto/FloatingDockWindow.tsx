@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import type { FloatingPos } from './protoData'
 
 export function FloatingDockWindow({
@@ -31,6 +31,28 @@ export function FloatingDockWindow({
     boxH: number
   } | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!pos) return
+
+    const keepInViewport = () => {
+      const rect = cardRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+      const maxY = Math.max(8, window.innerHeight - rect.height - 8)
+      const next = {
+        x: Math.min(maxX, Math.max(8, pos.x)),
+        y: Math.min(maxY, Math.max(8, pos.y)),
+      }
+
+      if (next.x !== pos.x || next.y !== pos.y) onPosChange(next)
+    }
+
+    keepInViewport()
+    window.addEventListener('resize', keepInViewport)
+    return () => window.removeEventListener('resize', keepInViewport)
+  }, [onPosChange, pos])
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button')) return

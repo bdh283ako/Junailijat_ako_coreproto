@@ -4,8 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CommunityHubPanel, type HubSection } from './CommunityHubPanel'
 import { DebugMonitorPanels, type FeedSourcesMeta } from './DebugMonitorPanels'
 import { EventChatWindow } from './EventChatWindow'
+import { ExpandedMapOverlay, type MapOverlaySource } from './ExpandedMapOverlay'
 import { EventsTabPanel, type EventAgeQuickFilter } from './EventsTabPanel'
-import { FamiliesTabPanel, type FamilySubTab } from './FamiliesTabPanel'
+import { MapPeek } from './MapPeek'
+import {
+  FamiliesTabPanel,
+  FamilyHomeCarousel,
+  type FamilySubTab,
+} from './FamiliesTabPanel'
 import { FamilyMembersPanel } from './FamilyMembersPanel'
 import { DEFAULT_PKS_COORDS, resolveCoordsTuple, resolveEventsForMap } from './mapGeoResolver'
 import { PksMapView } from './PksMapView'
@@ -238,6 +244,7 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
 
 export default function PerheAppPrototypePage() {
   const [activeTab, setActiveTab] = useState<TabKey>('events')
+  const [mapOverlaySource, setMapOverlaySource] = useState<MapOverlaySource | null>(null)
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main')
   const [familySubTab, setFamilySubTab] = useState<FamilySubTab>('discover')
 
@@ -769,6 +776,8 @@ export default function PerheAppPrototypePage() {
     () => familiesWithDistance.filter((family) => family.isMutualMatch),
     [familiesWithDistance],
   )
+  const visibleMapFamilies =
+    activeTab === 'families' && familySubTab === 'matches' ? matchedFamilies : filteredDeck
   const syncInferredAges = (prev: UserProfileState, nextChildren: ChildItem[]): string[] => {
     if (!prev.defaultPreset.useChildrenAgeInference) {
       return prev.filters.targetAgeGroups
@@ -1047,22 +1056,25 @@ export default function PerheAppPrototypePage() {
     onFulfillPendingIntent: fulfillPendingIntent,
   })
 
-  const handleSwipe = (liked: boolean) => {
-    if (!currentCard) return
-    if (pendingFamilyLikeId === currentCard.id) return
+  const handleSwipe = (
+    liked: boolean,
+    selectedCard: ScoredApiFamily | undefined = currentCard,
+  ) => {
+    if (!selectedCard) return
+    if (pendingFamilyLikeId !== null) return
     if (!currentUser) {
       setFamilyApiError('Kirjaudu sisään ennen perheiden selaamista.')
       return
     }
 
-    setPendingFamilyLikeId(currentCard.id)
+    setPendingFamilyLikeId(selectedCard.id)
     void (async () => {
       try {
         const response = await fetch('/api/match', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            toFamilyId: currentCard.id,
+            toFamilyId: selectedCard.id,
             action: liked ? 'liked' : 'passed',
           }),
         })
@@ -1083,11 +1095,11 @@ export default function PerheAppPrototypePage() {
         setFamilyApiError(null)
         await refreshFamilyProfiles()
         if (liked && payload.match === true) {
-          setLatestMatch(currentCard)
-          recordDemoSelection('FAMILY_MATCH', currentCard.id)
+          setLatestMatch(selectedCard)
+          recordDemoSelection('FAMILY_MATCH', selectedCard.id)
         } else {
           setLatestMatch(null)
-          recordDemoSelection(liked ? 'FAMILY_LIKE' : 'SWIPE_PASS', currentCard.id)
+          recordDemoSelection(liked ? 'FAMILY_LIKE' : 'SWIPE_PASS', selectedCard.id)
         }
       } catch (error) {
         const message =
@@ -1101,10 +1113,19 @@ export default function PerheAppPrototypePage() {
   }
 
   const openOnMap = (coords: [number, number], label = 'coords') => {
+    if (label === 'events-map-peek' || label === 'families-map-peek') {
+      const source = label === 'events-map-peek' ? 'events' : 'families'
+      setMapOverlaySource(source)
+      recordDemoSelection('MAP_PEEK_EXPAND', source)
+      return
+    }
+
     setMapFocusCoords(resolveCoordsTuple(coords, safeHomeCoords))
     setActiveTab('map')
     recordDemoSelection('MAP_FOCUS', label)
   }
+
+  const closeMapOverlay = useCallback(() => setMapOverlaySource(null), [])
 
   const handleResetMapBounds = useCallback(() => {
     setMapFocusCoords(null)
@@ -1133,7 +1154,7 @@ export default function PerheAppPrototypePage() {
     <section className="mx-auto my-8 max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
       <h2 className="text-base font-bold text-slate-900">Löydä sopivaa seuraa</h2>
       <p className="mt-2 text-sm text-slate-600">
-        Kirjaudu ja luo perheprofiili nähdäksesi sopivat perheet ja keskustelut.
+        Kirjaudu ja luo perheprofiili nähdäksesi sopivat perheet ja liittyäksesi Yhteisöön.
       </p>
       <button
         className="mt-4 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700"
@@ -1270,6 +1291,58 @@ export default function PerheAppPrototypePage() {
 
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           {activeTab === 'events' && (
+            <section
+              aria-labelledby="quick-actions-heading"
+              className="mx-auto w-full max-w-[430px] px-4 pt-4 sm:max-w-2xl sm:px-6 md:max-w-3xl"
+            >
+              <h2
+                id="quick-actions-heading"
+                className="mb-2 text-sm font-bold text-[var(--color-ink)]"
+              >
+                Mitä etsit tänään?
+              </h2>
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => requestProtectedTab('families')}
+                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-center text-xs font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)] sm:min-h-[84px] sm:gap-1.5 sm:px-3"
+                >
+                  <span aria-hidden="true" className="text-lg leading-none">🤝</span>
+                  <span className="min-w-0 truncate">Perheet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('events')
+                    recordDemoSelection('TAB_SELECT', 'events')
+                  }}
+                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-center text-xs font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)] sm:min-h-[84px] sm:gap-1.5 sm:px-3"
+                >
+                  <span aria-hidden="true" className="text-lg leading-none">📅</span>
+                  <span className="min-w-0 truncate">Tapahtumat</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => requestProtectedTab('conversations')}
+                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-center text-xs font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)] sm:min-h-[84px] sm:gap-1.5 sm:px-3"
+                >
+                  <span aria-hidden="true" className="text-lg leading-none">💬</span>
+                  <span className="min-w-0 truncate">Yhteisö</span>
+                </button>
+              </div>
+            </section>
+          )}
+          {activeTab === 'events' &&
+            currentUser &&
+            isFamilyProfileComplete(profile) && (
+              <FamilyHomeCarousel
+                families={filteredDeck}
+                familyApiError={familyApiError}
+                pendingFamilyLikeId={pendingFamilyLikeId}
+                onSwipe={(family, liked) => handleSwipe(liked, family)}
+              />
+            )}
+          {activeTab === 'events' && (
             <EventsTabPanel
               profile={profile}
               sourceBadge={sourceBadge}
@@ -1322,7 +1395,28 @@ export default function PerheAppPrototypePage() {
               onOpenMap={openOnMap}
             />
           )}
-
+          {activeTab === 'families' && currentUser && isFamilyProfileComplete(profile) && (
+            <div className="mx-auto w-full max-w-[430px] px-4 sm:max-w-2xl sm:px-6 md:max-w-3xl">
+              <MapPeek
+                label={familySubTab === 'matches' ? 'Perheosumien kartta' : 'Perhekartta'}
+                itemCount={visibleMapFamilies.length}
+                onExpand={() => openOnMap(profile.homeCoords, 'families-map-peek')}
+              >
+                <PksMapView
+                  events={[]}
+                  attendingIds={attendingIds}
+                  matchedFamilies={visibleMapFamilies}
+                  homeCoords={safeHomeCoords}
+                  homeLabel={`${profile.area}, ${profile.homeCity}`}
+                  familyName={profile.familyName}
+                  shareEventsWithMatches={false}
+                  showCloseRelativesInMatches={false}
+                  focusCoords={null}
+                  onResetBounds={handleResetMapBounds}
+                />
+              </MapPeek>
+            </div>
+          )}
           {activeTab === 'families' && currentUser && isFamilyProfileComplete(profile) && (
             <FamiliesTabPanel
               familySubTab={familySubTab}
@@ -1580,7 +1674,7 @@ export default function PerheAppPrototypePage() {
           {[
             { key: 'events', icon: '📅', label: 'Tapahtumat' },
             { key: 'families', icon: '🤝', label: 'Perheet' },
-            { key: 'hub', icon: '💬', label: 'Keskustelut' },
+            { key: 'hub', icon: '💬', label: 'Yhteisö' },
             { key: 'map', icon: '🗺️', label: 'Kartta' },
             { key: 'profile', icon: '👤', label: 'Profiili' },
           ].map((tab) => {
@@ -1692,6 +1786,21 @@ export default function PerheAppPrototypePage() {
           )
         }
       />
+      {mapOverlaySource && (
+        <ExpandedMapOverlay
+          source={mapOverlaySource}
+          events={filteredSortedEvents}
+          families={visibleMapFamilies}
+          attendingIds={attendingIds}
+          homeCoords={safeHomeCoords}
+          homeLabel={`${profile.area}, ${profile.homeCity}`}
+          familyName={profile.familyName}
+          shareEventsWithMatches={profile.privacy.shareEventsWithMatches}
+          showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
+          onClose={closeMapOverlay}
+          onResetBounds={handleResetMapBounds}
+        />
+      )}
     </div>
   )
 }

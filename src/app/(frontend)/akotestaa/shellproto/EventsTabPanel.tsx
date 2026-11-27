@@ -1,6 +1,9 @@
 'use client'
 
 import { buildGoogleCalendarUrl } from './googleCalendar'
+import { DEFAULT_PKS_COORDS, resolveCoordsTuple } from './mapGeoResolver'
+import { PksMapView } from './PksMapView'
+import { MapPeek } from './MapPeek'
 import type { FamilyEvent, FamilyProfile, UserProfileState } from './protoData'
 
 export type EventAgeQuickFilter = 'all' | '0-3' | '4-6' | '7-12' | 'all-ages'
@@ -110,7 +113,7 @@ export function EventsTabPanel({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <div className="min-w-0 space-y-1">
           <h2 className="text-sm md:text-base font-bold text-[var(--color-ink)]">
-            Lähialueen tapahtumat (lähin ensin)
+            Tulevat tapahtumat
           </h2>
           <p className="text-[11px] text-[var(--color-ink-muted)]">
             Koti: <strong>{profile.area}</strong> • Suodatin:{' '}
@@ -212,6 +215,25 @@ export function EventsTabPanel({
           </div>
         </div>
       </div>
+
+      <MapPeek
+        label="Tapahtumakartta"
+        itemCount={filteredSortedEvents.length}
+        onExpand={() => onOpenMap(profile.homeCoords, 'events-map-peek')}
+      >
+        <PksMapView
+          events={filteredSortedEvents}
+          attendingIds={[...joinedEventIds]}
+          matchedFamilies={[]}
+          homeCoords={resolveCoordsTuple(profile.homeCoords, DEFAULT_PKS_COORDS)}
+          homeLabel={`${profile.area}, ${profile.homeCity}`}
+          familyName={profile.familyName}
+          shareEventsWithMatches={false}
+          showCloseRelativesInMatches={false}
+          focusCoords={null}
+          onResetBounds={() => onOpenMap(profile.homeCoords, 'events-map-peek')}
+        />
+      </MapPeek>
 
       {filteredSortedEvents.length === 0 ? (
         <div className="bg-[var(--color-surface)] rounded-3xl p-7 text-center border border-[var(--color-border)] space-y-3">

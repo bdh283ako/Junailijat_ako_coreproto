@@ -95,4 +95,27 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 
 - Ulompi shell keskitetään enintään 430 px leveäksi, ja sivuille jää 14 px marginaali; tablettileveydellä säiliö laajenee hallitusti `sm:max-w-2xl` / `md:max-w-3xl` -rajoihin. Juuritasolla estetään vaakasuuntainen ylivuoto.
 - Yläpalkki ja tapahtumakorttien otsake/sisärivit sallivat rivittymisen ja kutistumisen. Alapalkki rajautuu shellin leveyteen, ja välilehtitekstit katkaistaan hallitusti; painikkeiden 44 px minimikorkeus ja fokuskehykset säilyvät.
+- Kelluvat debug- ja chat-paneelit rajataan näkyvälle alueelle myös silloin, kun selainikkunaa kavennetaan niiden avaamisen jälkeen.
+
+## 2026-11-27 — Yhteisöterminologia ja etusivun pikavalinnat
+
+- Alapalkin ja kirjautumista vaativan välilehden teksti käyttää nyt nimeä ”Yhteisö”; sama olemassa oleva välilehti- ja kirjautumisportti säilyy.
+- Etusivun tapahtumanäkymän yläosaan lisättiin yksi responsiivinen kolmen valinnan rivi (Perheet, Tapahtumat, Yhteisö). Kortit käyttävät saavutettavia pintatokeneita, vähintään 76 px:n korkeutta ja globaalia fokuskehystä; Palvelut-osiota ei lisätty.
+- Perhe- ja tapahtumanäkymien otsikot ovat ”Perheitä lähelläsi” ja ”Tulevat tapahtumat”.
+- Perhenäkymän otsikko näytetään myös mobiilileveydellä.
+
+## 2026-11-27 — Etusivun perhekaruselli
+
+- Etusivulle lisättiin lähialueen perheiden vaakasuuntainen, snap-kiinnityksellä toimiva karuselli käyttäen jo suodatettua perhelistaa ja olemassa olevaa tykkäys-/ohitustoimintoa.
+- Korttien leveys jättää seuraavan kortin reunan näkyviin mobiilissa ja tabletilla; vaakasuuntainen vieritys pysyy karusellin sisällä. Toimintopainikkeet ovat vähintään 44 px korkeita ja käyttävät väritokeneita sekä globaalia fokuskehystä.
+
+## 2026-11-27 — Suodatinkontekstin Map Peek -karttanauhat
+
+- Tapahtuma- ja perhenäkymiin lisättiin kompakti Map Peek suodattimien yhteyteen. Kartta saa tapahtumien nykyisen ikä-/haku-/kaupunkisuodatuksen tai perhenäkymän nykyisen suodatetun joukon; muita kohdelistoja ei syötetä.
+- Esikatselukartta ei kaappaa osoitinta tai näppäimistöfokusta, säilyttää karttatiilien attribuution ja rajautuu mobiili-/tablettikehyksen sisään.
+
+## 2026-11-27 — Laajennettu karttapeittokerros ja elekäyttö
+
+- Map Peek avaa koko näkymän peittokerroksen sekä yksipisteisestä ”Laajenna kartta” -painikkeesta että selkeästä kahden sormen loitonnuseleestä; yhden sormen sivu-/pystyvieritys säilyy.
+- Peittokerroksessa on Tapahtumat-, Perheet- ja Kaikki-kerrosvalinnat, Sulje kartta -painike sekä Escape-sulku. Sulku palauttaa aiemman fokus-kohdan ja alkuperäisen näkymän/rullauskohdan.
 
