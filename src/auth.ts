@@ -29,12 +29,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ account, profile }) {
       if (account?.provider !== 'google' || typeof profile?.sub !== 'string') return false
 
-      await syncGoogleUser({
-        sub: profile.sub,
-        email: typeof profile.email === 'string' ? profile.email : null,
-        name: typeof profile.name === 'string' ? profile.name : null,
-        picture: typeof profile.picture === 'string' ? profile.picture : null,
-      })
+      try {
+        await syncGoogleUser({
+          sub: profile.sub,
+          email: typeof profile.email === 'string' ? profile.email : null,
+          name: typeof profile.name === 'string' ? profile.name : null,
+          picture: typeof profile.picture === 'string' ? profile.picture : null,
+        })
+      } catch (error) {
+        // Logitetaan oikea virhe (esim. tietokantayhteys) näkyviin lokeihin;
+        // virhe heitetään edelleen eteenpäin, jotta Auth.js käyttäytyy samoin kuin ennen.
+        console.error('[auth] signIn-callback: syncGoogleUser epäonnistui:', error)
+        throw error
+      }
       return true
     },
     jwt({ token, account, profile }) {
