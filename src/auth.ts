@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
 import { syncGoogleUser } from '@/lib/oauth-user'
@@ -7,6 +8,14 @@ import {
   SESSION_COOKIE_OPTIONS,
   SESSION_MAX_AGE,
 } from '@/lib/session-cookie'
+
+// Debug: tulostaa vain SHA-256-fingerprintit, ei koskaan salaisuuksien arvoja.
+// Näin lokista näkee, mikä avainversio kullakin ympäristöllä on käytössä.
+const fingerprint = (value: string | undefined) =>
+  value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : '(puuttuu)'
+console.log(
+  `[auth] env-check AUTH_GOOGLE_ID=${process.env.AUTH_GOOGLE_ID ?? '(puuttuu)'} AUTH_GOOGLE_SECRET=sha256:${fingerprint(process.env.AUTH_GOOGLE_SECRET)} AUTH_SECRET=sha256:${fingerprint(process.env.AUTH_SECRET)}`,
+)
 
 if (
   !process.env.AUTH_URL &&
