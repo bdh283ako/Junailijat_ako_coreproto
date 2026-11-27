@@ -139,6 +139,9 @@ export async function listFamiliesForUser(viewer: UserIdentity): Promise<FamilyD
   // profiilin omaava, sitten pienin id.
   const canonicalByEmail = new Map<string, (typeof users.docs)[number]>()
   for (const user of users.docs) {
+    // Demoperheet (isDemo-lippu tai legacy-demo-providerId) eivät näy oikeassa pakassa.
+    if (user.isDemo === true) continue
+    if (typeof user.providerId === 'string' && user.providerId.startsWith('legacy-demo:')) continue
     const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : ''
     const key = email || `id:${String(user.id)}`
     const current = canonicalByEmail.get(key)

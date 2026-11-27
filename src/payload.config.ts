@@ -18,6 +18,28 @@ const dirname = path.dirname(filename)
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
 const payloadSecret = process.env.PAYLOAD_SECRET
 
+/**
+ * Pakottaa TLS:n täyden sertifikaattitarkistuksen (sslmode=verify-full) tuotantokantoihin
+ * (Neon/Vercel). Localhost-devissä (Docker-PG ilman TLS:ää) käytetään sslmode=disable,
+ * jotta yhteys toimii myös ilman serttejä.
+ */
+function withStrictSsl(connectionString: string): string {
+  let host = ''
+  try {
+    host = new URL(connectionString.replace(/^postgres(ql)?/, 'http')).hostname
+  } catch {
+    host = ''
+  }
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')
+  const mode = isLocal ? 'disable' : 'verify-full'
+  if (/([?&])sslmode=[^&]*/.test(connectionString)) {
+    return connectionString.replace(/([?&])sslmode=[^&]*/, `$1sslmode=${mode}`)
+  }
+  const sep = connectionString.includes('?') ? '&' : '?'
+  return `${connectionString}${sep}sslmode=${mode}`
+}
+const securedDatabaseUrl = databaseUrl ? withStrictSsl(databaseUrl) : databaseUrl
+
 if (!databaseUrl) {
   throw new Error('DATABASE_URL or POSTGRES_URL must be set to connect Payload to PostgreSQL.')
 }
@@ -31,7 +53,7 @@ export default buildConfig({
   db: postgresAdapter({
     push: false,
     pool: {
-      connectionString: databaseUrl,
+      connectionString: securedDatabaseUrl,
       max: process.env.VERCEL ? 5 : 10,
       idleTimeoutMillis: 10_000,
     },

@@ -26,9 +26,10 @@ export async function syncGoogleUser(identity: GoogleIdentity) {
   const payload = await getPayload({ config })
   const existing = await findGoogleUser(identity.sub)
 
+  // Email normalisoidaan aina (trim + lowercase), jotta sama osoite ei luo duplikaattia.
   const data = {
     providerId: identity.sub,
-    email: identity.email || undefined,
+    email: identity.email ? identity.email.trim().toLowerCase() : undefined,
     name: identity.name || undefined,
     avatarUrl: identity.picture || undefined,
   }

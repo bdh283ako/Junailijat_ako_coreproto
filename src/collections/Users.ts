@@ -17,6 +17,18 @@ export const Users: CollectionConfig = {
   auth: {
     disableLocalStrategy: true,
   },
+  hooks: {
+    // Sähköposti aina normalisoitu (trim + lowercase) ennen tallennusta,
+    // jotta sama osoite ei voi koskaan luoda tuplariviä (uniikki indeksi users.email).
+    beforeValidate: [
+      ({ data }) => {
+        if (data && typeof data.email === 'string') {
+          data.email = data.email.trim().toLowerCase()
+        }
+        return data
+      },
+    ],
+  },
   fields: [
     {
       name: 'providerId',
@@ -26,7 +38,7 @@ export const Users: CollectionConfig = {
       index: true,
       admin: { readOnly: true },
     },
-    { name: 'email', type: 'email', index: true },
+    { name: 'email', type: 'email', unique: true, index: true },
     { name: 'name', type: 'text' },
     { name: 'avatarUrl', type: 'text' },
     { name: 'savedLocation', type: 'json' },
