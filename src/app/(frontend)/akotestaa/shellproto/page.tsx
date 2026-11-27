@@ -1576,7 +1576,7 @@ export default function PerheAppPrototypePage() {
           </div>
         )}
 
-        <nav className="bg-white border-t border-slate-200 grid grid-cols-5 py-2 shrink-0">
+        <nav className="bg-[var(--color-surface)] border-t border-[var(--color-border)] grid grid-cols-5 gap-1 px-2 py-2 shrink-0">
           {[
             { key: 'events', icon: '📅', label: 'Tapahtumat' },
             { key: 'families', icon: '🤝', label: 'Perheet' },
@@ -1603,8 +1603,10 @@ export default function PerheAppPrototypePage() {
                     selectTab()
                   }
                 }}
-                className={`flex flex-col items-center justify-center gap-0.5 py-1 transition-colors ${
-                  active ? 'text-emerald-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+                className={`flex flex-col items-center justify-center gap-0.5 min-h-11 py-1 px-1 rounded-2xl transition-colors ${
+                  active
+                    ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] font-bold'
+                    : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] hover:bg-[var(--color-bg)]'
                 }`}
               >
                 <span className="text-lg leading-none">{tab.icon}</span>

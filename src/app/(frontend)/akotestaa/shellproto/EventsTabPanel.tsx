@@ -52,6 +52,31 @@ const EVENT_AGE_QUICK_FILTERS: { id: EventAgeQuickFilter; label: string }[] = [
   { id: 'all-ages', label: 'Koko perhe' },
 ]
 
+const FI_MONTH_SHORT = [
+  'tammi',
+  'helmi',
+  'maalis',
+  'huhti',
+  'touko',
+  'kesä',
+  'heinä',
+  'elo',
+  'syys',
+  'loka',
+  'marras',
+  'joulu',
+]
+
+// Vain visuaalinen apuri: poimii päivän ja kuukauden tapahtuman aikatekstistä
+// (esim. "pe 27.11. klo 17.00"), jotta kortin reunaan saadaan päivämääräblokki.
+// Alkuperäinen aikateksti näytetään silti aina myös tekstinä.
+function parseEventDateLabel(time: string): { day: string; month: string } | null {
+  const m = time.match(/(\d{1,2})\.(\d{1,2})\./)
+  if (!m) return null
+  const month = FI_MONTH_SHORT[Number(m[2]) - 1]
+  return month ? { day: m[1], month } : null
+}
+
 export function EventsTabPanel({
   profile,
   sourceBadge,
@@ -84,10 +109,10 @@ export function EventsTabPanel({
     <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
-          <h2 className="text-sm sm:text-base font-bold text-slate-800">
+          <h2 className="text-sm sm:text-base font-bold text-[var(--color-ink)]">
             Lähialueen tapahtumat (lähin ensin)
           </h2>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-[var(--color-ink-muted)]">
             Koti: <strong>{profile.area}</strong> • Suodatin:{' '}
             <strong>{profile.filters.targetCity}</strong> ≤{' '}
             <strong>{profile.filters.maxDistanceKm} km</strong>
@@ -124,7 +149,7 @@ export function EventsTabPanel({
             type="button"
             disabled={eventFeedStatus === 'loading'}
             onClick={onRefreshEvents}
-            className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors disabled:opacity-50"
+            className="min-h-11 px-3 py-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] text-[var(--color-ink)] text-xs font-semibold transition-colors disabled:opacity-50"
           >
             {eventFeedStatus === 'loading' ? '↻ Ladataan...' : '↻ Päivitä'}
           </button>
@@ -140,7 +165,7 @@ export function EventsTabPanel({
         </p>
       )}
 
-      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
+      <div className="bg-[var(--color-surface)] rounded-3xl p-3 border border-[var(--color-border)] shadow-xs space-y-2.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
             {EVENT_AGE_QUICK_FILTERS.map((item) => {
@@ -153,10 +178,10 @@ export function EventsTabPanel({
                     onEventAgeFilterChange(item.id)
                     onLogSelection('EVENTS_AGE_FILTER', item.id)
                   }}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
+                  className={`min-h-11 px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${
                     active
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      ? 'bg-[var(--color-accent)] text-[var(--color-on-accent)] shadow-xs'
+                      : 'bg-[var(--color-surface)] text-[var(--color-ink-muted)] border border-[var(--color-border)] hover:bg-[var(--color-bg)]'
                   }`}
                 >
                   {item.label}
@@ -172,13 +197,13 @@ export function EventsTabPanel({
               onChange={(e) => onEventSearchQueryChange(e.target.value)}
               placeholder="Hae tapahtumaa tai paikkaa..."
               aria-label="Hae tapahtumaa tai paikkaa"
-              className="w-full sm:w-52 px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
+              className="w-full sm:w-52 min-h-11 px-3 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] focus:bg-[var(--color-surface-strong)] text-xs text-[var(--color-ink)] placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-accent)] focus:outline-none"
             />
             {hasActiveQuickEventFilter && (
               <button
                 type="button"
                 onClick={onClearEventFilters}
-                className="px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-700 shrink-0"
+                className="min-h-11 px-3 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] text-[11px] font-bold text-[var(--color-ink)] shrink-0"
                 title="Tyhjennä ikä- ja hakusuodatin"
               >
                 Tyhjennä
@@ -189,7 +214,7 @@ export function EventsTabPanel({
       </div>
 
       {filteredSortedEvents.length === 0 ? (
-        <div className="bg-white rounded-2xl p-7 text-center border border-slate-200 space-y-3">
+        <div className="bg-[var(--color-surface)] rounded-3xl p-7 text-center border border-[var(--color-border)] space-y-3">
           <p className="text-2xl">📍</p>
           <h3 className="font-bold text-sm text-slate-900">
             Ei tapahtumia valituilla suodattimilla
@@ -203,7 +228,7 @@ export function EventsTabPanel({
               <button
                 type="button"
                 onClick={onShowAllEvents}
-                className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
+                className="min-h-11 px-4 py-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-on-accent)] text-xs font-bold hover:brightness-110"
               >
                 Näytä kaikki {profile.filters.maxDistanceKm} km:n säteellä
               </button>
@@ -211,7 +236,7 @@ export function EventsTabPanel({
             <button
               type="button"
               onClick={onOpenProfileSettings}
-              className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+              className="min-h-11 px-4 py-2 rounded-xl bg-[var(--color-ink)] text-white text-xs font-bold hover:opacity-90"
             >
               Muokkaa oletusrajauksia
             </button>
@@ -221,6 +246,7 @@ export function EventsTabPanel({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {filteredSortedEvents.map((evt) => {
             const isGoing = joinedEventIds.has(evt.id)
+            const dateLabel = parseEventDateLabel(evt.time)
             const participantCount = Object.hasOwn(countsByEventId, evt.id)
               ? countsByEventId[evt.id]
               : undefined
@@ -236,31 +262,43 @@ export function EventsTabPanel({
             return (
               <div
                 key={evt.id}
-                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between space-y-2.5"
+                className="bg-[var(--color-surface)] rounded-3xl p-4 border border-[var(--color-border)] shadow-sm flex items-start gap-3"
               >
+                {dateLabel && (
+                  <div
+                    aria-hidden="true"
+                    className="shrink-0 w-12 rounded-2xl bg-[var(--color-accent-soft)] border border-[var(--color-border)] text-[var(--color-ink)] flex flex-col items-center justify-center py-2"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wide leading-none">
+                      {dateLabel.month}
+                    </span>
+                    <span className="text-lg font-bold leading-tight">{dateLabel.day}</span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2.5">
                 <div className="space-y-2">
                   <div className="flex justify-between items-start gap-2">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] font-semibold text-blue-600 uppercase">
+                        <span className="text-[11px] font-semibold text-[var(--color-ink-muted)] uppercase">
                           {evt.district ? `${evt.district} (${evt.city})` : evt.city} •{' '}
                           {evt.hasExactCoords ? '' : '~'}
                           {evt.distanceKm} km kotoa
                         </span>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[var(--color-border)] text-[10px] font-bold">
                           👶 {evt.ageGroup || 'Kaikki ikäryhmät'}
                         </span>
                       </div>
-                      <h3 className="text-base font-bold text-slate-900 leading-snug">
+                      <h3 className="text-base font-bold text-[var(--color-ink)] leading-snug">
                         {evt.title}
                       </h3>
                     </div>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-medium shrink-0">
+                    <span className="px-2 py-0.5 rounded-full bg-[var(--color-bg)] text-[var(--color-ink-muted)] border border-[var(--color-border)] text-[11px] font-medium shrink-0">
                       {evt.price}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-[var(--color-ink-muted)]">
                     📍 {evt.venue || evt.city} <br />🕒 {evt.time}
                   </p>
 
@@ -271,7 +309,7 @@ export function EventsTabPanel({
                   )}
 
                   {matchedGoing.length > 0 && (
-                    <div className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                    <div className="px-2.5 py-1.5 rounded-lg bg-[var(--color-accent-soft)] border border-[var(--color-border)] text-xs text-[var(--color-ink)]">
                       🤝 Mukana osumistasi:{' '}
                       <strong>{matchedGoing.map((m) => m.name).join(', ')}</strong>
                     </div>
@@ -284,10 +322,10 @@ export function EventsTabPanel({
                     disabled={pendingEventIds.has(evt.id)}
                     aria-pressed={isGoing}
                     onClick={() => onToggleParticipation(evt.id, evt.title, isGoing)}
-                    className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-bold transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                    className={`flex-1 min-w-[130px] min-h-11 py-2 px-3 rounded-xl text-xs font-bold transition-colors disabled:cursor-wait disabled:opacity-60 ${
                       isGoing
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-900 text-white hover:bg-slate-800'
+                        ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[var(--color-border)]'
+                        : 'bg-[var(--color-accent)] text-[var(--color-on-accent)] hover:brightness-110'
                     }`}
                   >
                     {pendingEventIds.has(evt.id)
@@ -297,7 +335,7 @@ export function EventsTabPanel({
                   <button
                     type="button"
                     onClick={() => onOpenEventChat(evt.id, evt.title)}
-                    className="px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-xs font-bold hover:bg-amber-100 transition-colors"
+                    className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-bold hover:bg-[var(--color-bg)] transition-colors"
                     title="Keskustele tapahtumaan menossa olevien kanssa (anonyymi oletuksena)"
                   >
                     💬 Menossa-chat
@@ -307,7 +345,7 @@ export function EventsTabPanel({
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => onLogSelection('GCAL_EXPORT', evt.id)}
-                    className="px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-bold hover:bg-emerald-100 transition-colors"
+                    className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-bold hover:bg-[var(--color-bg)] transition-colors"
                     title="Lisää tapahtuma Google Kalenteriin"
                   >
                     📅 Kalenteriin
@@ -315,7 +353,7 @@ export function EventsTabPanel({
                   <button
                     type="button"
                     onClick={() => onOpenMap(evt.coords, evt.id)}
-                    className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
+                    className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-semibold hover:bg-[var(--color-bg)]"
                   >
                     Kartalla
                   </button>
@@ -324,11 +362,12 @@ export function EventsTabPanel({
                       href={evt.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"
+                      className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-semibold hover:bg-[var(--color-bg)]"
                     >
                       Lisätiedot ↗
                     </a>
                   )}
+                </div>
                 </div>
               </div>
             )

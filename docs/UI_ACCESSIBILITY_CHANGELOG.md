@@ -72,4 +72,17 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 
 **Tunnetut kosmeettiset varoitukset:** `next build` / `next dev` (Turbopack) tulostaa kerran: `Warning: Failed to find font override values for font 'Momo Trust Display'. Skipping generating a fallback font.` Tämä johtuu siitä, että fontti puuttuu Next.js:n valmiiksi lasketusta fallback-metriikkataulukosta; SWC:n fonttitransformi tulostaa varoituksen tästä huolimatta, vaikka `adjustFontFallback: false` on asetettu (layout.tsx). Varoitus on **pelkästään kosmeettinen**: fontti latautuu ja renderöityy normaalisti (todettu palvellusta CSS:stä), vain automaattinen fallback-fontin kokosäätö jätetään pois — `display: 'swap'` näyttää väliaikaisesti järjestelmäfonttia. API-reitit (esim. `GET /api/families 200`) eivät vaikuta.
 
+## 2026-11-27 — Tapahtumakortit ja alapalkki: terrakotta/salvia-sävytys (Jutan mallikuvasta), WCAG AA
+
+**Tapahtumakortit (`EventsTabPanel.tsx`, vain className/JSX-pinta — ei proppeja, ei logiikkaa):**
+- Korttipinta `--color-surface` (#F0EEE9) + `1px solid var(--color-border)` + `rounded-3xl` (WCAG 1.4.11: reunaviiva 3.69–3.96:1).
+- Vasemman reunan **päivämääräblokki** (salvia `--color-accent-soft` + tumma `--color-ink` teksti = 7.44:1 AAA): kuukausi lyhenteenä ylhäällä, päivänumero alla; muodostetaan vain visuaalisesti aikatekstistä (`pe 27.11. klo 17.00`), alkuperäinen aikateksti säilyy aina myös tekstinä.
+- Päätoiminto "+ Menossa": terrakotta `--color-accent` #9E4B16 + valkoinen teksti = **6.05:1 (WCAG 1.4.3 AA)**; "✓ Menossa" -tila salvialla + tummalla tekstillä (7.44:1 AAA). Toissijaiset pillit (Menossa-chat, Kalenteriin, Kartalla, Lisätiedot): pinta/border-tokeneilla, tumma teksti, **min-h-11 = 44px kosketusalue** (WCAG 2.5.5/2.5.8).
+- Ikäryhmä-/hinta-/aluepillit: salvia/hiekka-tokeneilla, `--color-ink`/`--color-ink-muted` -tekstit (≥ 7.4:1), WCAG 1.4.3.
+- Kaikki toiminnot (Päivitä, suodattimet, haku, osallistuminen, chat, kalenteri, kartta, linkki) ennallaan — myös 44px kosketusalueet lisätty.
+
+**Alapalkki (`shellproto/page.tsx` nav):** lämmin hiekan pinta `--color-surface` + `border-t var(--color-border)`; aktiivinen välilehti salvialla `--color-accent-soft` -pillillä + tumma `--color-ink` teksti (7.44:1 AAA); inaktiiviset `--color-ink-muted` (7.45–7.98:1). Välilehtien onClick-/aktiivisuus-/reitityslogiikka koskematon; `min-h-11` (44px) ja globaali 3px `#9E4B16` `:focus-visible` -kehys (WCAG 2.4.7/2.5.5/2.5.8).
+
+**Miksi suuria terrakotta-valinta-alueita (2x2 "Löydä perheitä / Tapahtumat / Palvelut / Vertaistuki") ei vielä toteutettu:** isot täysväriset #9E4B16 -pinnat toimivat tekstillä (6.05:1), mutta suuret väripinnat korostuvat liikaa Jutan mallikuvasta ja vaatisivat erillisen layout-muutoksen; tehdään vaiheittain pienemmillä korostuksilla (napit, pillit, aktiivinen välilehti) ensin.
+
 
