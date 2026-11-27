@@ -1,13 +1,27 @@
 import React from 'react'
 import type { Metadata } from 'next'
-import { DM_Sans } from 'next/font/google'
+import { Inter, Momo_Trust_Display } from 'next/font/google'
 import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import './styles.css'
 
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  variable: '--font-dm-sans',
+// Mynerve jätetään kokonaan pois: huono luettavuus ja saavutettavuus
+// korosteteksteissä (WCAG 2.1/2.2 1.4.3 ja 1.4.4; EU 2016/2102).
+// Tilalla vain Momo Trust Display (otsikot/display) ja Inter (leipäteksti, UI).
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'], // skandinaavisten merkkien tuki
+  variable: '--font-inter',
+  display: 'swap',
+})
+
+const momoTrustDisplay = Momo_Trust_Display({
+  weight: '400', // Momo Trust Display saatavilla vain painolla 400
+  subsets: ['latin', 'latin-ext'], // skandinaavisten merkkien tuki
+  variable: '--font-momo',
+  display: 'swap',
+  // Momo Trust Displaylle ei ole bundlattuja fallback-metriikoita,
+  // joten estetään turha "Failed to find font override values" -varoitus.
+  adjustFontFallback: false,
 })
 
 const title = 'Junailijat — perheiden tapahtumat'
@@ -26,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fi">
       <body
-        className={`${dmSans.variable} min-h-screen bg-[var(--paper)] text-[var(--ink)] antialiased`}
+        className={`${inter.variable} ${momoTrustDisplay.variable} min-h-screen bg-[var(--color-bg)] text-[var(--color-ink)] antialiased`}
       >
         <a className="skip-link" href="#root">
           Siirry sisältöön

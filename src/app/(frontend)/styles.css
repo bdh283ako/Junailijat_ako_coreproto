@@ -1,22 +1,207 @@
 @import 'tailwindcss';
 @import './gather.css';
 
+/* ==========================================================================
+   Globaalit suunnittelutokenit — WCAG 2.1 / 2.2 AA
+   (EU:n saavutettavuusdirektiivi (EU) 2016/2102 & laki digitaalisten
+   palvelujen tarjoamisesta 306/2019)
+   Kontrastisuhteet on laskettu WCAG:n suhteellisen luminanssin kaavalla.
+   ========================================================================== */
+
+/* Väritokenit: @theme emittoi ne :rootiin JA luo automaattisesti
+   Tailwind-utilityt (bg-bg, bg-surface, text-ink, border-border, ...),
+   joten tokenia vaihtamalla koko käyttöliittymä seuraa mukana. */
+@theme {
+  --color-bg: #f7f6f3; /* päätausta */
+  --color-surface: #f0eee9; /* korttipinta — käytä aina --color-border:in kanssa */
+  --color-surface-strong: #ffffff; /* puhtaan valkoinen pinta */
+  --color-border: #7e7a70; /* reunaviiva: 3.96:1 vs bg, 3.69:1 vs surface (WCAG 1.4.11 >= 3:1) */
+  --color-ink: #2e211b; /* pääteksti (kahvinruskea): 14.40:1 vs bg (AAA) */
+  --color-ink-muted: #574941; /* metateksti: 7.98:1 vs bg (AAA) */
+  --color-eyebrow: #557263; /* pienet korostetekstit: 4.89:1 vs bg (AA) */
+  --color-accent: #9e4b16; /* tummennettu terrakotta: 6.05:1 vs valkoinen (AA; Figman #C06225 oli 4.19:1) */
+  --color-on-accent: #ffffff;
+  --color-accent-figma: #c06225; /* Figman alkuperäinen terrakotta — VAIN ei-tekstillinen koriste */
+  --color-accent-soft: #9cb9b7; /* salvia — sallittu VAIN tumman tekstin kanssa */
+  --color-on-accent-soft: #2e211b; /* 7.44:1 (AAA). Valkoinen teksti #9CB9B7:n päällä kielletty (2.09:1)! */
+}
+
+/* Fonttiteemat sidotaan suoraan next/fontin CSS-muuttujiin.
+   @theme inline: arvot eivät tule :rootiin vaan body-luokasta
+   (layout.tsx: --font-inter / --font-momo), joten viitataan muuttujiin. */
+@theme inline {
+  --font-sans: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-momo), 'Momo Trust Display', Inter, ui-sans-serif, sans-serif;
+}
+
+:root {
+  /* Fonttien fallback-arvot — layout.tsx:n next/font-luokka yliajaa
+     nämä body-elementissä (latin + latin-ext ladattu Google Fontsista). */
+  --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-momo: 'Momo Trust Display', 'Inter', ui-sans-serif, sans-serif;
+
+  --color-surface-alt: var(--color-surface); /* vanha alias */
+
+  /* Vuorovaikutus */
+  --touch-target-min: 44px; /* kosketusalueen minimikoko: WCAG 2.5.5 (AAA) / 2.5.8 (AA >= 24px) */
+  --focus-ring-color: #9e4b16; /* fokuskehys: 5.60:1 vs bg, 6.05:1 vs valkoinen (WCAG 1.4.11 >= 3:1) */
+  --focus-ring-width: 3px; /* >= 2px */
+  --focus-ring-offset: 2px;
+}
+
+@layer base {
+  html {
+    font-size: 100%; /* rem-yksiköt skaalautuvat selaimen tekstikoon mukaan (WCAG 1.4.4, 200 % zoom) */
+  }
+
+  /* Globaali, korkean kontrastin :focus-visible kaikille interaktiivisille
+     elementeille — WCAG 2.4.7 (AA) ja 1.4.11 (indikaattori >= 3:1). */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  iframe:focus-visible,
+  summary:focus-visible,
+  [role='button']:focus-visible,
+  [tabindex]:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+  }
+}
+
 .skip-link {
   position: fixed;
   top: 8px;
   left: 8px;
   z-index: 2147483647;
+  display: inline-flex;
+  min-height: var(--touch-target-min); /* WCAG 2.5.5 / 2.5.8 */
+  align-items: center;
   transform: translateY(-150%);
+  border: 2px solid var(--color-border);
   border-radius: 6px;
-  background: #111827;
-  color: #fff;
-  padding: 8px 12px;
+  background: var(--color-ink);
+  color: #ffffff; /* 15.56:1 vs --color-ink (AAA) */
+  padding: 8px 16px;
   font:
-    600 14px/1.2 system-ui,
+    600 1rem/1.5 var(--font-inter),
+    system-ui,
     sans-serif;
   text-decoration: none;
 }
 
 .skip-link:focus {
   transform: translateY(0);
+}
+
+/* ==========================================================================
+   Semanttiset pintaluokat (@layer components) — käytä näitä uusissa
+   komponenteissa pitkien Tailwind-luokkajonojen sijaan.
+   ========================================================================== */
+@layer components {
+  /* Mobiili-/tablettimitoitettu keskitetty säiliö (max-w-3xl, ei desktop-leveyttä) */
+  .ui-shell {
+    width: 100%;
+    max-width: 48rem; /* max-w-3xl */
+    margin-inline: auto;
+    background: var(--color-bg);
+    color: var(--color-ink);
+  }
+
+  /* Kortti: pinta + selkeä 1px reunaviiva (WCAG 1.4.11 >= 3:1) + rounded-3xl + varjo */
+  .ui-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1.5rem; /* rounded-3xl */
+    box-shadow: 0 12px 32px rgb(46 33 27 / 0.08);
+    color: var(--color-ink);
+  }
+
+  /* Korostuskortti: terrakotta #9E4B16 + valkoinen teksti (6.05:1, WCAG AA) */
+  .ui-card-accent {
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    border-radius: 1.5rem; /* rounded-3xl */
+  }
+
+  /* Salvia-pilleri: VAIN tumma teksti (7.44:1, AAA) + 44px kosketusala (WCAG 2.5.5/2.5.8) */
+  .ui-pill-soft {
+    display: inline-flex;
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+    align-items: center;
+    justify-content: center;
+    padding-inline: 1rem;
+    background: var(--color-accent-soft);
+    color: var(--color-on-accent-soft);
+    border-radius: 9999px; /* rounded-full */
+  }
+}
+
+/* ==========================================================================
+   Keskitetty slate-luokkien väriohjaus shellproto-etusivua (/) varten.
+   Nämä säännöt tulevat Tailwindin omien utilityjen JÄLKEEN samassa
+   @layer utilities -kerroksessa, joten ne yliajavat automaattisesti
+   kovakoodatut slate-arvot ilman, että komponentteja tarvitsee muokata.
+   Tummat slate-taustat kuvataan --color-ink:llä (tummat kohdat käyttävät
+   aina text-white → 15.56:1, AAA); vaaleat tekstit kuvataan
+   --color-ink / --color-ink-muted (>= 7.4:1 pinnoilla, AAA).
+   ========================================================================== */
+@layer utilities {
+  /* Pinnat */
+  .bg-slate-50 {
+    background-color: var(--color-bg);
+  }
+  .bg-slate-100,
+  .bg-slate-200,
+  .bg-white {
+    background-color: var(--color-surface);
+  }
+  .bg-slate-400 {
+    background-color: var(--color-border);
+  }
+  .bg-slate-800,
+  .bg-slate-900,
+  .bg-slate-950 {
+    background-color: var(--color-ink);
+  }
+  /* läpikuultavat dark-overlay-luokat säilyttävät läpinäkyvyyden */
+  .bg-slate-900\/50,
+  .bg-slate-950\/60,
+  .bg-slate-950\/95 {
+    background-color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  }
+  .via-slate-950 {
+    --tw-gradient-via: var(--color-ink);
+  }
+
+  /* Reunat ja renkaat (WCAG 1.4.11: reunat >= 3:1) */
+  .border-slate-100,
+  .border-slate-200,
+  .border-slate-300 {
+    border-color: var(--color-border);
+  }
+  .ring-slate-200 {
+    --tw-ring-color: var(--color-border);
+  }
+  .border-slate-800,
+  .border-slate-900 {
+    border-color: var(--color-ink);
+  }
+  .ring-slate-900 {
+    --tw-ring-color: var(--color-ink);
+  }
+
+  /* Teksti */
+  .text-slate-900,
+  .text-slate-800,
+  .text-slate-700 {
+    color: var(--color-ink);
+  }
+  .text-slate-600,
+  .text-slate-500,
+  .text-slate-400 {
+    color: var(--color-ink-muted);
+  }
 }

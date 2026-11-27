@@ -1,0 +1,75 @@
+# UI-saavutettavuusmuutokset — poikkeamat Figmasta (WCAG 2.1 / 2.2 AA)
+
+**Projekti:** Junailijat (perheiden tapahtumat)
+**Päivämäärä:** 2026-11-27
+**Viitekehys:** WCAG 2.1 / 2.2 AA -taso, EU:n saavutettavuusdirektiivi (EU) 2016/2102 ja laki digitaalisten palvelujen tarjoamisesta 306/2019 (julkisten digitaalisten palvelujen on täytettävä direktiivin mukaiset EN 301 549 -standardin vaatimukset, käytännössä WCAG 2.1 AA).
+**Muokatut tiedostot:** `src/app/(frontend)/layout.tsx`, `src/app/(frontend)/styles.css` (projektin globaali tyylitiedosto, "globals.css"), `src/app/(frontend)/gather.css`.
+**Ei muutettu:** sovelluksen toiminnallisuutta, API-reittejä, reititystä tai tilanhallintaa — vain fontit, väritokenit ja globaalit tyylit.
+
+Kontrastisuhteet on laskettu WCAG 2.x -määritelmän suhteellisen luminanssin kaavalla (L = 0.2126R + 0.7152G + 0.0722B, kontrasti = (L1+0.05)/(L2+0.05)).
+
+## Muutokset taulukkona
+
+| # | Muutos | Figman alkuperäinen arvo | Uusi arvo | Kontrasti ennen | Kontrasti jälkeen | WCAG 2.1/2.2 -kriteeri | Perustelu (EU) 2016/2102 & 306/2019 |
+|---|--------|--------------------------|-----------|-----------------|-------------------|------------------------|--------------------------------------|
+| 1 | Korostetekstien fontti | Mynerve | **Ei käytössä ollenkaan.** Tilalla `Momo Trust Display` (otsikot/display, paino 400) ja `Inter` (leipäteksti, UI, tagit, painikkeet, navigaatio) `next/font/google` -kautta | n/a (luettavuus) | n/a | WCAG 1.4.3, 1.4.4 (200 % zoom), 1.4.12 (tekstivälit) | Direktiivin 4 artiklan "havaittavuus": tekstin on oltava luettavaa ja skaalautuvaa. Mynerve on liian koristeellinen korosteteksteihin. Fontit ladataan `latin` + `latin-ext` -alijoukoilla (ä/ö/å) ja `display: 'swap'`. |
+| 2 | Leipätekstin riviväli ja skaalautuvuus | kiinteät pikselikoot (px) | `body { font-size: 1rem; line-height: 1.5 }`, otsikot `line-height 1.05–1.2`, `html { font-size: 100% }`, fonttikoot `clamp()`-funktiossa **rem**-yksiköissä | ei taattu | line-height 1.5 | WCAG 1.4.4 (Resize text 200 %), 1.4.12 (Text spacing) | 306/2019: sisällön on pysyttävä käyttökelpoisena, kun teksti suurennetaan 200 %:iin. Rem-yksiköt takaavat skaalautuvuuden selaimen asetuksista. |
+| 3 | Terrakotta-pääkorostus tekstin alla | `#C06225` + valkoinen teksti #FFFFFF | `--color-accent: #9E4B16` + `--color-on-accent: #FFFFFF` | **4.19:1** (vain isot otsikot 3:1) | **6.05:1** (AA, lähes AAA) | WCAG 1.4.3 (AA >= 4.5:1 normaaliteksti) | Figman #C06225 + valkoinen = vain 4.19:1, ei kelpaa normaalikokoiselle tekstille. Sävy tummennettiin matemaattisesti #9E4B16:een. Alkuperäinen #C06225 säilyy vain ei-tekstillisenä koristeena (`--color-accent-figma`, 3.72:1 vs tumma teksti, WCAG 1.4.11). |
+| 4 | Salvia / painike- ja pillitausta | `#9CB9B7` + valkoinen teksti | `--color-accent-soft: #9CB9B7` **vain** tumman `--color-on-accent-soft: #2E211B` tekstin kanssa; valkoinen teksti salvan päällä kielletty | **2.09:1** (hylätty) | **7.44:1** (AAA) | WCAG 1.4.3 (AA >= 4.5:1, AAA >= 7:1) | Valkoinen teksti salvan päällä olisi vain 2.09:1 — direktiivin vastainen. Siksi salvia toimii vain taustana tummalle kahvinruskealle tekstille. |
+| 5 | Päätausta ja korttipinnat | (Figman maanläheinen paletti) | `--color-bg: #F7F6F3`, `--color-surface: #FFFFFF`, `--color-surface-alt: #F0EEE9` | n/a | pinnat eroteltu reunaviivalla, ks. #6 | WCAG 1.4.11 (Non-text contrast >= 3:1) | Selkeä pintaerottelu ilman pelkkää varjoa tukee direktiivin havaittavuusvaatimusta; kortit käyttävät aina `--color-border`-reunaviivaa. |
+| 6 | Reunaviivan väri | haaleat rajat #D8D4CC (1.37:1), #C9C4B8 (1.61:1), #9BAC9F (2.21:1) | `--color-border: #7E7A70` | 1.37–2.21:1 (alle 3:1) | **3.96:1 vs bg, 4.28:1 vs surface** | WCAG 1.4.11 (>= 3:1) | Korttien ja syötekenttien rajat erottuvat nyt myös ilman varjoa (ei pelkkä drop shadow), kuten direktiivin AA-tarkastus vaatii. |
+| 7 | Päätekstin väri | (tumma, ei tarkasti määritelty) | `--color-ink: #2E211B` (Figman kahvinruskea) | vanha #17251F/#F6F7F1 = 14.76:1 | **14.40:1 vs bg, 15.56:1 vs surface** (AAA) | WCAG 1.4.3 (AAA >= 7:1) | Tumma pääteksti takaa AAA-tason kontrastin kaikilla pinnoilla direktiivin mukaisesti. |
+| 8 | Metatekstin väri | haalea harmaa: placeholder #8B918D, korosteteksti #6D8C76 | `--color-ink-muted: #574941` (myös placeholder, `.brand span`, `.integration-note-index`) | #8B918D: **3.21:1**, #6D8C76: **3.43:1** (alle 4.5:1) | **7.98:1 vs bg, 8.63:1 vs surface** (AAA) | WCAG 1.4.3 (AA >= 4.5:1) | Myös metatekstin (päivämäärät, kuvaukset, placeholderit) on oltava AA-kelpoinen — direktiivi koskee kaikkea tekstiä. Pieni korosteteksti `--color-eyebrow: #557263` = 4.89:1 (AA) hyväksytty. |
+| 9 | Fokusilmaisin (näppäimistökäyttö) | `outline: 3px solid rgba(32,63,52,0.25)` (~1.6:1, ei havaittava) | Globaali `:focus-visible`: `outline: 3px solid #9E4B16 + offset 2px` kaikille `a, button, input, select, textarea, iframe, summary, [tabindex], [role=button]` | ~**1.58:1** (hylätty) | **5.60:1 vs bg, 6.05:1 vs surface** (>= 3:1) | WCAG 2.4.7 (Focus Visible, AA) + 1.4.11 (indikaattori >= 3:1) | Näppäimistön fokusindikaattori on pakollinen direktiivin 2.4.7 mukaisesti ja sen on erotuttava >= 3:1 (WCAG 2.2 lisäys 1.4.11). 3px paksu #9E4B16-kehys + 2px offset täyttää vaatimuksen (vähintään 2px). |
+| 10 | Kosketusalueiden minimikoko | ikonipainike 42px, kielivalinta 32px | `--touch-target-min: 44px` sovellettu `.button`, `.icon-button`, `.language button`, mobiilivalikon `.nav a`, `.feed-search input`, `.refresh-button`, `.skip-link` | 32–42px | **44px** | WCAG 2.5.5 (AAA 44px), WCAG 2.2 2.5.8 (AA >= 24px) | 306/2019 + direktiivi: kosketuskohteiden on oltava riittävän suuria myös motorisesti rajoitteisille käyttäjille. |
+| 11 | Layout: tablet- ja mobiilimitoitus | leveä desktop-säiliö `min(100% - 48px, 1320px)` | keskitetty säiliö `min(100% - 2rem, 48rem)` (max-w-3xl) kaikilla näytöillä; ei erillistä desktop-näkymää | n/a | n/a | WCAG 1.4.10 (Reflow: 320 CSS px leveys ilman kahden suunnan vieritystä) | Kapea keskitetty säiliö varmistaa toimivuuden 320 px:n mobiilileveydellä ja 200 % zoomilla ilman vaakasuuntaista vieritystä. |
+
+## Tokenien lopulliset arvot (styles.css `:root`)
+
+```css
+--color-bg: #f7f6f3;            /* päätausta */
+--color-surface: #ffffff;       /* korttipinta (aina --color-border:in kanssa) */
+--color-surface-alt: #f0eee9;   /* toissijainen pinta */
+--color-border: #7e7a70;        /* 3.96:1 vs bg, 4.28:1 vs surface (WCAG 1.4.11) */
+--color-ink: #2e211b;           /* 14.40:1 vs bg (AAA) */
+--color-ink-muted: #574941;     /* 7.98:1 vs bg (AAA) */
+--color-eyebrow: #557263;       /* 4.89:1 vs bg (AA) */
+--color-accent: #9e4b16;        /* 6.05:1 vs #fff (AA) — Figman #C06225 oli 4.19:1 */
+--color-on-accent: #ffffff;
+--color-accent-figma: #c06225;  /* vain ei-tekstillinen koriste */
+--color-accent-soft: #9cb9b7;   /* vain tumman #2e211b -tekstin kanssa (7.44:1) */
+--color-on-accent-soft: #2e211b;
+--touch-target-min: 44px;       /* WCAG 2.5.5 / 2.5.8 */
+--focus-ring-color: #9e4b16;    /* 5.60:1 vs bg (WCAG 2.4.7 + 1.4.11) */
+--focus-ring-width: 3px;
+--focus-ring-offset: 2px;
+```
+
+Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (Inter, leipäteksti/UI) ja `--font-display` (Momo Trust Display, otsikot), subsetit `latin` + `latin-ext`.
+
+## Vanhojen tokenien yhteensopivuus
+
+`gather.css`:n vanhat nimet (`--ink`, `--paper`, `--muted`, `--line`, `--soft`, `--forest`, `--lime`) on aliasoitu uusiin `--color-*`-tokeneihin, jotta yksikään komponentti ei rikkoudu eikä toiminnallisuus muutu.
+
+## Huomio UI/UX-suunnittelijoille
+
+- Älä käytä valkoista tekstiä suoraan `#9CB9B7`- tai `#C06225`-taustan päällä — käytä `#2E211B` (salvia) tai tummennettua `#9E4B16` + valkoinen (terrakotta).
+- Kaikki interaktiiviset elementit saavat automaattisesti 3px `#9E4B16` -fokuskehyksen — älä poista `:focus-visible`-sääntöä komponenteista.
+- Kosketuskohteiden minimikoko on 44px (`--touch-target-min`) — älä pienennä painikkeita/pillareita tämän alle.
+- Tekstikoot ovat rem-yksiköissä ja leipätekstin line-height 1.5 — säilytä nämä myös uusissa komponenteissa (WCAG 1.4.4 / 1.4.12).
+
+## 2026-11-27 — Keskitetty teema-arkkitehtuuri (ei massamuokkauksia komponentteihin)
+
+**Ratkaisu:** sen sijaan, että etusivun (`/`) shellproto-näkymän satoja yksittäisiä Tailwind-luokkia korvattaisiin käsin, globaali tyylitiedosto (`src/app/(frontend)/styles.css`) ohjaa koko ilmettä keskitetysti:
+
+1. **`@theme`-väritokenit** (`--color-bg #F7F6F3`, `--color-surface #F0EEE9`, `--color-border #7E7A70`, `--color-ink #2E211B`, `--color-ink-muted #574941`, `--color-accent #9E4B16`, `--color-accent-soft #9CB9B7`) emittoituvat `:rootiin` JA luovat automaattisesti Tailwind-utilityt (`bg-bg`, `text-ink`, `border-border`, …). Tokenin vaihto päivittää koko sovelluksen kerralla.
+2. **`@theme inline` -fonttiteemat:** `--font-sans: var(--font-inter), Inter, …` ja `--font-display: var(--font-momo), 'Momo Trust Display', …` — arvot tulevat `next/font/google`-luokista `layout.tsx`:ssä (`--font-inter`, `--font-momo`; subsetit latin + latin-ext). Mynerveä ei käytetä missään.
+3. **Semanttiset pintaluokat `@layer components`:** `.ui-shell` (keskitetty max-w-3xl -säiliö, ei desktop-leveyttä), `.ui-card` (pinta + 1px `--color-border` + rounded-3xl + varjo), `.ui-card-accent` (#9E4B16 + valkoinen teksti, 6.05:1 AA), `.ui-pill-soft` (#9CB9B7 + tumma #2E211B teksti, 7.44:1 AAA, min 44×44px). Uudet komponentit käyttävät näitä pitkien luokkajonojen sijaan.
+4. **Slate-luokkien keskitetty väriohjaus `@layer utilities`:** yleisimmät kovakoodatut luokat (`bg-white`, `bg-slate-50/100/200/400/800/900/950`, `border-slate-100/200/300/800/900`, `ring-slate-200/900`, `text-slate-400…900`, läpikuultavat overlay-`bg-slate-900/50` ym.) ohjautuvat automaattisesti tokeneihin, joten etusivun shellproto-näkymä seuraa teemaa ilman komponenttimuutoksia. Kontrastit säilyvät: tummat palkit `--color-ink` + `text-white` = 15.56:1 (AAA); tekstit pinnoilla `--color-ink`/`--color-ink-muted` = 14.40:1 / 7.98:1 (AAA); reunat `--color-border` ≥ 3.69:1 (WCAG 1.4.11).
+5. **Vuorovaikutus:** globaali `:focus-visible` = 3px solid `#9E4B16` + 2px offset kaikilla interaktiivisilla elementeillä (WCAG 2.4.7 AA, 1.4.11 ≥ 3:1); `--touch-target-min: 44px` (WCAG 2.5.5/2.5.8) käytössä painikkeissa, pillereissä, valikoissa ja skip-linkissä.
+
+**Vaikutus ylläpidettävyyteen ja WCAG AA -yhdenmukaisuuteen:** väri-, fontti-, pyöristys- ja kosketusaluepäätökset tehdään nyt yhdessä paikassa (tokenit), joten yksittäinen muutos ei voi lipsua AA-rajojen alle eri komponenteissa. Direktiivin (EU) 2016/2102 / lain 306/2019 mukainen yhdenmukainen kontrasti (WCAG 1.4.3/1.4.11) toteutuu keskitetysti, ja uudet näkymät perivät saavutettavuuden automaattisesti käyttämällä semanttisia luokkia (`ui-shell`, `ui-card`, `ui-card-accent`, `ui-pill-soft`). Toiminnallisuutta, API-reittejä, reititystä, tilanhallintaa tai komponenttien proppeja ei muutettu.
+
+**Tunnetut kosmeettiset varoitukset:** `next build` / `next dev` (Turbopack) tulostaa kerran: `Warning: Failed to find font override values for font 'Momo Trust Display'. Skipping generating a fallback font.` Tämä johtuu siitä, että fontti puuttuu Next.js:n valmiiksi lasketusta fallback-metriikkataulukosta; SWC:n fonttitransformi tulostaa varoituksen tästä huolimatta, vaikka `adjustFontFallback: false` on asetettu (layout.tsx). Varoitus on **pelkästään kosmeettinen**: fontti latautuu ja renderöityy normaalisti (todettu palvellusta CSS:stä), vain automaattinen fallback-fontin kokosäätö jätetään pois — `display: 'swap'` näyttää väliaikaisesti järjestelmäfonttia. API-reitit (esim. `GET /api/families 200`) eivät vaikuta.
+
+

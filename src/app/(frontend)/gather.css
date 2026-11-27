@@ -1,11 +1,13 @@
 :root {
-  --ink: #17251f;
-  --forest: #203f34;
-  --paper: #f6f7f1;
-  --muted: #4b5851;
-  --line: #dfe3da;
-  --soft: #ebeee6;
-  --lime: #d5fa83;
+  /* Vanhat tokeninimet ohjataan uusiin WCAG 2.1/2.2 AA -tokeneihin,
+     jotka määritellään styles.css-tiedoston :root-lohkossa. */
+  --ink: var(--color-ink);
+  --forest: var(--color-accent);
+  --paper: var(--color-bg);
+  --muted: var(--color-ink-muted);
+  --line: var(--color-border);
+  --soft: var(--color-accent-soft); /* salvia: vain tumman --color-ink -tekstin kanssa */
+  --lime: var(--color-accent-figma); /* Figman #C06225 vain ei-tekstillisenä koristeena */
 }
 
 @layer base {
@@ -21,7 +23,17 @@
     margin: 0;
     background: var(--paper);
     color: var(--ink);
-    font-family: var(--font-dm-sans), sans-serif;
+    font-family: var(--font-inter), system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 1rem; /* suhteellinen yksikkö: skaalautuu 200 % zoomiin (WCAG 1.4.4) */
+    line-height: 1.5; /* leipätekstin riviväli >= 1.5 */
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-momo), var(--font-inter), sans-serif;
+    line-height: 1.2;
   }
 
   button {
@@ -33,16 +45,25 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Selkeä korkean kontrastin fokusilmaisin (WCAG 2.4.7 AA, 1.4.11 >= 3:1).
+     Vanha rgba(32,63,52,0.25) oli vain ~1.6:1 — hylätty. */
   button:focus-visible,
   a:focus-visible,
-  iframe:focus-visible {
-    outline: 3px solid rgba(32, 63, 52, 0.25);
-    outline-offset: 3px;
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  iframe:focus-visible,
+  summary:focus-visible,
+  [tabindex]:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
 }
 
 .site-shell {
-  width: min(100% - 48px, 1320px);
+  /* Keskitetty säiliö tablet- ja mobiilinäkymään: max-w-3xl (48rem),
+     ei erillistä leveää desktop-näkymää (WCAG 1.4.10 Reflow). */
+  width: min(100% - 2rem, 48rem);
   min-height: 100vh;
   margin: 0 auto;
 }
@@ -59,15 +80,16 @@
 
 .brand {
   color: var(--ink);
-  font-size: 27px;
+  font-family: var(--font-momo), var(--font-inter), sans-serif;
+  font-size: 1.6875rem;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.2;
   letter-spacing: -0.06em;
   text-decoration: none;
 }
 
 .brand span {
-  color: #6d8c76;
+  color: var(--color-ink-muted); /* oli #6d8c76 (3.43:1) -> 7.98:1 (WCAG 1.4.3) */
 }
 
 .nav {
@@ -107,7 +129,7 @@
 
 .language button {
   min-width: 72px;
-  height: 32px;
+  min-height: var(--touch-target-min); /* WCAG 2.5.5 / 2.5.8 (oli 32px) */
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -128,7 +150,7 @@
 
 .button {
   display: inline-flex;
-  min-height: 44px;
+  min-height: var(--touch-target-min); /* WCAG 2.5.5 (AAA) / 2.5.8 (AA) */
   align-items: center;
   justify-content: center;
   gap: 9px;
@@ -163,8 +185,8 @@
 
 .icon-button {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: var(--touch-target-min); /* WCAG 2.5.5 / 2.5.8 (oli 42px) */
+  height: var(--touch-target-min);
   place-items: center;
   border: 0;
   border-radius: 50%;
@@ -200,8 +222,8 @@
 .hero h1 {
   max-width: 700px;
   margin: 0;
-  font-size: clamp(48px, 4.5vw, 74px);
-  line-height: 0.99;
+  font-size: clamp(3rem, 4.5vw, 4.625rem);
+  line-height: 1.05;
   letter-spacing: -0.062em;
 }
 
@@ -221,26 +243,26 @@
   display: grid;
   grid-template-columns: 48px 1fr;
   gap: 28px;
-  border-top: 1px solid #9bac9f;
-  border-bottom: 1px solid #9bac9f;
+  border-top: 1px solid var(--line); /* oli #9bac9f (2.21:1) — WCAG 1.4.11 */
+  border-bottom: 1px solid var(--line);
   padding: 30px 0;
 }
 
 .integration-note-index {
-  color: #6d8c76;
+  color: var(--color-ink-muted); /* oli #6d8c76 (3.43:1) -> 7.98:1 (WCAG 1.4.3) */
   font-size: 12px;
   font-weight: 700;
 }
 
 .integration-note .eyebrow {
   margin-bottom: 14px;
-  color: #557263;
+  color: var(--color-eyebrow); /* 4.89:1 vs bg (AA) */
 }
 
 .integration-note h2 {
   margin: 0;
-  font-size: clamp(25px, 2.3vw, 34px);
-  line-height: 1.1;
+  font-size: clamp(1.5625rem, 2.3vw, 2.125rem);
+  line-height: 1.2;
   letter-spacing: -0.04em;
 }
 
@@ -267,13 +289,13 @@
 
 .embed-heading .eyebrow {
   margin-bottom: 10px;
-  color: #557263;
+  color: var(--color-eyebrow); /* 4.89:1 vs bg (AA) */
 }
 
 .embed-heading h2 {
   margin: 0;
-  font-size: clamp(30px, 3.4vw, 46px);
-  line-height: 1.05;
+  font-size: clamp(1.875rem, 3.4vw, 2.875rem);
+  line-height: 1.15;
   letter-spacing: -0.045em;
 }
 
@@ -286,9 +308,9 @@
 
 .embed-frame {
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line); /* --color-border: >= 3:1 (WCAG 1.4.11) */
   border-radius: 16px;
-  background: white;
+  background: var(--color-surface);
   box-shadow: 0 18px 50px rgba(23, 37, 31, 0.06);
 }
 
@@ -296,7 +318,7 @@
   display: block;
   width: 100%;
   border: 0;
-  background: white;
+  background: var(--color-surface);
   overflow: hidden;
   transition: height 0.2s ease;
 }
@@ -315,14 +337,14 @@
 
 .json-feed-heading .eyebrow {
   margin-bottom: 10px;
-  color: #557263;
+  color: var(--color-eyebrow); /* 4.89:1 vs bg (AA) */
 }
 
 .json-feed-heading h2 {
   max-width: 680px;
   margin: 0;
-  font-size: clamp(30px, 3.4vw, 46px);
-  line-height: 1.05;
+  font-size: clamp(1.875rem, 3.4vw, 2.875rem);
+  line-height: 1.15;
   letter-spacing: -0.045em;
 }
 
@@ -351,11 +373,11 @@
 }
 
 .feed-search input {
-  height: 50px;
+  min-height: var(--touch-target-min); /* WCAG 2.5.5 / 2.5.8 */
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 16px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--color-surface);
   color: var(--ink);
   font: inherit;
   font-size: 13px;
@@ -363,7 +385,7 @@
 }
 
 .feed-search input::placeholder {
-  color: #8b918d;
+  color: var(--color-ink-muted); /* oli #8b918d (3.21:1) -> 8.63:1 (WCAG 1.4.3) */
 }
 
 .feed-status {
@@ -389,15 +411,15 @@
 }
 
 .refresh-button {
-  min-height: 50px;
+  min-height: var(--touch-target-min); /* WCAG 2.5.5 / 2.5.8 */
   border-color: var(--line);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--color-surface);
   color: var(--ink);
 }
 
 .refresh-button:hover:not(:disabled) {
-  border-color: #b9c4b9;
-  background: white;
+  border-color: var(--color-border);
+  background: var(--color-surface);
 }
 
 .refresh-button:disabled {
@@ -418,10 +440,10 @@
   min-height: 230px;
   grid-template-columns: 62px minmax(0, 1fr);
   gap: 18px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line); /* --color-border: >= 3:1 (WCAG 1.4.11) */
   border-radius: 10px;
   padding: 20px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--color-surface);
   color: var(--ink);
   text-decoration: none;
   transition:
@@ -432,7 +454,7 @@
 
 .feed-card:hover {
   transform: translateY(-2px);
-  border-color: #b9c4b9;
+  border-color: var(--color-border);
   box-shadow: 0 12px 28px rgba(26, 45, 36, 0.08);
 }
 
@@ -467,7 +489,7 @@
 
 .feed-card-meta {
   margin: 2px 30px 7px 0;
-  color: #557263;
+  color: var(--color-eyebrow); /* 4.89:1 vs bg (AA) */
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -531,7 +553,7 @@
   flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--color-surface-alt);
   text-align: center;
 }
 
@@ -655,6 +677,9 @@ footer a:hover {
   }
 
   .nav a {
+    display: flex;
+    min-height: var(--touch-target-min); /* WCAG 2.5.5 / 2.5.8 mobiilivalikossa */
+    align-items: center;
     padding: 13px;
   }
 
@@ -682,7 +707,7 @@ footer a:hover {
 
 @media (max-width: 680px) {
   .site-shell {
-    width: min(100% - 32px, 1320px);
+    width: calc(100% - 2rem); /* sama keskitetty max-w-3xl -säiliö kuin tabletilla */
   }
 
   .header {
@@ -723,7 +748,7 @@ footer a:hover {
   }
 
   .hero h1 {
-    font-size: clamp(42px, 13vw, 60px);
+    font-size: clamp(2.625rem, 13vw, 3.75rem);
   }
 
   .hero-copy > p:not(.eyebrow) {
