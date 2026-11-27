@@ -445,48 +445,6 @@ export const INITIAL_EVENTS: FamilyEvent[] = [
   },
 ]
 
-export const DEMO_FAMILIES: FamilyProfile[] = [
-  {
-    id: 'fam-1',
-    name: 'Mäkelän perhe',
-    area: 'Leppävaara, Espoo',
-    city: 'Espoo',
-    coords: [60.2195, 24.814],
-    childrenAges: '5 v',
-    ageGroups: ['4-6v'],
-    bio: 'Ulkoillaan paljon lähipuistoissa ja käydään viikonloppuisin kirjastossa sekä uimahallissa.',
-    interests: ['Ulkoilu & puistot', 'Kirjasto & sadut', 'Uiminen & vesi'],
-    attendingEventId: 'evt-1',
-    hasCloseRelatives: true,
-    closeRelativesSummary: 'Isovanhemmat asuvat lähellä',
-  },
-  {
-    id: 'fam-2',
-    name: 'Lindholmin perhe',
-    area: 'Tapiola, Espoo',
-    city: 'Espoo',
-    coords: [60.1762, 24.8055],
-    childrenAges: '2 v & 6 v',
-    ageGroups: ['0-3v', '4-6v'],
-    bio: 'Etsitään leikkipuisto- ja retkiseuraa arki-iltoihin ja viikonloppuihin.',
-    interests: ['Ulkoilu & puistot', 'Retket & luonto', 'Palloilu & liikunta'],
-    attendingEventId: 'evt-2',
-    hasCloseRelatives: false,
-  },
-  {
-    id: 'fam-3',
-    name: 'Koskisen perhe',
-    area: 'Kallio, Helsinki',
-    city: 'Helsinki',
-    coords: [60.1845, 24.951],
-    childrenAges: '8 v',
-    ageGroups: ['7-12v'],
-    bio: 'Tykkäämme lautapeleistä, museoretkistä ja koko perheen teatteriesityksistä.',
-    interests: ['Lautapelit & leikki', 'Teatteri & kulttuuri'],
-    hasCloseRelatives: false,
-  },
-]
-
 export const INITIAL_ATTENDING_IDS: string[] = ['evt-1']
 
 export function nowClock(): string {
