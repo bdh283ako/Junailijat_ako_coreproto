@@ -1,5 +1,6 @@
 'use client'
 
+import { CalendarPlus, MapPin, MessageCircle, Tag, UserPlus, Users } from 'lucide-react'
 import { buildGoogleCalendarUrl } from './googleCalendar'
 import { DEFAULT_PKS_COORDS, resolveCoordsTuple } from './mapGeoResolver'
 import { PksMapView } from './PksMapView'
@@ -134,7 +135,7 @@ export function EventsTabPanel({
                 className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-colors ${
                   ignoreDefaultPresetTemp
                     ? 'bg-slate-100 text-slate-700 border-slate-300'
-                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                    : 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[#2F5D50]/40 hover:brightness-95'
                 }`}
               >
                 {ignoreDefaultPresetTemp
@@ -269,6 +270,8 @@ export function EventsTabPanel({
           {filteredSortedEvents.map((evt) => {
             const isGoing = joinedEventIds.has(evt.id)
             const dateLabel = parseEventDateLabel(evt.time)
+            const isFamilyAudienceTag = evt.ageGroup?.trim().toLowerCase() === 'lapset ja perheet'
+            const isFreeEvent = evt.price.trim().toLowerCase().includes('maksuton')
             const participantCount = Object.hasOwn(countsByEventId, evt.id)
               ? countsByEventId[evt.id]
               : undefined
@@ -280,6 +283,7 @@ export function EventsTabPanel({
               ? matchedFamilies.filter((f) => f.attendingEventId === evt.id)
               : []
             const gcalUrl = buildGoogleCalendarUrl(evt)
+            const ParticipationIcon = isGoing ? Users : UserPlus
 
             return (
               <div
@@ -289,12 +293,14 @@ export function EventsTabPanel({
                 {dateLabel && (
                   <div
                     aria-hidden="true"
-                    className="shrink-0 w-12 rounded-2xl bg-[var(--color-accent-soft)] border border-[var(--color-border)] text-[var(--color-ink)] flex flex-col items-center justify-center py-2"
+                    className="shrink-0 w-12 min-h-[72px] rounded-2xl bg-[var(--color-accent-soft)] border border-[var(--color-border)] text-[var(--color-ink)] flex flex-col items-center justify-center gap-1.5 pt-3 pb-2"
                   >
-                    <span className="text-[10px] font-bold uppercase tracking-wide leading-none">
+                    <span className="pt-1 text-[9px] font-normal uppercase tracking-[0.14em] leading-none">
                       {dateLabel.month}
                     </span>
-                    <span className="text-lg font-bold leading-tight">{dateLabel.day}</span>
+                    <span className="[font-family:var(--font-date-numeral)] text-2xl font-semibold leading-none">
+                      {dateLabel.day}
+                    </span>
                   </div>
                 )}
                 <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2.5">
@@ -307,7 +313,13 @@ export function EventsTabPanel({
                           {evt.hasExactCoords ? '' : '~'}
                           {evt.distanceKm} km kotoa
                         </span>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[var(--color-border)] text-[10px] font-bold">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold ${
+                            isFamilyAudienceTag
+                              ? 'bg-[var(--color-bg)] text-[var(--color-ink)] border-[var(--color-border)]'
+                              : 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[var(--color-border)]'
+                          }`}
+                        >
                           👶 {evt.ageGroup || 'Kaikki ikäryhmät'}
                         </span>
                       </div>
@@ -315,7 +327,14 @@ export function EventsTabPanel({
                         {evt.title}
                       </h3>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full bg-[var(--color-bg)] text-[var(--color-ink-muted)] border border-[var(--color-border)] text-[11px] font-medium shrink-0">
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ${
+                        isFreeEvent
+                          ? 'border-[#2F5D50] bg-[var(--color-bg)] font-semibold text-[#2F5D50]'
+                          : 'border-[var(--color-border)] bg-[var(--color-bg)] font-medium text-[var(--color-ink-muted)]'
+                      }`}
+                    >
+                      {isFreeEvent && <Tag aria-hidden="true" className="h-3 w-3" strokeWidth={2} />}
                       {evt.price}
                     </span>
                   </div>
@@ -344,40 +363,50 @@ export function EventsTabPanel({
                     disabled={pendingEventIds.has(evt.id)}
                     aria-pressed={isGoing}
                     onClick={() => onToggleParticipation(evt.id, evt.title, isGoing)}
-                    className={`flex-1 min-w-[130px] min-h-11 py-2 px-3 rounded-xl text-xs font-bold transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                    aria-label={`${isGoing ? 'Poista ilmoittautuminen' : 'Ilmoittaudu mukaan'}: ${evt.title}. Osallistujia: ${visibleParticipantCount}`}
+                    title={
+                      pendingEventIds.has(evt.id)
+                        ? 'Ilmoittautumista tallennetaan'
+                        : isGoing
+                          ? 'Poista ilmoittautuminen tapahtumaan'
+                          : 'Ilmoittaudu tapahtumaan'
+                    }
+                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 transition-colors disabled:cursor-wait disabled:opacity-60 ${
                       isGoing
-                        ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[var(--color-border)]'
+                        ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[#2F5D50]'
                         : 'bg-[var(--color-accent)] text-[var(--color-on-accent)] hover:brightness-110'
                     }`}
                   >
-                    {pendingEventIds.has(evt.id)
-                      ? `Tallennetaan... (${visibleParticipantCount})`
-                      : `${isGoing ? '✓ Menossa' : '+ Menossa'} (${visibleParticipantCount})`}
+                    <ParticipationIcon aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
                   </button>
                   <button
                     type="button"
                     onClick={() => onOpenEventChat(evt.id, evt.title)}
-                    className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-bold hover:bg-[var(--color-bg)] transition-colors"
+                    aria-label={`Avaa tapahtumakeskustelu: ${evt.title}`}
                     title="Keskustele tapahtumaan menossa olevien kanssa (anonyymi oletuksena)"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-[var(--color-carmine)] bg-[var(--color-carmine)] p-2 text-white transition-colors hover:brightness-95"
                   >
-                    💬 Menossa-chat
+                    <MessageCircle aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
                   </button>
                   <a
                     href={gcalUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => onLogSelection('GCAL_EXPORT', evt.id)}
-                    className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-bold hover:bg-[var(--color-bg)] transition-colors"
+                    aria-label="Lisää tapahtuma Google Kalenteriin"
                     title="Lisää tapahtuma Google Kalenteriin"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)]"
                   >
-                    📅 Kalenteriin
+                    <CalendarPlus aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
                   </a>
                   <button
                     type="button"
                     onClick={() => onOpenMap(evt.coords, evt.id)}
-                    className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-semibold hover:bg-[var(--color-bg)]"
+                    aria-label={`Avaa tapahtuman sijainti kartalla: ${evt.title}`}
+                    title="Avaa tapahtuman sijainti kartalla"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)]"
                   >
-                    Kartalla
+                    <MapPin aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
                   </button>
                   {evt.url && (
                     <a

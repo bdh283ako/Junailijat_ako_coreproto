@@ -113,7 +113,7 @@ flowchart LR
     subgraph ExtractedPanels["Jo erotetut UI-paneelit"]
         HubPanel["CommunityHubPanel.tsx"]:::extracted
         ProfilePanel["ProfileSettingsPanel.tsx"]:::extracted
-        MapView["PksMapView.tsx"]:::extracted
+        MapView["PksMapView.tsx<br/>(Kartta, perhe-/tapahtumafeed)"]:::extracted
         DockWindow["FloatingDockWindow.tsx<br/>(Raahattava kehys)"]:::extracted
         DebugPanels["DebugMonitorPanels.tsx<br/>(Demo-Log & DB-Feed)"]:::extracted
         InspectorPanel["StoreInspectorPanel.tsx<br/>(Backscroll & JSON)"]:::extracted
@@ -161,7 +161,7 @@ flowchart LR
 
     Page --> HubPanel
     Page --> ProfilePanel
-    Page --> MapView
+    Page -->|tapahtuma- ja osallistumiskäsittelijät| MapView
     Page --> ProtoData
 
     Page --> DebugPanels
@@ -179,6 +179,7 @@ flowchart LR
     Page --> HookEventChat
 
     EventsPanel --> GCalHelper
+    MapView --> GCalHelper
     MapView --> GeoResolver
     MapView --> MapPinLayer
     MapView --> PksAreas

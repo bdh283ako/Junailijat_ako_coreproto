@@ -20,7 +20,7 @@ package "src/app/(frontend)/akotestaa/shellproto/" as ShellprotoPkg {
   package "Jo erotetut UI-paneelit" {
     [CommunityHubPanel.tsx\n(Keskustelut, ilmoitustaulu & tapahtumachat)] as HubPanel <<extracted>>
     [ProfileSettingsPanel.tsx\n(Perheprofiilin asetukset & oletusrajaukset)] as ProfilePanel <<extracted>>
-    [PksMapView.tsx\n(PKS-karttanäkymä & etäisyysfokukset)] as MapView <<extracted>>
+    [PksMapView.tsx\n(PKS-kartta, perhe-/tapahtumafeed & etäisyysfokukset)] as MapView <<extracted>>
     [FloatingDockWindow.tsx\n(Raahattava kelluva ikkunakehys)] as DockWindow <<extracted>>
     [DebugMonitorPanels.tsx\n(Demo-Log & DB-Feed -kelluvat monitorit)] as DebugPanels <<extracted>>
     [StoreInspectorPanel.tsx\n(Kantaoperaatioiden backscroll & JSON-esikatselu)] as InspectorPanel <<extracted>>
@@ -70,7 +70,7 @@ component "localStorage\n(Vain transientti istuntotila:\nswipes, attending, chat
 ' Koordinaattorin yhteydet jo erotettuihin paneeleihin
 PageCoordinator --> HubPanel
 PageCoordinator --> ProfilePanel
-PageCoordinator --> MapView
+PageCoordinator --> MapView : feedin tapahtuma- ja osallistumiskäsittelijät
 PageCoordinator --> ProtoData
 
 ' Koordinaattorin yhteydet erotettuihin paneeleihin
@@ -92,6 +92,7 @@ PageCoordinator --> HookEventChat
 
 ' Apumoduulien riippuvuudet
 EventsPanel --> GCalHelper
+MapView --> GCalHelper : kalenterilinkki
 MapView --> GeoResolver
 MapView --> MapPinLayer
 MapView --> PksAreas

@@ -635,13 +635,13 @@ export function CommunityHubPanel({
         </p>
       )}
       {/* Ylänavigaatio: emoji-ikonit ilman A/B/C-koodeja */}
-      <div className="bg-white rounded-2xl p-2 border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs font-bold">
+      <div className="bg-white rounded-3xl p-2 border border-[var(--color-border)] grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs font-bold">
         <button
           type="button"
           onClick={() => setHubSection('matches')}
-          className={`py-2 px-2.5 rounded-xl transition-colors ${
+          className={`min-h-11 py-2 px-2.5 rounded-xl transition-colors ${
             section === 'matches'
-              ? 'bg-emerald-600 text-white'
+              ? 'bg-[var(--color-accent)] text-white'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
         >
@@ -650,9 +650,9 @@ export function CommunityHubPanel({
         <button
           type="button"
           onClick={() => setHubSection('board')}
-          className={`py-2 px-2.5 rounded-xl transition-colors ${
+          className={`min-h-11 py-2 px-2.5 rounded-xl transition-colors ${
             section === 'board'
-              ? 'bg-emerald-600 text-white'
+              ? 'bg-[var(--color-accent)] text-white'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
         >
@@ -661,9 +661,9 @@ export function CommunityHubPanel({
         <button
           type="button"
           onClick={() => setHubSection('event_chat')}
-          className={`py-2 px-2.5 rounded-xl transition-colors ${
+          className={`min-h-11 py-2 px-2.5 rounded-xl transition-colors ${
             section === 'event_chat'
-              ? 'bg-emerald-600 text-white'
+              ? 'bg-[var(--color-accent)] text-white'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
         >
@@ -672,9 +672,9 @@ export function CommunityHubPanel({
         <button
           type="button"
           onClick={() => setHubSection('data_transparency')}
-          className={`py-2 px-2.5 rounded-xl transition-colors ${
+          className={`min-h-11 py-2 px-2.5 rounded-xl transition-colors ${
             section === 'data_transparency'
-              ? 'bg-indigo-900 text-cyan-200'
+              ? 'bg-[var(--color-accent)] text-white'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
         >
@@ -685,7 +685,7 @@ export function CommunityHubPanel({
       {/* Yksityisviestit vain mätsänneiden perheiden kesken */}
       {section === 'matches' && (
         <div className="grid min-w-0 grid-cols-1 md:grid-cols-3 gap-4 items-start">
-          <div className="bg-white rounded-2xl p-3 border border-slate-200 space-y-2">
+          <div className="bg-white rounded-3xl p-3 border border-[var(--color-border)] space-y-2">
             <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide px-1">
               Mätsänneet perheet
             </h2>
@@ -709,14 +709,14 @@ export function CommunityHubPanel({
                     }}
                     className={`w-full text-left p-2.5 rounded-xl border text-xs transition-colors ${
                       active
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                        ? 'bg-[var(--color-accent-soft)] border-[#2F5D50] text-[var(--color-ink)] font-bold'
                         : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate">{fam.name}</span>
                       {unreadChatChannelIds.has(channelId) && (
-                        <span className="shrink-0 rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] text-white">
+                        <span className="shrink-0 rounded-full border border-white bg-[var(--color-carmine)] px-1.5 py-0.5 text-[9px] text-white">
                           Uusi
                         </span>
                       )}
@@ -736,12 +736,12 @@ export function CommunityHubPanel({
             )}
           </div>
 
-          <div className="min-w-0 md:col-span-2 bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
+          <div className="min-w-0 md:col-span-2 bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-3">
             {activeDirectFamily ? (
               <>
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                   <div>
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#2F5D50] text-white">
                       🤝 Kahdenkeskinen osumachat
                     </span>
                     <h3 className="text-sm font-extrabold text-slate-900 mt-1">
@@ -776,7 +776,7 @@ export function CommunityHubPanel({
                         className={`max-w-[88%] rounded-2xl px-3 py-2 ${
                           message.senderEmail.trim().toLowerCase() ===
                           currentUserEmail.trim().toLowerCase()
-                            ? 'ml-auto rounded-br-none bg-emerald-600 text-white'
+                            ? 'ml-auto rounded-br-none bg-[var(--color-accent)] text-white'
                             : 'rounded-bl-none bg-white text-slate-900'
                         }`}
                       >
@@ -808,7 +808,7 @@ export function CommunityHubPanel({
                       isSendingChatMessage ||
                       activeChatChannel?.id !== selectedFamilyChannelId
                     }
-                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
+                    className="min-h-11 px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold hover:brightness-95 disabled:opacity-50"
                   >
                     {isSendingChatMessage ? '...' : 'Lähetä'}
                   </button>
@@ -826,13 +826,13 @@ export function CommunityHubPanel({
       {/* Keskustelupalsta — Yleinen + aihehuoneet, nimimerkki tai oma nimi */}
       {section === 'board' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-3.5 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="bg-white rounded-3xl p-3.5 border border-[var(--color-border)] flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
             <div className="space-y-0.5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-ink)]">
                   🗣️ Yhteisöpalsta & aihehuoneet
                 </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#2F5D50] text-white border border-[#2F5D50]">
                   ✓ Tallentuu selaimeen
                 </span>
               </div>
@@ -847,7 +847,7 @@ export function CommunityHubPanel({
                   type="checkbox"
                   checked={useNicknameInBoard}
                   onChange={(e) => setUseNicknameInBoard(e.target.checked)}
-                  className="accent-emerald-600 w-4 h-4"
+                  className="accent-[var(--color-accent)] w-4 h-4"
                 />
                 <span>Käytä nimimerkkiä</span>
               </label>
@@ -875,9 +875,9 @@ export function CommunityHubPanel({
                     const firstInRoom = threads.find((t) => t.roomId === room.id)
                     setSelectedThreadId(firstInRoom?.id || '')
                   }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  className={`min-h-11 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
                     active
-                      ? 'bg-slate-900 text-white'
+                      ? 'bg-[var(--color-accent)] text-white'
                       : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                   }`}
                 >
@@ -889,7 +889,7 @@ export function CommunityHubPanel({
 
           <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 items-start">
             <div className="space-y-3">
-              <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-2">
+              <div className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-2">
                 <h3 className="text-xs font-bold text-slate-800 uppercase">
                   Uusi ketju huoneeseen: {TOPIC_ROOMS.find((r) => r.id === activeRoomId)?.name}
                 </h3>
@@ -909,7 +909,7 @@ export function CommunityHubPanel({
                 <button
                   type="button"
                   onClick={handleCreateThread}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800"
+                  className="min-h-11 px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold hover:brightness-95"
                 >
                   + Julkaise ketju ({getBoardAuthorLabel()})
                 </button>
@@ -917,7 +917,7 @@ export function CommunityHubPanel({
 
               <div className="space-y-2">
                 {roomThreads.length === 0 ? (
-                  <div className="bg-white rounded-2xl p-5 border border-slate-200 text-xs text-slate-500 text-center">
+                  <div className="bg-white rounded-3xl p-5 border border-[var(--color-border)] text-xs text-slate-500 text-center">
                     Tässä huoneessa ei ole vielä ketjuja. Aloita ensimmäinen keskustelu!
                   </div>
                 ) : (
@@ -928,9 +928,9 @@ export function CommunityHubPanel({
                         key={thr.id}
                         type="button"
                         onClick={() => setSelectedThreadId(thr.id)}
-                        className={`w-full text-left p-3.5 rounded-2xl border transition-colors ${
+                        className={`min-h-11 w-full text-left p-3.5 rounded-2xl border transition-colors ${
                           selected
-                            ? 'bg-emerald-50/70 border-emerald-300'
+                            ? 'bg-[var(--color-accent-soft)] border-[#2F5D50]'
                             : 'bg-white border-slate-200 hover:bg-slate-50'
                         }`}
                       >
@@ -949,7 +949,7 @@ export function CommunityHubPanel({
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
+            <div className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-3">
               {activeThread ? (
                 <>
                   <div className="border-b border-slate-100 pb-2.5 space-y-1">
@@ -992,7 +992,7 @@ export function CommunityHubPanel({
                     <button
                       type="button"
                       onClick={handleAddReply}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
+                      className="min-h-11 px-3.5 py-2 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold hover:brightness-95"
                     >
                       Vastaa
                     </button>
@@ -1010,14 +1010,14 @@ export function CommunityHubPanel({
 
       {/* Tapahtumachat käyttää vain event:-kanavia. */}
       {section === 'event_chat' && (
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-4">
+        <div className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">
                   🗓️ Tapahtumakeskustelut
                 </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#2F5D50] text-white border border-[#2F5D50]">
                   {eventChatOptions.length} omaa “Menossa”-tapahtumaa
                 </span>
               </div>
@@ -1070,7 +1070,7 @@ export function CommunityHubPanel({
                         <span
                           className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ${
                             channel.isEventActive
-                              ? 'bg-emerald-50 text-emerald-800'
+                              ? 'bg-[#2F5D50] text-white'
                               : 'bg-slate-100 text-slate-600'
                           }`}
                         >
@@ -1080,7 +1080,7 @@ export function CommunityHubPanel({
                         </span>
                       </span>
                       {unread && (
-                        <span className="shrink-0 rounded-full bg-rose-600 px-2 py-0.5 text-[9px] font-bold text-white">
+                        <span className="shrink-0 rounded-full border border-white bg-[var(--color-carmine)] px-2 py-0.5 text-[9px] font-bold text-white">
                           Uusi viesti
                         </span>
                       )}
@@ -1132,7 +1132,7 @@ export function CommunityHubPanel({
                   <span
                     className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ${
                       selectedEventChatOption.isEventActive
-                        ? 'bg-emerald-100 text-emerald-800'
+                        ? 'bg-[#2F5D50] text-white'
                         : 'bg-slate-200 text-slate-700'
                     }`}
                   >
@@ -1153,7 +1153,7 @@ export function CommunityHubPanel({
                         selectedEventChatOption.title,
                       )
                     }
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 text-xs font-bold text-white disabled:opacity-50"
+                    className="min-h-11 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-xs font-bold text-white disabled:opacity-50"
                   >
                     {pendingParticipationEventIds.has(selectedEventParticipation.eventId)
                       ? 'Päivitetään...'
@@ -1187,7 +1187,7 @@ export function CommunityHubPanel({
                       className={`max-w-[88%] rounded-xl border p-2.5 ${
                         message.senderEmail.trim().toLowerCase() ===
                         currentUserEmail.trim().toLowerCase()
-                          ? 'ml-auto border-emerald-200 bg-emerald-50'
+                          ? 'ml-auto border-[#2F5D50] bg-[var(--color-accent-soft)]'
                           : 'border-slate-200 bg-white'
                       }`}
                     >
@@ -1235,7 +1235,7 @@ export function CommunityHubPanel({
                     activeChatChannel?.id !== selectedEventChatOption.id ||
                     !selectedEventParticipation
                   }
-                  className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
+                  className="min-h-11 px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold hover:brightness-95 disabled:opacity-50"
                 >
                   {isSendingChatMessage ? '...' : 'Lähetä'}
                 </button>
@@ -1247,16 +1247,16 @@ export function CommunityHubPanel({
 
       {/* EU-tietosuoja- ja läpinäkyvyysnäkymä */}
       {section === 'data_transparency' && (
-        <div className="bg-slate-950 text-indigo-50 rounded-2xl p-4 md:p-5 border border-indigo-700/60 space-y-4 text-xs">
+        <div className="bg-[var(--color-ink)] text-white rounded-3xl p-4 md:p-5 border border-[var(--color-border)] space-y-4 text-xs">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="space-y-1">
-              <span className="inline-block px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold">
+              <span className="inline-block px-2 py-0.5 rounded bg-white/10 text-[var(--color-accent-soft)] font-mono text-[10px] font-bold">
                 🔍 DATA & TIETOSUOJA-INSPEKTORI
               </span>
               <h2 className="text-base font-extrabold text-white">
                 Mitä tietoa käsitellään ja missä se sijaitsee?
               </h2>
-              <p className="text-indigo-200/80">
+              <p className="text-white/80">
                 Avoimuusnäkymä käyttäjälle: sovellusdata tallentuu PostgreSQL-tietokantaan,
                 ja selaimeen jäävät vain käyttöliittymän tilapäiset asetukset.
               </p>
@@ -1264,7 +1264,7 @@ export function CommunityHubPanel({
             <button
               type="button"
               onClick={resetCommunityState}
-              className="px-3 py-2 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-500/60 text-cyan-200 text-xs font-bold shrink-0"
+              className="min-h-11 px-3 py-2 rounded-xl bg-[var(--color-accent)] hover:brightness-95 border border-[var(--color-border)] text-white text-xs font-bold shrink-0"
             >
               {resetCommunityToast
                 ? '✓ Yhteisötila palautettu!'
@@ -1273,40 +1273,40 @@ export function CommunityHubPanel({
           </div>
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            <section className="rounded-xl border border-emerald-700/50 bg-indigo-950/80 p-3 space-y-2">
-              <h3 className="font-bold text-emerald-300">🤝 Mätsien chat — luottamuspiiri</h3>
-              <p className="text-[11px] text-indigo-100/90">
+            <section className="rounded-3xl border border-white/30 bg-white/10 p-3 space-y-2">
+              <h3 className="font-bold text-white">🤝 Mätsien chat — luottamuspiiri</h3>
+              <p className="text-[11px] text-white/90">
                 Kanava <code>family:&lt;matchId&gt;</code> on vain kahden perheen välinen
                 yksityiskeskustelu. Se avautuu vasta molemminpuolisen hyväksynnän jälkeen (
                 {matchedIds.length} mätsiä), ja keskustelussa käytetään omaa nimeä.
               </p>
-              <p className="text-[11px] text-indigo-200/80">
+              <p className="text-[11px] text-white/80">
                 Mätsien viestit eivät näy huonepalstalla tai tapahtumachateissa.
               </p>
             </section>
 
-            <section className="rounded-xl border border-cyan-700/50 bg-indigo-950/80 p-3 space-y-2">
-              <h3 className="font-bold text-cyan-300">🗣️ Huonepalsta — nimimerkki</h3>
-              <p className="text-[11px] text-indigo-100/90">
+            <section className="rounded-3xl border border-white/30 bg-white/10 p-3 space-y-2">
+              <h3 className="font-bold text-white">🗣️ Huonepalsta — nimimerkki</h3>
+              <p className="text-[11px] text-white/90">
                 Palstaviestit ovat erillään 1-to-1-mätsikeskusteluista. Nimimerkkitilassa muille
                 näytetään esimerkiksi <code>KotiKetunPerhe</code>, ei sähköpostiosoitetta eikä
                 oikeaa perhenimeä. Palstalla voi myös valita oman nimen, jolloin valittu nimi
                 näkyy viestin yhteydessä.
               </p>
-              <p className="text-[11px] text-indigo-200/80">
+              <p className="text-[11px] text-white/80">
                 Huonepalstan sisältö ja asetukset tallennetaan kirjautuneen käyttäjän yhteyteen
                 PostgreSQL-tietokantaan. Vanha selainkopio siirretään tietokantaan ensimmäisellä
                 käyttökerralla.
               </p>
             </section>
 
-            <section className="rounded-xl border border-amber-700/50 bg-indigo-950/80 p-3 space-y-2">
-              <h3 className="font-bold text-amber-300">🗓️ Tapahtumachat — tapahtumakohtainen</h3>
-              <p className="text-[11px] text-indigo-100/90">
+            <section className="rounded-3xl border border-white/30 bg-white/10 p-3 space-y-2">
+              <h3 className="font-bold text-white">🗓️ Tapahtumachat — tapahtumakohtainen</h3>
+              <p className="text-[11px] text-white/90">
                 <code>event:&lt;eventId&gt;</code>-kanava kuuluu vain kyseiselle tapahtumalle.
                 Tapahtumaviestit eivät sekoitu mätsien yksityisviesteihin tai huonepalstaan.
               </p>
-              <p className="text-[11px] text-indigo-200/80">
+              <p className="text-[11px] text-white/80">
                 Tapahtumakortit ja uudet “Menossa”-ilmoittautumiset ovat tarjolla vain niin kauan
                 kuin tapahtuma on aktiivisessa <code>/api/events</code>-syötteessä. Syötteestä
                 poistunut tapahtuma jää keskusteluissa luettavaksi historiaksi merkinnällä
@@ -1317,18 +1317,20 @@ export function CommunityHubPanel({
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <section className="rounded-xl border border-indigo-700/50 bg-indigo-950/80 p-3 space-y-2">
-              <h3 className="font-bold text-cyan-300">📍 Sijaintitietojen minimointi</h3>
-              <p className="text-[11px] text-indigo-100/90">
+            <section className="rounded-3xl border border-white/30 bg-white/10 p-3 space-y-2">
+              <h3 className="font-bold text-[var(--color-accent-soft)]">
+                📍 Sijaintitietojen minimointi
+              </h3>
+              <p className="text-[11px] text-white/90">
                 Muille perheille näytetään vain karkea alue ja hakusäde, esimerkiksi{' '}
                 {profile.homeCity}, {profile.area} ja enintään {profile.filters.maxDistanceKm} km.
                 Kotiosoitetta tai tarkkoja koordinaatteja ei näytetä muille perheille.
               </p>
             </section>
 
-            <section className="rounded-xl border border-indigo-700/50 bg-indigo-950/80 p-3 space-y-2">
-              <h3 className="font-bold text-indigo-200">💾 Tallennus</h3>
-              <p className="text-[11px] text-indigo-100/90">
+            <section className="rounded-3xl border border-white/30 bg-white/10 p-3 space-y-2">
+              <h3 className="font-bold text-white">💾 Tallennus</h3>
+              <p className="text-[11px] text-white/90">
                 Perheprofiili, yhteisötila, ilmoittautumiset, mätsit ja viestit tallennetaan
                 PostgreSQL-tietokantaan API-reittien kautta. Tietokannan yhteysosoite asetetaan
                 ympäristömuuttujalla <code>DATABASE_URL</code>.
@@ -1338,7 +1340,7 @@ export function CommunityHubPanel({
 
           <section className="rounded-xl border border-indigo-700/50 bg-black/30 p-3 space-y-2">
             <h3 className="font-bold text-white">🔐 Käyttäjän hallinta</h3>
-            <ul className="list-disc space-y-1 pl-5 text-[11px] text-indigo-100/90">
+            <ul className="list-disc space-y-1 pl-5 text-[11px] text-white/90">
               <li>
                 Google-tilillä tunnistautuminen varmistaa käyttäjän; sähköpostiosoitetta ei
                 näytetä muille julkisena tietona.

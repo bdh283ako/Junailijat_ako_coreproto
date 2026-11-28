@@ -110,7 +110,11 @@ export function FamilyHomeCarousel({
                     aria-label={`${family.likedByMe ? 'Jo kiinnostunut' : 'Verkostoidu'}: ${family.name}`}
                     disabled={pendingFamilyLikeId !== null}
                     onClick={() => onSwipe(family, true)}
-                    className="min-h-11 flex-1 rounded-xl bg-[var(--color-accent)] px-3 py-2 text-sm font-bold text-white hover:brightness-95 disabled:cursor-wait disabled:opacity-60"
+                    className={`min-h-11 flex-1 rounded-xl px-3 py-2 text-sm font-bold disabled:cursor-wait disabled:opacity-60 ${
+                      family.likedByMe
+                        ? 'border-2 border-[#2F5D50] bg-[var(--color-accent-soft)] text-[var(--color-ink)]'
+                        : 'bg-[var(--color-accent)] text-white hover:brightness-95'
+                    }`}
                   >
                     {family.likedByMe ? '❤️ Jo kiinnostunut' : '🤝 Verkostoidu'}
                   </button>
@@ -209,14 +213,14 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
 
           {currentCard ? (
             <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden">
-              <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white">
+              <div className="bg-[var(--color-accent)] p-5 text-white">
                 <div className="flex justify-between items-center text-xs opacity-90 mb-1">
                   <span>📍 {currentCard.area}</span>
                   <span>{currentCard.distanceKm} km kotoa</span>
                 </div>
                 <div className="flex items-start justify-between gap-3">
                   <h2 className="min-w-0 break-words text-2xl font-extrabold">{currentCard.name}</h2>
-                  <span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-xs font-extrabold shadow-sm shrink-0">
+                  <span className="px-2.5 py-1 rounded-full bg-white text-[var(--color-ink)] text-xs font-extrabold shadow-sm shrink-0">
                     {currentCard.match.percent} % match
                   </span>
                 </div>
@@ -235,25 +239,25 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
               <div className="p-5 space-y-4">
                 <div className="grid grid-cols-4 gap-1.5 text-center bg-slate-50 border border-slate-200 rounded-xl p-2 text-[10px]">
                   <div>
-                    <div className="font-extrabold text-emerald-700">
+                    <div className="font-extrabold text-[#2F5D50]">
                       {currentCard.match.interestsPts}/40
                     </div>
                     <div className="text-slate-500">Tägit</div>
                   </div>
                   <div>
-                    <div className="font-extrabold text-emerald-700">
+                    <div className="font-extrabold text-[#2F5D50]">
                       {currentCard.match.distancePts}/30
                     </div>
                     <div className="text-slate-500">Etäisyys</div>
                   </div>
                   <div>
-                    <div className="font-extrabold text-emerald-700">
+                    <div className="font-extrabold text-[#2F5D50]">
                       {currentCard.match.agePts}/20
                     </div>
                     <div className="text-slate-500">Ikäryhmä</div>
                   </div>
                   <div>
-                    <div className="font-extrabold text-emerald-700">
+                    <div className="font-extrabold text-[#2F5D50]">
                       {currentCard.match.eventPts}/10
                     </div>
                     <div className="text-slate-500">Meno</div>
@@ -270,8 +274,8 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                     <div
                       className={`p-3 rounded-xl border text-xs ${
                         bothGoing
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                          : 'bg-blue-50 border-blue-200 text-blue-900'
+                          ? 'bg-[#2F5D50] border-[#2F5D50] text-white'
+                          : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-ink)]'
                       }`}
                     >
                       <span className="font-bold block">
@@ -292,8 +296,8 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                         key={tag}
                         className={`px-2.5 py-1 rounded-full text-xs font-medium ${
                           isCommon
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold'
-                            : 'bg-slate-100 text-slate-700'
+                            ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[#2F5D50] font-semibold'
+                            : 'bg-[var(--color-bg)] text-[var(--color-ink-muted)]'
                         }`}
                       >
                         #{tag} {isCommon && '★'}
@@ -306,14 +310,18 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                   <button
                     type="button"
                     onClick={() => onSwipe(false)}
-                    className="py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50"
+                    className="min-h-11 rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] py-3 font-bold text-sm text-[var(--color-ink)] hover:bg-[var(--color-bg)]"
                   >
                     ✕ Ohita
                   </button>
                   <button
                     type="button"
                     onClick={() => onSwipe(true)}
-                    className="py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-sm hover:bg-emerald-700"
+                    className={`min-h-11 rounded-2xl py-3 font-bold text-sm shadow-sm ${
+                      currentCard.likedByMe
+                        ? 'border-2 border-[#2F5D50] bg-[var(--color-accent-soft)] text-[var(--color-ink)]'
+                        : 'bg-[var(--color-accent)] text-white hover:brightness-95'
+                    }`}
                   >
                     {currentCard.likedByMe ? '❤️ Jo kiinnostunut' : '🤝 Verkostoidu'}
                   </button>
@@ -321,7 +329,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl p-7 text-center border border-slate-200 space-y-3">
+            <div className="bg-white rounded-3xl p-7 text-center border border-slate-200 space-y-3">
               <p className="text-3xl">🔍</p>
               <h3 className="font-bold text-slate-900">
                 {profile.privacy.discoverable
@@ -336,14 +344,14 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                 <button
                   type="button"
                   onClick={onOpenProfileSettings}
-                  className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-800 text-xs font-bold"
+                  className="min-h-11 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-800 text-xs font-bold"
                 >
                   Muokkaa kotiseutua & filttereitä
                 </button>
                 <button
                   type="button"
                   onClick={onResetDismissed}
-                  className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                  className="min-h-11 px-3.5 py-2 rounded-xl bg-[var(--color-ink)] text-white text-xs font-bold"
                 >
                   Palauta ohitetut
                 </button>
@@ -361,7 +369,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
 
           <div className="space-y-3">
             {matchedFamilies.length === 0 ? (
-              <div className="bg-white rounded-2xl p-6 text-center border border-slate-200">
+              <div className="bg-white rounded-3xl p-6 text-center border border-slate-200">
                 <p className="text-xs text-slate-500">
                   Ei vielä osumia. Selaa perheitä ja paina Verkostoidu!
                 </p>
@@ -370,12 +378,12 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
               matchedFamilies.map((fam) => (
                 <div
                   key={fam.id}
-                  className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-3"
+                  className="bg-white p-4 rounded-3xl border-2 border-[#2F5D50] flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <h3 className="break-words font-bold text-sm text-slate-900">{fam.name}</h3>
-                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                      <span className="px-1.5 py-0.5 rounded-full bg-[#2F5D50] text-white text-[10px] font-bold">
                         {fam.match.percent} %
                       </span>
                     </div>
@@ -385,7 +393,7 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                     {profile.privacy.showCloseRelativesInMatches &&
                       fam.hasCloseRelatives &&
                       fam.closeRelativesSummary && (
-                        <p className="text-[11px] text-emerald-700 mt-0.5">
+                        <p className="text-[11px] text-[#2F5D50] mt-0.5">
                           🫂 {fam.closeRelativesSummary}
                         </p>
                       )}
@@ -394,14 +402,14 @@ export function FamiliesTabPanel(props: FamiliesTabPanelProps) {
                     <button
                       type="button"
                       onClick={() => onOpenMap(fam.coords, fam.id)}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
+                      className="min-h-11 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
                     >
                       Kartta
                     </button>
                     <button
                       type="button"
                       onClick={() => onOpenMatchesChat(fam.matchChannelId)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
+                      className="min-h-11 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-bold"
                     >
                       Viesti
                     </button>

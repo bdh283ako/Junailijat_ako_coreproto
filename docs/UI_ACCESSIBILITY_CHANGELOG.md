@@ -119,3 +119,36 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 - Map Peek avaa koko näkymän peittokerroksen sekä yksipisteisestä ”Laajenna kartta” -painikkeesta että selkeästä kahden sormen loitonnuseleestä; yhden sormen sivu-/pystyvieritys säilyy.
 - Peittokerroksessa on Tapahtumat-, Perheet- ja Kaikki-kerrosvalinnat, Sulje kartta -painike sekä Escape-sulku. Sulku palauttaa aiemman fokus-kohdan ja alkuperäisen näkymän/rullauskohdan.
 
+## 2026-11-28 — Perhemätsien, karttamerkkien ja näkymien sävyjen yhtenäistäminen
+
+- Kiinnostunut-tilat käyttävät salviaa tummalla tekstillä ja metsänvihreällä reunuksella; toteutuneet mätsit erottuvat metsänvihreällä myös Yhteisö- ja karttanäkymissä.
+- Kartan koti-, tapahtuma-, alue-, perhe- ja MLL-kahvilamerkit käyttävät terrakotta-, salvia-, metsänvihreä- ja murrettua lilaa sävyä; selite ja kartan kontrollit vastaavat merkkejä.
+- Yhteisö- ja profiilinäkymien valinnat, toimintopainikkeet sekä staattiset kortit on sovitettu shellproton väritokeneihin ja oletuspyöristyksiin. Interaktiiviset kosketuskohteet säilyttävät vähintään 44 px korkeuden ja globaalin fokuskehyksen.
+
+## 2026-11-28 — Meripihka- ja karmiinitokenit
+
+- Lisättiin `--color-amber: #BE5518` (4,67:1 valkoisella) terrakotan rinnalle etusivun 1×3-toimintokorttien lämpimään sävyvaihteluun. Esimerkkisävy `#C2591A` ei yllä valkoisella AA-kontrastiin (4,43:1), joten token tummennettiin.
+- Lisättiin `--color-carmine: #A63A50` (6,28:1 valkoisella) keskustelu- ja aktiivisuusmerkeille; Yhteisö-välilehden ja keskustelulistojen lukemattomien viestien merkeissä on lisäksi valkoinen reunus.
+- Korttien teksti pysyy valkoisena vain riittävän tummilla korostuspinnoilla; salviaa käytetään edelleen vain tumman tekstin kanssa.
+
+## 2026-11-28 — Tapahtumakortin ikoni- ja päivämääräviimeistely
+
+- Tapahtumakortin osallistumis-, chat-, kalenteri- ja karttatoiminnot käyttävät samankokoisia `lucide-react`-viivapiirrosikoneja. Näkyvät painiketekstit korvattiin ikoneilla; `aria-label`- ja `title`-nimet sekä vähintään 44 × 44 px:n kosketusalueet säilyvät.
+- Caveat 600 (`latin`) on rajattu vain päivämäärälaatikon päivänumeroon. Kuukausilyhenne on normaalipainoinen ja eroteltu numerosta.
+
+## 2026-11-28 — Tapahtumakortin tägi- ja maksuton-merkki
+
+- ”Lapset ja perheet” -tägi käyttää kevyttä neutraalia pohjaa ja tummaa tekstiä salvian sijaan; muut tapahtumaikäryhmät säilyttävät nykyisen tyylinsä.
+- Maksuton-merkki erottuu kompaktilla `Tag`-viivapiirrosikonilla ja metsänvihreällä tekstillä/reunalla, ilman kortin korkeuden kasvattamista tai toiminnallisuusmuutoksia.
+
+## 2026-11-28 — Kartan tapahtuma- ja perhefeed
+
+- Karttanäkymän alle lisättiin kapealla näytöllä pinoutuva ja `md:`-leveydellä kaksipalstainen perheosumien ja oikean tapahtumasyötteen näkymä. Tapahtumakortti avautuu saavutettavalla `aria-expanded`-painikkeella, ja ikonitoiminnot säilyttävät osallistumis-, chat-, kalenteri-, kartta- ja lisätietopolut.
+- Kartan tapahtuma- ja perhemarkkerien valinta avaa ja korostaa vastaavan feedikortin; kortin valinta kohdistaa kartan. Toiminnot käyttävät olemassa olevia osallistumis-, ilmoittautumis-, chat- ja valintalokituksen käsittelijöitä.
+- Feedin kortit sallivat sisällön kutistumisen ja rivittymisen; ikonipainikkeet säilyttävät vähintään 44 × 44 px kosketusalueen, tekstien kontrastitokenit ja globaalin 3 px `:focus-visible`-kehyksen.
+
+## 2026-11-28 — Shellproton vihreiden ja siniturkoosien sävyjen yhtenäistäminen
+
+- Ylätunnisteen ”Piiri”-sana ja ”Profiili valmis” -tunniste käyttävät nyt metsänvihreää ja hillittyä palettipintaa; tapahtumasyötteen aktiivisuusmerkki käyttää metsänvihreää pistettä, salvian taustaa ja tummaa tekstiä.
+- Shellproton vanhat emerald-, green-, cyan-, sky-, blue- ja teal-luokat poistettiin myös jäsen-, kartta-, tapahtuma- ja kehitysnäkymistä. Vaalealla salvialla käytetään tummaa tekstiä; täysillä metsänvihreillä pinnoilla valkoinen teksti säilyttää AA-kontrastin.
+

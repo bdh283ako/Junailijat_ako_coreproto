@@ -98,7 +98,7 @@ export function DebugMonitorPanels({
           <div
             className={`rounded-lg px-2 py-1.5 border font-mono text-[10px] space-y-1 ${
               eventFeedStatus === 'live-api'
-                ? 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300'
+                ? 'bg-[#2F5D50]/40 border-[#2F5D50]/60 text-[var(--color-accent-soft)]'
                 : eventFeedStatus === 'loading'
                   ? 'bg-zinc-900 border-zinc-700 text-zinc-300'
                   : 'bg-rose-950/60 border-rose-700/50 text-rose-300'
@@ -128,7 +128,7 @@ export function DebugMonitorPanels({
               <p className="text-[9px] text-rose-200 break-words">{eventFeedDebug.errorDetail}</p>
             ) : (
               eventFeedStatus === 'live-api' && (
-                <p className="text-[9px] text-emerald-200">
+                <p className="text-[9px] text-[var(--color-accent-soft)]">
                   OK • yht. {eventFeedDebug.count} (LE:{eventFeedSources?.linkedEventsCount ?? 0} |
                   EP:{eventFeedSources?.karoCount ?? 0})
                 </p>
@@ -160,13 +160,15 @@ export function DebugMonitorPanels({
           pos={dbFloatPos}
           onPosChange={onDbPosChange}
           onClose={onCloseNerdDbFloat}
-          headerToneClass="bg-indigo-950 text-cyan-300"
+          headerToneClass="bg-indigo-950 text-[var(--color-accent-soft)]"
           borderToneClass="border-indigo-500/50"
         >
           {latestDbEntry ? (
             <div className="space-y-1 font-mono text-[10px]">
-              <p className="text-emerald-300 break-all">{latestDbEntry.terminalLine}</p>
-              <p className="text-cyan-200/90">{latestDbEntry.diffStamp}</p>
+              <p className="text-[var(--color-accent-soft)] break-all">
+                {latestDbEntry.terminalLine}
+              </p>
+              <p className="text-[var(--color-accent-soft)]/90">{latestDbEntry.diffStamp}</p>
               <p className="text-fuchsia-300 italic">&gt; {latestDbEntry.quip}</p>
             </div>
           ) : (

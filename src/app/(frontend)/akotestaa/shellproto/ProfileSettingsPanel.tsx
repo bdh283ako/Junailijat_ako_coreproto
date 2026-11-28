@@ -155,10 +155,12 @@ export function ProfileSettingsPanel({
   return (
     <div className="min-w-0 p-4 md:p-6 space-y-4 pb-8">
       {/* Onboarding-kortti perheen oletusrajauksille */}
-      <section className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 rounded-2xl p-4 border-2 border-emerald-200 shadow-sm space-y-3">
+      <section className="bg-[var(--color-surface)] rounded-3xl p-4 border border-[var(--color-border)] shadow-sm space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+            <span className={`inline-block px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold ${
+              profile.onboardingCompleted ? 'bg-[#2F5D50]' : 'bg-[var(--color-accent)]'
+            }`}>
               {profile.onboardingCompleted ? '✓ Perheen oletusrajaukset tallennettu' : '🚀 Perheen oletusrajaukset (Onboarding)'}
             </span>
             <h2 className="break-words text-sm md:text-base font-extrabold text-slate-900 mt-1">
@@ -175,7 +177,7 @@ export function ProfileSettingsPanel({
               onClick={() =>
                 onChangeProfile((prev) => ({ ...prev, onboardingCompleted: false }))
               }
-              className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-[11px] font-bold shrink-0"
+              className="min-h-11 px-2.5 py-1 rounded-lg bg-white border border-[var(--color-border)] text-[var(--color-ink)] text-[11px] font-bold shrink-0"
             >
               Avaa velho
             </button>
@@ -183,15 +185,15 @@ export function ProfileSettingsPanel({
         </div>
 
         {!profile.onboardingCompleted && (
-          <div className="space-y-3 pt-1 border-t border-emerald-200/70">
+          <div className="space-y-3 pt-1 border-t border-[var(--color-border)]">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
-              <div className="bg-white/90 rounded-xl p-2.5 border border-emerald-100">
+              <div className="bg-[var(--color-bg)] rounded-3xl p-2.5 border border-[var(--color-border)]">
                 <span className="font-bold text-slate-800 block">1. Kotiseutu & säde (15 km)</span>
                 <span className="text-slate-600">
                   {profile.area} • max {profile.filters.maxDistanceKm} km
                 </span>
               </div>
-              <div className="bg-white/90 rounded-xl p-2.5 border border-emerald-100">
+              <div className="bg-[var(--color-bg)] rounded-3xl p-2.5 border border-[var(--color-border)]">
                 <span className="font-bold text-slate-800 block">2. Lasten ikäryhmäpäättely</span>
                 <span className="text-slate-600">
                   {profile.children.length > 0
@@ -206,7 +208,7 @@ export function ProfileSettingsPanel({
                 <span className="font-bold text-slate-800">
                   3. Valitse 3–5 mieliaktiviteettia ({profile.defaultPreset.favoriteActivities.length}/5)
                 </span>
-                <span className="text-[11px] text-emerald-700 font-semibold">
+                <span className="text-[11px] text-[#2F5D50] font-semibold">
                   10 oletustägiä
                 </span>
               </div>
@@ -218,10 +220,10 @@ export function ProfileSettingsPanel({
                       key={tag}
                       type="button"
                       onClick={() => toggleFavoriteActivity(tag)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                      className={`min-h-11 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
                         selected
-                          ? 'bg-emerald-600 text-white border-emerald-700'
-                          : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50'
+                          ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]'
+                          : 'bg-white text-[var(--color-ink)] border-[var(--color-border)] hover:bg-[var(--color-bg)]'
                       }`}
                     >
                       {selected ? `✓ ${tag}` : `+ ${tag}`}
@@ -238,7 +240,7 @@ export function ProfileSettingsPanel({
               <button
                 type="button"
                 onClick={completeOnboarding}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-xs"
+                className="min-h-11 px-4 py-2 rounded-xl bg-[var(--color-accent)] hover:brightness-95 text-white text-xs font-extrabold shadow-xs"
               >
                 Tallenna oletukset & jatka ✓
               </button>
@@ -249,12 +251,12 @@ export function ProfileSettingsPanel({
 
       <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <div className="space-y-4">
-          <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
+          <section className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
                 Perheprofiili & kotiseutu
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[10px] font-bold truncate max-w-[160px]">
+              <span className="px-2 py-0.5 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-ink)] text-[10px] font-bold truncate max-w-[160px]">
                 {currentUser.email}
               </span>
             </div>
@@ -285,7 +287,7 @@ export function ProfileSettingsPanel({
               </select>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
+            <div className="p-3 rounded-3xl bg-[var(--color-bg)] border border-[var(--color-border)] flex items-center justify-between gap-3">
               <div className="text-xs space-y-0.5">
                 <p className="font-bold text-slate-900">
                   👨‍👩‍👧‍👦 Vanhemmat ({totalParentsCount}) • 👶 Lapset ({profile.children.length}) • 🫂 Läheiset ({profile.closeRelatives.length})
@@ -302,14 +304,14 @@ export function ProfileSettingsPanel({
                   onLogSelection('OPEN_MEMBERS_VIEW', `${profile.children.length} children`)
                   onOpenMembers()
                 }}
-                className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shrink-0 hover:bg-slate-800"
+                className="min-h-11 px-3 py-2 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold shrink-0 hover:brightness-95"
               >
                 Muokkaa →
               </button>
             </div>
           </section>
 
-          <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
+          <section className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
                 Oletusrajaukset & suodattimet
@@ -317,13 +319,13 @@ export function ProfileSettingsPanel({
               <button
                 type="button"
                 onClick={applyInferredChildrenAges}
-                className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold hover:bg-emerald-100"
+                className="min-h-11 px-2.5 py-1 rounded-lg bg-[var(--color-accent-soft)] border border-[#2F5D50] text-[var(--color-ink)] text-[10px] font-bold hover:brightness-95"
               >
                 ↻ Päättele lasten iästä
               </button>
             </div>
 
-            <label className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-slate-800 cursor-pointer">
+            <label className="flex items-center justify-between p-2.5 rounded-2xl bg-[var(--color-accent-soft)] border border-[#2F5D50] text-xs text-[var(--color-ink)] cursor-pointer">
               <span className="font-semibold">Käytä oletusrajausta tapahtumalistoissa</span>
               <input
                 type="checkbox"
@@ -334,14 +336,14 @@ export function ProfileSettingsPanel({
                     defaultPreset: { ...prev.defaultPreset, enabled: e.target.checked },
                   }))
                 }
-                className="accent-emerald-600 w-4 h-4"
+                className="accent-[var(--color-accent)] w-4 h-4"
               />
             </label>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-600">Max etäisyys kotoa (oletus 15 km)</span>
-                <span className="font-bold text-emerald-700">{profile.filters.maxDistanceKm} km</span>
+                <span className="font-bold text-[#2F5D50]">{profile.filters.maxDistanceKm} km</span>
               </div>
               <input
                 type="range"
@@ -354,7 +356,7 @@ export function ProfileSettingsPanel({
                     filters: { ...prev.filters, maxDistanceKm: Number(e.target.value) },
                   }))
                 }
-                className="w-full accent-emerald-600"
+                className="w-full accent-[var(--color-accent)]"
               />
             </div>
 
@@ -390,8 +392,10 @@ export function ProfileSettingsPanel({
                       key={g}
                       type="button"
                       onClick={() => toggleAgeGroup(g)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold ${
-                        active ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                      className={`min-h-11 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                        active
+                          ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[#2F5D50]'
+                          : 'bg-[var(--color-bg)] text-[var(--color-ink-muted)] border-[var(--color-border)]'
                       }`}
                     >
                       {g}
@@ -413,7 +417,7 @@ export function ProfileSettingsPanel({
                       defaultPreset: { ...prev.defaultPreset, onlyFreeEvents: e.target.checked },
                     }))
                   }
-                  className="accent-emerald-600 w-4 h-4"
+                  className="accent-[var(--color-accent)] w-4 h-4"
                 />
               </label>
               <label className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
@@ -430,7 +434,7 @@ export function ProfileSettingsPanel({
                       },
                     }))
                   }
-                  className="accent-emerald-600 w-4 h-4"
+                  className="accent-[var(--color-accent)] w-4 h-4"
                 />
               </label>
             </div>
@@ -438,12 +442,12 @@ export function ProfileSettingsPanel({
         </div>
 
         <div className="space-y-4">
-          <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-2.5">
+          <section className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-2.5">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
                 10 oletustägiä & mieliaktiviteetit
               </h2>
-              <span className="text-[11px] font-bold text-emerald-700">
+              <span className="text-[11px] font-bold text-[#2F5D50]">
                 {profile.defaultPreset.favoriteActivities.length}/5 valittu
               </span>
             </div>
@@ -458,10 +462,10 @@ export function ProfileSettingsPanel({
                     key={tag}
                     type="button"
                     onClick={() => toggleFavoriteActivity(tag)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+                    className={`min-h-11 px-3 py-1.5 rounded-full text-xs font-semibold ${
                       selected
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[#2F5D50]'
+                        : 'bg-[var(--color-bg)] text-[var(--color-ink-muted)] border border-[var(--color-border)] hover:brightness-95'
                     }`}
                   >
                     {selected ? `✓ ${tag}` : `+ ${tag}`}
@@ -471,7 +475,7 @@ export function ProfileSettingsPanel({
             </div>
           </section>
 
-          <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-2.5 text-xs">
+          <section className="bg-white rounded-3xl p-4 border border-[var(--color-border)] space-y-2.5 text-xs">
             <h2 className="font-bold text-slate-800 uppercase tracking-wide">
               Tietosuoja & näkyvyys
             </h2>
@@ -486,7 +490,7 @@ export function ProfileSettingsPanel({
                     privacy: { ...profile.privacy, discoverable: e.target.checked },
                   })
                 }
-                className="accent-emerald-600 w-4 h-4"
+                className="accent-[var(--color-accent)] w-4 h-4"
               />
             </label>
             <label className="flex items-center justify-between py-1">
@@ -500,7 +504,7 @@ export function ProfileSettingsPanel({
                     privacy: { ...profile.privacy, shareEventsWithMatches: e.target.checked },
                   })
                 }
-                className="accent-emerald-600 w-4 h-4"
+                className="accent-[var(--color-accent)] w-4 h-4"
               />
             </label>
             <label className="flex items-center justify-between py-1">
@@ -517,17 +521,17 @@ export function ProfileSettingsPanel({
                     },
                   })
                 }
-                className="accent-emerald-600 w-4 h-4"
+                className="accent-[var(--color-accent)] w-4 h-4"
               />
             </label>
           </section>
 
-          <section className="bg-slate-100 rounded-2xl p-4 border border-slate-200 space-y-2.5">
+          <section className="bg-[var(--color-bg)] rounded-3xl p-4 border border-[var(--color-border)] space-y-2.5">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
                 Tallennus & sessio
               </h2>
-              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold text-white bg-[#2F5D50] px-2 py-0.5 rounded-full">
                 Oma profiili tallessa
               </span>
             </div>
@@ -539,14 +543,14 @@ export function ProfileSettingsPanel({
               <button
                 type="button"
                 onClick={onSaveProfile}
-                className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-colors"
+                className="min-h-11 w-full py-2.5 rounded-xl bg-[var(--color-accent)] hover:brightness-95 text-white text-xs font-bold transition-colors"
               >
                 {profileSavedToast ? '✓ Tallennettu kantaan!' : 'Tallenna profiili nyt'}
               </button>
               <button
                 type="button"
                 onClick={onResetTransientData}
-                className="w-full py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition-colors"
+                className="min-h-11 w-full py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] text-[var(--color-ink)] text-xs font-bold transition-colors"
               >
                 {transientResetToast ? '✓ Selaussessio nollattu!' : 'Nollaa selaussessio'}
               </button>
@@ -558,7 +562,7 @@ export function ProfileSettingsPanel({
                   onLogSelection('OPEN_STORE_INSPECTOR', `entries=${dbFeedCount}`)
                   onOpenStoreInspector()
                 }}
-                className="w-full py-2 rounded-xl border border-indigo-300 bg-indigo-950 hover:bg-indigo-900 text-cyan-200 text-xs font-mono font-bold transition-colors"
+                className="min-h-11 w-full py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-ink)] hover:opacity-90 text-white text-xs font-mono font-bold transition-colors"
               >
                 Avaa kanta- ja feedinäkymä ({dbFeedCount}) →
               </button>
@@ -566,7 +570,7 @@ export function ProfileSettingsPanel({
                 type="button"
                 disabled={authRedirecting}
                 onClick={onSignOut}
-                className="w-full py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-colors disabled:opacity-50"
+                className="min-h-11 w-full py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] text-[var(--color-ink)] text-xs font-bold transition-colors disabled:opacity-50"
               >
                 Kirjaudu ulos Google-tililtä
               </button>

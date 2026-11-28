@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Home, MapPin, MessageSquare, User, Users } from 'lucide-react'
 import { CommunityHubPanel, type HubSection } from './CommunityHubPanel'
 import { DebugMonitorPanels, type FeedSourcesMeta } from './DebugMonitorPanels'
 import { EventChatWindow } from './EventChatWindow'
@@ -222,8 +223,9 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
   if (activeSourceCount >= 2) {
     return {
       label: `Live-lähteet aktiivisia: ${summaryParts.join(' + ')}`,
-      className: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      dotClass: 'bg-emerald-500',
+      className:
+        'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[#2F5D50]/40',
+      dotClass: 'bg-[#2F5D50]',
     }
   }
 
@@ -1183,7 +1185,7 @@ export default function PerheAppPrototypePage() {
         Kirjaudu ja luo perheprofiili nähdäksesi sopivat perheet ja liittyäksesi Yhteisöön.
       </p>
       <button
-        className="mt-4 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700"
+        className="mt-4 rounded-xl bg-[var(--color-accent)] px-4 py-2.5 text-xs font-bold text-white hover:brightness-95"
         onClick={() => requestProtectedTab(tab)}
         type="button"
       >
@@ -1199,7 +1201,7 @@ export default function PerheAppPrototypePage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-col">
               <h1 className="text-base md:text-lg font-extrabold text-slate-900 tracking-tight">
-                Perhe<span className="text-emerald-600">Piiri</span>
+                Perhe<span className="text-[#2F5D50]">Piiri</span>
               </h1>
             </div>
             <button
@@ -1234,7 +1236,7 @@ export default function PerheAppPrototypePage() {
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-soft)] text-[10px] font-bold text-[var(--color-ink)]"
                     >
                       {currentUser.displayName.slice(0, 1).toUpperCase()}
                     </span>
@@ -1245,7 +1247,7 @@ export default function PerheAppPrototypePage() {
                   <span
                     className={`max-w-[76px] truncate rounded-full border px-1.5 py-1 text-[9px] font-bold md:max-w-none md:px-2 md:text-[10px] ${
                       isFamilyProfileComplete(profile)
-                        ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+                        ? 'border-[#2F5D50]/40 bg-[#2F5D50]/10 text-[var(--color-ink)]'
                         : 'border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-ink)]'
                     }`}
                   >
@@ -1297,7 +1299,7 @@ export default function PerheAppPrototypePage() {
                 <button
                   type="button"
                   onClick={() => setShowNerdDbFloat((prev) => !prev)}
-                  className="rounded-full bg-indigo-950 px-2 py-1 text-[10px] font-mono font-bold text-cyan-300 hover:bg-indigo-900"
+                  className="rounded-full bg-indigo-950 px-2 py-1 text-[10px] font-mono font-bold text-[var(--color-accent-soft)] hover:bg-indigo-900"
                 >
                   {showNerdDbFloat ? '◼ DB-Feed' : '◻ DB-Feed'}
                 </button>
@@ -1329,7 +1331,7 @@ export default function PerheAppPrototypePage() {
         )}
 
         {latestMatch && (
-          <div className="bg-emerald-600 text-white px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="bg-[#2F5D50] text-white px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
             <div className="text-xs sm:text-sm">
               <p className="font-bold">🎉 Uusi perheosuma: {latestMatch.name}!</p>
               <p className="opacity-90 text-xs">{latestMatch.area}</p>
@@ -1342,7 +1344,7 @@ export default function PerheAppPrototypePage() {
                   setLatestMatch(null)
                   openHubChannel('matches', { directTargetId: target.id })
                 }}
-                className="px-3 py-1.5 bg-white text-emerald-800 rounded-lg text-xs font-bold"
+                className="px-3 py-1.5 bg-white text-[#2F5D50] rounded-lg text-xs font-bold"
               >
                 Avaa chat
               </button>
@@ -1373,7 +1375,7 @@ export default function PerheAppPrototypePage() {
                 <button
                   type="button"
                   onClick={() => requestProtectedTab('families')}
-                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-center text-xs font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)] sm:min-h-[84px] sm:gap-1.5 sm:px-3"
+                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-accent)] px-2 py-3 text-center text-xs font-semibold text-white transition-colors hover:brightness-95 sm:min-h-[84px] sm:gap-1.5 sm:px-3"
                 >
                   <span aria-hidden="true" className="text-lg leading-none">🤝</span>
                   <span className="min-w-0 truncate">Perheet</span>
@@ -1384,7 +1386,7 @@ export default function PerheAppPrototypePage() {
                     setActiveTab('events')
                     recordDemoSelection('TAB_SELECT', 'events')
                   }}
-                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-center text-xs font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)] sm:min-h-[84px] sm:gap-1.5 sm:px-3"
+                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-amber)] px-2 py-3 text-center text-xs font-semibold text-white transition-colors hover:brightness-95 sm:min-h-[84px] sm:gap-1.5 sm:px-3"
                 >
                   <span aria-hidden="true" className="text-lg leading-none">📅</span>
                   <span className="min-w-0 truncate">Tapahtumat</span>
@@ -1392,7 +1394,7 @@ export default function PerheAppPrototypePage() {
                 <button
                   type="button"
                   onClick={() => requestProtectedTab('conversations')}
-                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-center text-xs font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)] sm:min-h-[84px] sm:gap-1.5 sm:px-3"
+                  className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-amber)] px-2 py-3 text-center text-xs font-semibold text-white transition-[filter] hover:brightness-95 sm:min-h-[84px] sm:gap-1.5 sm:px-3"
                 >
                   <span aria-hidden="true" className="text-lg leading-none">💬</span>
                   <span className="min-w-0 truncate">Yhteisö</span>
@@ -1584,6 +1586,31 @@ export default function PerheAppPrototypePage() {
                   filters: { ...prev.filters, targetCity: nextCity },
                 }))
               }
+              showMapFeed
+              pendingEventIds={eventChat.pendingEventIds}
+              countsByEventId={eventChat.countsByEventId}
+              isLoadingParticipations={eventChat.isLoadingParticipations}
+              onToggleParticipation={(eventId, eventTitle, isGoing) => {
+                if (isGoing) {
+                  void toggleDatabaseParticipation(eventId, eventTitle)
+                  return
+                }
+                enrollmentFlow.requireEnrolledAction(
+                  { type: 'join_event', eventId, eventTitle },
+                  () => ensureEventParticipation(eventId, eventTitle),
+                )
+              }}
+              onOpenEventChat={(eventId, eventTitle) =>
+                enrollmentFlow.requireEnrolledAction(
+                  { type: 'open_event_chat', eventId, eventTitle },
+                  async () => {
+                    await ensureEventParticipation(eventId, eventTitle)
+                    openPersistedEventChat(eventId, eventTitle)
+                  },
+                )
+              }
+              onLogSelection={recordDemoSelection}
+              onOpenMap={openOnMap}
             />
           )}
 
@@ -1704,7 +1731,7 @@ export default function PerheAppPrototypePage() {
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="font-semibold text-slate-600">Perhe: {profile.familyName}</span>
-                  <span className="font-mono font-bold text-blue-700">
+                  <span className="font-mono font-bold text-[var(--color-accent)]">
                     {activePreviewInvite.inviteCode}
                   </span>
                 </div>
@@ -1728,7 +1755,7 @@ export default function PerheAppPrototypePage() {
                   <button
                     type="button"
                     onClick={() => simulateAcceptCoParent(activePreviewInvite.id)}
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
+                    className="flex-1 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold hover:brightness-95"
                   >
                     Simuloi liittyminen
                   </button>
@@ -1740,13 +1767,14 @@ export default function PerheAppPrototypePage() {
 
         <nav className="mx-auto w-full min-w-0 max-w-[430px] bg-[var(--color-surface)] border-t border-[var(--color-border)] grid grid-cols-5 gap-1 px-2 py-2 shrink-0 sm:max-w-2xl md:max-w-3xl">
           {[
-            { key: 'events', icon: '📅', label: 'Tapahtumat' },
-            { key: 'families', icon: '🤝', label: 'Perheet' },
-            { key: 'hub', icon: '💬', label: 'Yhteisö' },
-            { key: 'map', icon: '🗺️', label: 'Kartta' },
-            { key: 'profile', icon: '👤', label: 'Profiili' },
+            { key: 'events', icon: Home, label: 'Koti' },
+            { key: 'families', icon: Users, label: 'Perheet' },
+            { key: 'hub', icon: MessageSquare, label: 'Yhteisö' },
+            { key: 'map', icon: MapPin, label: 'Kartta' },
+            { key: 'profile', icon: User, label: 'Profiili' },
           ].map((tab) => {
             const active = activeTab === tab.key
+            const Icon = tab.icon
             return (
               <button
                 key={tab.key}
@@ -1771,11 +1799,15 @@ export default function PerheAppPrototypePage() {
                     : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] hover:bg-[var(--color-bg)]'
                 }`}
               >
-                <span className="text-lg leading-none">{tab.icon}</span>
+                <Icon
+                  aria-hidden="true"
+                  className="h-5 w-5 shrink-0"
+                  strokeWidth={2}
+                />
                 <span className="flex w-full min-w-0 items-center justify-center gap-1 text-center text-[11px] leading-tight sm:text-xs">
                   <span className="min-w-0 truncate">{tab.label}</span>
                   {tab.key === 'hub' && unreadChatChannelIds.size > 0 && (
-                    <span className="min-w-4 rounded-full bg-rose-600 px-1 text-[9px] leading-4 text-white">
+                    <span className="min-w-4 rounded-full border border-white bg-[var(--color-carmine)] px-1 text-[9px] leading-4 text-white">
                       {unreadChatChannelIds.size}
                     </span>
                   )}

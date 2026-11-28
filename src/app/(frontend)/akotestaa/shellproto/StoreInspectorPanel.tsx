@@ -43,7 +43,7 @@ export function StoreInspectorPanel({
       <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <section className="rounded-2xl p-4 bg-indigo-950/90 border border-indigo-500/50 space-y-2.5 shadow-lg">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-cyan-300">
+            <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-[var(--color-accent-soft)]">
               📜 Kantaoperaatioiden feedi (backscroll)
             </h2>
             <span className="font-mono text-[10px] text-indigo-300">
@@ -62,8 +62,10 @@ export function StoreInspectorPanel({
                   key={entry.id}
                   className="rounded-xl bg-slate-950/95 border border-indigo-700/60 p-2.5 space-y-1 text-[10px]"
                 >
-                  <p className="text-emerald-300 break-all font-semibold">{entry.terminalLine}</p>
-                  <p className="text-cyan-200/90">{entry.diffStamp}</p>
+                  <p className="text-[var(--color-accent-soft)] break-all font-semibold">
+                    {entry.terminalLine}
+                  </p>
+                  <p className="text-[var(--color-accent-soft)]/90">{entry.diffStamp}</p>
                   <p className="text-fuchsia-300 italic">&gt; {entry.quip}</p>
                 </div>
               ))
@@ -81,7 +83,7 @@ export function StoreInspectorPanel({
             </span>
           </div>
 
-          <pre className="mt-2 max-w-full p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-cyan-200 overflow-x-auto max-h-64 md:max-h-[420px] leading-relaxed">
+          <pre className="mt-2 max-w-full p-3 rounded-xl bg-slate-950/95 border border-indigo-800/70 text-[10px] font-mono text-[var(--color-accent-soft)] overflow-x-auto max-h-64 md:max-h-[420px] leading-relaxed">
             {JSON.stringify(
               {
                 id: currentUser.id,

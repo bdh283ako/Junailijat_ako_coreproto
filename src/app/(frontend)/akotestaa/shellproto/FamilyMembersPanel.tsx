@@ -121,7 +121,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
       </div>
 
       {inviteBanner && (
-        <div className="px-3.5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm">
+        <div className="px-3.5 py-2.5 rounded-xl bg-[#2F5D50] text-white text-xs font-bold shadow-sm">
           {inviteBanner}
         </div>
       )}
@@ -132,19 +132,19 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
             <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
               Vanhemmat ({totalParentsCount})
             </h2>
-            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+            <span className="px-2 py-0.5 rounded bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[#2F5D50]/40 text-[10px] font-bold">
               Perheen ylläpito
             </span>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between gap-2 text-xs">
+          <div className="p-2.5 rounded-xl bg-[#2F5D50]/[0.08] border border-[#2F5D50]/30 flex items-center justify-between gap-2 text-xs">
             <div className="min-w-0">
               <p className="font-bold text-slate-900 truncate">
                 👤 {currentUser.displayName} (Ensisijainen vanhempi)
               </p>
               <p className="text-[11px] text-slate-600 truncate">{currentUser.email}</p>
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold shrink-0">
+            <span className="px-2 py-0.5 rounded-full bg-[#2F5D50] text-white text-[10px] font-bold shrink-0">
               Google-tili
             </span>
           </div>
@@ -167,7 +167,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                     cp.status === 'accepted'
-                      ? 'bg-emerald-100 text-emerald-800'
+                      ? 'bg-[#2F5D50] text-white'
                       : 'bg-amber-100 text-amber-800'
                   }`}
                 >
@@ -179,7 +179,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                 <button
                   type="button"
                   onClick={() => onPreviewInvite(cp.id)}
-                  className="px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-[11px] font-bold hover:bg-blue-100"
+                  className="px-2.5 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-[11px] font-bold hover:bg-[var(--color-bg)]"
                 >
                   Kutsulinkki
                 </button>
@@ -188,7 +188,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                     <button
                       type="button"
                       onClick={() => onSimulateAcceptCoParent(cp.id)}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700"
+                      className="px-2.5 py-1 rounded-lg bg-[#2F5D50] text-white text-[11px] font-bold hover:brightness-95"
                     >
                       Simuloi hyväksyntä
                     </button>
@@ -235,7 +235,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                 <button
                   type="button"
                   onClick={onSendCoParentInvite}
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shrink-0 hover:bg-blue-700"
+                  className="px-3.5 py-2 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold shrink-0 hover:brightness-95"
                 >
                   Lähetä kutsu
                 </button>
@@ -251,7 +251,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
                 Lapset ({profile.children.length})
               </h2>
-              <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
+              <span className="px-2 py-0.5 rounded bg-[var(--color-accent-soft)] text-[var(--color-ink)] border border-[var(--color-border)] text-[10px] font-bold">
                 Päivittää ikärajaukset
               </span>
             </div>
@@ -300,7 +300,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                             <button
                               type="button"
                               onClick={() => onSaveEditChild(child.id)}
-                              className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold"
+                              className="px-3 py-1 rounded-lg bg-[#2F5D50] text-white font-bold"
                             >
                               Tallenna
                             </button>
@@ -310,7 +310,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <span className="font-bold text-slate-900">👶 {child.ageLabel}</span>
-                            <span className="ml-2 px-2 py-0.5 rounded-full bg-teal-100 text-teal-900 text-[10px] font-semibold">
+                            <span className="ml-2 px-2 py-0.5 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-ink)] text-[10px] font-semibold">
                               {child.group}
                             </span>
                           </div>
@@ -376,7 +376,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
               <span
                 className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                   profile.privacy.showCloseRelativesInMatches
-                    ? 'bg-emerald-100 text-emerald-800'
+                    ? 'bg-[#2F5D50] text-white'
                     : 'bg-slate-100 text-slate-600'
                 }`}
               >
@@ -400,7 +400,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                     },
                   })
                 }
-                className="accent-emerald-600 w-4 h-4"
+                className="accent-[#9E4B16] w-4 h-4"
               />
             </label>
 
@@ -446,7 +446,7 @@ export function FamilyMembersPanel(props: FamilyMembersPanelProps) {
                             <button
                               type="button"
                               onClick={() => onSaveEditRelative(rel.id)}
-                              className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold"
+                              className="px-3 py-1 rounded-lg bg-[#2F5D50] text-white font-bold"
                             >
                               Tallenna
                             </button>

@@ -41,7 +41,7 @@ export function EventCard({
           </span>
 
           <span
-            className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-600/20"
+            className="inline-flex items-center rounded-full border border-[#2F5D50]/40 bg-[var(--color-accent-soft)] px-2.5 py-0.5 text-xs font-semibold text-[var(--color-ink)]"
             title="Ikähaarukka syötteestä"
           >
             Ikä: {event.ageRangeLabel}
