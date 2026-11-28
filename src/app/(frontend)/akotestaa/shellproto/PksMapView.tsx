@@ -3,10 +3,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarPlus,
+  CalendarDays,
   ChevronDown,
+  Coins,
   ExternalLink,
+  House,
   MapPin,
   MessageCircle,
+  Search,
   Tag,
   UserPlus,
   Users,
@@ -14,7 +18,12 @@ import {
 import { calcDistanceKm, FamilyEvent, FamilyProfile, PKS_MLL_FAMILY_CAFES } from './protoData'
 import { buildGoogleCalendarUrl } from './googleCalendar'
 import { DEFAULT_PKS_COORDS, resolveEventsForMap, type CityOnlyGroup } from './mapGeoResolver'
-import { PKS_ALL_CITIES, PKS_CITY_FILTER_OPTIONS } from './pksAreas'
+import {
+  getPksCityFilterLabel,
+  PKS_ALL_CITIES,
+  PKS_CITY_FILTER_OPTIONS,
+} from './pksAreas'
+import { CANONICAL_EVENT_FILTERS } from './eventTaxonomy'
 
 interface LeafletCircleMarker {
   addTo: (target: LeafletMapInstance | LeafletLayerGroup) => LeafletCircleMarker
@@ -119,16 +128,7 @@ const MAP_SOURCE_COLORS = {
   eventPulse: '#6B3F79',
 } as const
 
-const CANONICAL_MAP_FILTERS = [
-  'Vauvat & taaperot',
-  'Leikki-ikäiset',
-  'Kouluikäiset & perheet',
-  'Kaikenikäisille / Perheet',
-  'Perhekahvila & vertaistuki',
-  'Liikunta & ulkoilu',
-  'Kulttuuri & askartelu',
-  'Maksuton',
-] as const
+const CANONICAL_MAP_FILTERS = CANONICAL_EVENT_FILTERS
 
 type CanonicalMapFilter = (typeof CANONICAL_MAP_FILTERS)[number]
 
@@ -202,6 +202,30 @@ function getEventTimeLabel(evt: MapEventRecord): string {
   return evt.time || evt.startDate || ''
 }
 
+const FI_MONTH_SHORT = [
+  'tammi',
+  'helmi',
+  'maalis',
+  'huhti',
+  'touko',
+  'kesä',
+  'heinä',
+  'elo',
+  'syys',
+  'loka',
+  'marras',
+  'joulu',
+]
+
+function getCompactEventDateLabel(evt: MapEventRecord): { day: string; month: string } | null {
+  const localizedDate = (evt.time ?? '').match(/(\d{1,2})\.(\d{1,2})\./)
+  const isoDate = (evt.startDate ?? '').match(/^\d{4}-(\d{2})-(\d{2})/)
+  const day = localizedDate?.[1] ?? isoDate?.[2]
+  const monthNumber = Number(localizedDate?.[2] ?? isoDate?.[1])
+  const month = FI_MONTH_SHORT[monthNumber - 1]
+  return day && month ? { day, month } : null
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => {
     const entities: Record<string, string> = {
@@ -263,14 +287,14 @@ export function PksMapView({
     onChangeSelectedCity?.(nextCity)
   }
 
-  // MLL-perhekahvilat: oletuksena pois päältä, tottelee geneeristä kaupunkifiltteriä
-  const [showMllCafes, setShowMllCafes] = useState(false)
-  const [meetingPlaceMode, setMeetingPlaceMode] = useState<'off' | 'alongside' | 'only'>('off')
+  const [meetingPlaceMode, setMeetingPlaceMode] = useState<'off' | 'alongside'>('off')
   const [activeCanonicalFilters, setActiveCanonicalFilters] = useState<CanonicalMapFilter[]>([])
+  const [paidOnly, setPaidOnly] = useState(false)
 
   // Kartan alla olevan listan sivutus (25 tai 50 kpl / sivu)
   const [listPageSize, setListPageSize] = useState<25 | 50>(25)
   const [listPage, setListPage] = useState<number>(1)
+  const [mapEventSearchQuery, setMapEventSearchQuery] = useState('')
 
   const safeHome = homeCoords || DEFAULT_PKS_COORDS
 
@@ -300,17 +324,18 @@ export function PksMapView({
           .toLowerCase()
         const isMeetingPlace =
           /hm_kohtaamispaikka|\bplace\b|kohtaamispaikka|perhekahvil/.test(tagText)
-        if (meetingPlaceMode === 'only' && !isMeetingPlace) return false
         if (meetingPlaceMode === 'off' && isMeetingPlace) return false
-        if (activeCanonicalFilters.length === 0) return true
+        if (activeCanonicalFilters.length === 0 && !paidOnly) return true
         const eventTags = [...(evt.tags ?? []), ...(evt.keywords ?? [])]
+          .concat(evt.ageGroup ?? '')
+          .map((tag) => tag.toLowerCase())
+        if (paidOnly && !eventTags.includes('maksullinen')) return false
         return activeCanonicalFilters.every((filter) =>
-          eventTags.some((tag) => tag.toLowerCase() === filter.toLowerCase()) ||
-          tagText.includes(filter.toLowerCase()),
+          eventTags.includes(filter.toLowerCase()),
         )
       })
       .sort((a, b) => a.distanceKm - b.distanceKm)
-  }, [events, safeHome, activeCityFilter, activeCanonicalFilters, meetingPlaceMode])
+  }, [events, safeHome, activeCityFilter, activeCanonicalFilters, meetingPlaceMode, paidOnly])
 
   // Kartalle piirretään enintään 25 lähintä tapahtumaa per kaupunki.
   const mapCappedEvents = useMemo(() => {
@@ -333,9 +358,9 @@ export function PksMapView({
     [mapCappedEvents, safeHome],
   )
 
-  // MLL-perhekahvilat näytetään vain jos oma filtterikytkin on päällä + rajataan geneerisellä kaupunkifiltterillä
+  // MLL-perhekahvilat seuraavat kohtaamispaikkojen kytkintä ja kaupunkirajausta.
   const visibleMllCafes = useMemo(() => {
-    if (!showMllCafes && meetingPlaceMode === 'off') return []
+    if (meetingPlaceMode === 'off') return []
     return PKS_MLL_FAMILY_CAFES.map((cafe) => ({
       ...cafe,
       distanceKm: calcDistanceKm(safeHome, cafe.coords),
@@ -346,20 +371,37 @@ export function PksMapView({
           cafe.city.toLowerCase() === activeCityFilter.toLowerCase(),
       )
       .sort((a, b) => a.distanceKm - b.distanceKm)
-  }, [showMllCafes, meetingPlaceMode, activeCityFilter, safeHome])
+  }, [meetingPlaceMode, activeCityFilter, safeHome])
 
   const visibleMatchedFamilies = useMemo(() => {
     if (activeCityFilter === PKS_ALL_CITIES) return matchedFamilies
     return matchedFamilies.filter((f) => f.city.toLowerCase() === activeCityFilter.toLowerCase())
   }, [matchedFamilies, activeCityFilter])
 
-  // Sivutuslaskenta kartan alla olevalle listalle
-  const totalListPages = Math.max(1, Math.ceil(cityFilteredAllEvents.length / listPageSize))
+  const normalizedMapEventSearch = mapEventSearchQuery.trim().toLowerCase()
+  const searchedMapEvents = useMemo(() => {
+    if (!normalizedMapEventSearch) return cityFilteredAllEvents
+    return cityFilteredAllEvents.filter((event) =>
+      [
+        event.title,
+        getEventVenueLabel(event),
+        event.city,
+        event.district ?? '',
+        event.description ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedMapEventSearch),
+    )
+  }, [cityFilteredAllEvents, normalizedMapEventSearch])
+
+  // Sivutuslaskenta haetulle kartan alla olevalle listalle
+  const totalListPages = Math.max(1, Math.ceil(searchedMapEvents.length / listPageSize))
   const safeListPage = Math.min(listPage, totalListPages)
   const paginatedBottomEvents = useMemo(() => {
     const startIdx = (safeListPage - 1) * listPageSize
-    return cityFilteredAllEvents.slice(startIdx, startIdx + listPageSize)
-  }, [cityFilteredAllEvents, safeListPage, listPageSize])
+    return searchedMapEvents.slice(startIdx, startIdx + listPageSize)
+  }, [searchedMapEvents, safeListPage, listPageSize])
 
   const eventTitleById = useMemo(() => {
     const map = new Map<string, string>()
@@ -639,7 +681,7 @@ export function PksMapView({
     })
 
     // 4. MLL-perhekahvilat: murrettu lila — vain kun filtteri on päällä
-    if (showMllCafes || meetingPlaceMode !== 'off') {
+    if (meetingPlaceMode !== 'off') {
       visibleMllCafes.forEach((cafe) => {
         const linkHtml = cafe.url
           ? `<br/><a href="${cafe.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:${MAP_MARKER_COLORS.cafe};text-decoration:underline;">Yhdistyksen sivu ↗</a>`
@@ -694,7 +736,6 @@ export function PksMapView({
     mapReady,
     resolvedMap,
     visibleMllCafes,
-    showMllCafes,
     meetingPlaceMode,
     eventTitleById,
     attendingIds,
@@ -722,12 +763,11 @@ export function PksMapView({
           <div ref={mapContainerRef} className="flex-1 w-full min-h-[200px]" />
         )}
 
-        {/* Geneerinen kaupunkifiltteri + karttaselitteet + MLL-kahviloiden erillinen kytkin */}
-        <div className="bg-[var(--color-surface)] border-t border-[var(--color-border)] px-4 md:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
-        <div className="flex flex-wrap items-center gap-2 font-medium text-[var(--color-ink)]">
-            {/* Geneerinen kaupunkivalitsin */}
-            <label className="inline-flex items-center gap-1.5 font-bold text-[var(--color-ink)]">
-              <span>Kaupunki:</span>
+        <div className="bg-[var(--color-surface)] border-t border-[var(--color-border)] px-4 md:px-6 py-2 text-xs shrink-0">
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 font-medium text-[var(--color-ink)]">
+              <label className="inline-flex items-center gap-1.5 font-bold text-[var(--color-ink)]">
+                <MapPin aria-hidden="true" size={16} strokeWidth={2} />
               <select
                 value={activeCityFilter}
                 onChange={(e) => handleCityChange(e.target.value)}
@@ -736,105 +776,130 @@ export function PksMapView({
               >
                 {PKS_CITY_FILTER_OPTIONS.map((city) => (
                   <option key={city} value={city}>
-                    {city}
+                    {getPksCityFilterLabel(city)}
                   </option>
                 ))}
               </select>
-            </label>
+              </label>
 
-            <span>🟠 Koti</span>
-            <span
-              className="inline-flex items-center gap-1"
-              title="Kartalla näytetään enintään 25 lähintä tapahtumaa kaupunkia kohden. Vain täsmälleen samoihin koordinaatteihin osuvat tapahtumat ryhmitellään."
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-[#9E4B16] border border-[#6D3514] inline-block" />
-              Kartalla ({mapCappedEvents.length}/{cityFilteredAllEvents.length})
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#9CB9B7] border border-[#2F5D50] inline-block" />
-              Alue ({resolvedMap.stats.districtCount})
-            </span>
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedCityGroup((prev) => (prev ? null : (resolvedMap.cityGroups[0] ?? null)))
-              }
-              className="min-h-11 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] font-bold hover:bg-[var(--color-bg)]"
-            >
-              Kaupunkilista ({resolvedMap.stats.cityOnlyCount})
-            </button>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#2F5D50] border border-white inline-block" />
-              Osumat ({visibleMatchedFamilies.length})
-            </span>
-
-            {/* Kanoniset karttasuodattimet */}
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Sisältö- ja ikätägeittäin suodatus">
-              {CANONICAL_MAP_FILTERS.map((filter) => {
-                const active = activeCanonicalFilters.includes(filter)
-                return (
-                  <button
-                    key={filter}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() =>
-                      setActiveCanonicalFilters((current) =>
-                        active
-                          ? current.filter((item) => item !== filter)
-                          : [...current, filter],
-                      )
+              <span className="inline-flex items-center gap-1">
+                <House aria-hidden="true" size={14} strokeWidth={2} className="text-[#1F4E79]" />
+                Koti
+              </span>
+              <span
+                className="inline-flex items-center gap-1"
+                title="Kartalla näytetään enintään 25 lähintä tapahtumaa kaupunkia kohden. Vain täsmälleen samoihin koordinaatteihin osuvat tapahtumat ryhmitellään."
+              >
+                <CalendarDays
+                  aria-hidden="true"
+                  size={14}
+                  strokeWidth={2}
+                  className="text-[#9E4B16]"
+                />
+                Tapahtumat ({mapCappedEvents.length}/{cityFilteredAllEvents.length})
+              </span>
+              {resolvedMap.stats.cityOnlyCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedCityGroup((prev) =>
+                      prev ? null : (resolvedMap.cityGroups[0] ?? null),
+                    )
+                  }
+                  className="min-h-11 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] font-bold hover:bg-[var(--color-bg)]"
+                >
+                  Kaupunkilista ({resolvedMap.stats.cityOnlyCount})
+                </button>
+              )}
+              <span className="inline-flex items-center gap-1">
+                <Users aria-hidden="true" size={14} strokeWidth={2} className="text-[#2F5D50]" />
+                Perheosumat ({visibleMatchedFamilies.length})
+              </span>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] p-1.5">
+                <span className="px-2 text-[10px] font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                  Karttatasot
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={meetingPlaceMode === 'alongside'}
+                  aria-label="Näytä kohtaamispaikat kartalla"
+                  onClick={() =>
+                    setMeetingPlaceMode((current) =>
+                      current === 'alongside' ? 'off' : 'alongside',
+                    )
+                  }
+                  className={`min-h-11 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-bold transition-colors ${
+                    meetingPlaceMode === 'alongside'
+                      ? 'border-[#8A3D10] bg-[#BE5518] text-white'
+                      : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-alt)]'
+                  }`}
+                >
+                  <House
+                    aria-hidden="true"
+                    size={16}
+                    strokeWidth={2}
+                    className={
+                      meetingPlaceMode === 'alongside' ? 'text-white' : 'text-[#8A3D10]'
                     }
-                    className={`min-h-11 px-2.5 py-1 rounded-full border text-[11px] font-bold ${
-                      active
-                        ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]'
-                        : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)]'
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                )
-              })}
+                  />
+                  <span>Kohtaamispaikat</span>
+                </button>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={paidOnly}
+                  aria-label="Näytä vain maksulliset tapahtumat kartalla"
+                  onClick={() => setPaidOnly((current) => !current)}
+                  className={`min-h-11 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-bold transition-colors ${
+                    paidOnly
+                      ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
+                      : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-alt)]'
+                  }`}
+                >
+                  <Coins
+                    aria-hidden="true"
+                    size={16}
+                    strokeWidth={2}
+                    className={paidOnly ? 'text-white' : 'text-[var(--color-ink-muted)]'}
+                  />
+                  <span>Maksullinen</span>
+                </button>
+              </div>
             </div>
 
-            {/* Kohtaamispaikat oletuksena pois; välitettävä lisäluokka muiden rinnalle tai pelkistetyksi suodattimeksi */}
-            <button
-              type="button"
-              aria-pressed={meetingPlaceMode === 'alongside'}
-              onClick={() =>
-                setMeetingPlaceMode((current) => (current === 'alongside' ? 'off' : 'alongside'))
-              }
-              className={`min-h-11 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border font-bold transition-colors ${
-                meetingPlaceMode === 'alongside'
-                  ? 'bg-[#BE5518] text-white border-[#8A3D10]'
-                  : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)] hover:bg-[var(--color-bg)]'
-              }`}
-            >
-              <span className={`w-2.5 h-2.5 rounded-full inline-block ${meetingPlaceMode === 'alongside' ? 'bg-white' : 'bg-[#BE5518]'}`} />
-              Kohtaamispaikat {meetingPlaceMode === 'alongside' ? `(${visibleMllCafes.length})` : '(pois)'}
-            </button>
-            <button
-              type="button"
-              aria-pressed={meetingPlaceMode === 'only'}
-              onClick={() =>
-                setMeetingPlaceMode((current) => (current === 'only' ? 'off' : 'only'))
-              }
-              className={`min-h-11 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border font-bold ${
-                meetingPlaceMode === 'only'
-                  ? 'bg-[#BE5518] text-white border-[#8A3D10]'
-                  : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)]'
-              }`}
-            >
-              Vain kohtaamispaikat
-            </button>
+            <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--color-border)] pt-2">
+              <div
+                className="flex min-w-0 flex-wrap items-center gap-1.5"
+                aria-label="Sisältö- ja ikätägeittäin suodatus"
+              >
+                {CANONICAL_MAP_FILTERS.map((filter) => {
+                  const active = activeCanonicalFilters.includes(filter)
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() =>
+                        setActiveCanonicalFilters((current) =>
+                          active
+                            ? current.filter((item) => item !== filter)
+                            : [...current, filter],
+                        )
+                      }
+                      className={`min-h-11 px-2.5 py-1 rounded-full border text-[11px] font-bold ${
+                        active
+                          ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]'
+                          : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)]'
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
-
-          <button
-            type="button"
-            onClick={onResetBounds}
-            className="min-h-11 px-2.5 py-1 rounded-lg bg-[var(--color-accent-soft)] font-semibold text-[var(--color-ink)] shrink-0"
-          >
-            Koko PKS
-          </button>
         </div>
       </div>
 
@@ -891,14 +956,14 @@ export function PksMapView({
 
       {showMapFeed ? (
         <div className="min-w-0 flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 md:px-6 py-3">
-          <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+          <div className="min-w-0 space-y-4">
             <section aria-labelledby="map-families-heading" className="min-w-0 space-y-2">
               <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
                 <h2
                   id="map-families-heading"
                   className="text-sm font-bold text-[var(--color-ink)]"
                 >
-                  Perheosumat kartan alueella
+                  Perheosumat
                 </h2>
                 <span className="text-xs text-[var(--color-ink-muted)]">
                   {visibleMatchedFamilies.length} perhettä
@@ -909,7 +974,12 @@ export function PksMapView({
                   Ei perheosumia valitulla alueella.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div
+                  role="region"
+                  aria-label="Perheosumat, vaakasuunnassa selattava karuselli"
+                  tabIndex={0}
+                  className="flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain pb-2"
+                >
                   {visibleMatchedFamilies.map((family) => (
                     <button
                       key={family.id}
@@ -921,26 +991,49 @@ export function PksMapView({
                       aria-pressed={selectedFamilyId === family.id}
                       onClick={() => {
                         selectFamily(family.id)
+                        onOpenMap?.(family.coords, family.id)
                       }}
-                      className={`min-h-11 w-full min-w-0 rounded-2xl border p-3 text-left transition-colors ${
+                      className={`relative min-h-11 w-64 shrink-0 snap-start rounded-2xl border p-3 text-left transition-colors ${
                         selectedFamilyId === family.id
                           ? 'border-[#2F5D50] bg-[var(--color-accent-soft)]'
                           : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)]'
                       }`}
                     >
-                      <span className="block min-w-0 break-words text-xs font-bold text-[var(--color-ink)]">
+                      <span className="block min-w-0 break-words text-sm font-bold text-[var(--color-ink)]">
                         {family.name}
                       </span>
-                      <span className="mt-1 block min-w-0 break-words text-[11px] text-[var(--color-ink-muted)]">
-                        {family.area} ({family.city}) • {family.childrenAges}
+                      <span className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--color-ink)]">
+                          <MapPin aria-hidden="true" size={12} strokeWidth={2} />
+                          {family.area}, {family.city}
+                        </span>
+                        <span className="rounded-full border border-[#2F5D50]/40 bg-[var(--color-accent-soft)] px-2 py-1 text-[10px] font-semibold text-[var(--color-ink)]">
+                          {family.childrenAges}
+                        </span>
                       </span>
+                      {family.interests.length > 0 && (
+                        <span className="mt-2 flex min-w-0 flex-wrap gap-1">
+                          {family.interests.slice(0, 3).map((interest) => (
+                            <span
+                              key={interest}
+                              className="rounded-full bg-[var(--color-bg)] px-2 py-0.5 text-[10px] text-[var(--color-ink-muted)]"
+                            >
+                              {interest}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                       {shareEventsWithMatches &&
                         family.attendingEventId &&
                         eventTitleById.has(family.attendingEventId) && (
-                          <span className="mt-1 block min-w-0 break-words text-[11px] text-[#2F5D50]">
+                          <span className="mt-2 block min-w-0 break-words text-[11px] font-semibold text-[#2F5D50]">
                             Tapahtuma: {eventTitleById.get(family.attendingEventId)}
                           </span>
                         )}
+                      <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#2F5D50]">
+                        <MapPin aria-hidden="true" size={13} strokeWidth={2} />
+                        Katso kartalla
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -957,24 +1050,24 @@ export function PksMapView({
                     Tapahtumat kartan alueella
                   </h2>
                   <p className="text-[11px] text-[var(--color-ink-muted)]">
-                    {activeCityFilter}: {cityFilteredAllEvents.length} tapahtumaa
+                    {getPksCityFilterLabel(activeCityFilter)}: {searchedMapEvents.length} tapahtumaa
                   </p>
                 </div>
 
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-[var(--color-ink-muted)]">Eräkoko:</span>
                   {([25, 50] as const).map((size) => (
                     <button
                       key={size}
                       type="button"
+                      aria-pressed={listPageSize === size}
                       onClick={() => {
                         setListPageSize(size)
                         setListPage(1)
                       }}
-                      className={`min-h-11 px-2 py-0.5 rounded-md font-bold text-[11px] border ${
+                      className={`min-h-11 px-3 py-0.5 rounded-full font-bold text-[11px] ${
                         listPageSize === size
-                          ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]'
-                          : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)] hover:bg-[var(--color-bg)]'
+                          ? 'bg-[var(--color-accent)] text-white'
+                          : 'bg-transparent text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
                       }`}
                     >
                       {size} / sivu
@@ -987,7 +1080,7 @@ export function PksMapView({
                         disabled={safeListPage <= 1}
                         onClick={() => setListPage((page) => Math.max(1, page - 1))}
                         aria-label="Edellinen tapahtumasivu"
-                        className="min-h-11 min-w-11 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] font-semibold disabled:opacity-40"
+                        className="min-h-11 min-w-11 rounded-full text-[var(--color-ink)] font-semibold hover:bg-[var(--color-surface-alt)] disabled:opacity-40"
                       >
                         ←
                       </button>
@@ -999,7 +1092,7 @@ export function PksMapView({
                         disabled={safeListPage >= totalListPages}
                         onClick={() => setListPage((page) => Math.min(totalListPages, page + 1))}
                         aria-label="Seuraava tapahtumasivu"
-                        className="min-h-11 min-w-11 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] font-semibold disabled:opacity-40"
+                        className="min-h-11 min-w-11 rounded-full text-[var(--color-ink)] font-semibold hover:bg-[var(--color-surface-alt)] disabled:opacity-40"
                       >
                         →
                       </button>
@@ -1008,9 +1101,29 @@ export function PksMapView({
                 </div>
               </div>
 
+              <label className="relative block min-w-0">
+                <span className="sr-only">Hae tapahtumia kartan listasta</span>
+                <Search
+                  aria-hidden="true"
+                  size={16}
+                  strokeWidth={2}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-muted)]"
+                />
+                <input
+                  type="search"
+                  value={mapEventSearchQuery}
+                  onChange={(event) => {
+                    setMapEventSearchQuery(event.target.value)
+                    setListPage(1)
+                  }}
+                  placeholder="Hae tapahtuman nimellä, paikalla tai kuvauksella"
+                  className="min-h-11 w-full min-w-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] pl-10 pr-3 text-sm text-[var(--color-ink)] placeholder:text-[var(--color-ink-muted)]"
+                />
+              </label>
+
               {paginatedBottomEvents.length === 0 ? (
                 <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-center text-xs text-[var(--color-ink-muted)]">
-                  Ei tapahtumia valitussa kaupungissa ({activeCityFilter}).
+                  Ei tapahtumia haulla ja alueella {getPksCityFilterLabel(activeCityFilter)}.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1029,6 +1142,7 @@ export function PksMapView({
                         : (participantCount ?? 0)
                     const ParticipationIcon = isGoing ? Users : UserPlus
                     const calendarUrl = buildGoogleCalendarUrl(event)
+                    const dateLabel = getCompactEventDateLabel(event)
 
                     return (
                       <article
@@ -1037,12 +1151,26 @@ export function PksMapView({
                           if (element) eventCardRefs.current.set(event.id, element)
                           else eventCardRefs.current.delete(event.id)
                         }}
-                        className={`min-w-0 rounded-2xl border bg-[var(--color-surface)] p-3 transition-colors ${
+                        className={`flex min-w-0 items-start gap-2 rounded-2xl border bg-[var(--color-surface)] p-3 transition-colors ${
                           isExpanded
                             ? 'border-[#2F5D50] shadow-sm'
                             : 'border-[var(--color-border)]'
                         }`}
                       >
+                        {dateLabel && (
+                          <div
+                            aria-hidden="true"
+                            className="flex min-h-12 w-10 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-[#9E4B16]/40 bg-[var(--color-accent-soft)] px-1 py-1 text-[var(--color-ink)]"
+                          >
+                            <span className="text-[8px] font-semibold uppercase leading-none">
+                              {dateLabel.month}
+                            </span>
+                            <span className="[font-family:var(--font-date-numeral)] text-base font-semibold leading-none">
+                              {dateLabel.day}
+                            </span>
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
                         <button
                           type="button"
                           aria-expanded={isExpanded}
@@ -1077,8 +1205,8 @@ export function PksMapView({
                                 <span
                                   className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold ${
                                     isFree
-                                      ? 'border-[#2F5D50] text-[#2F5D50]'
-                                      : 'border-[var(--color-border)] text-[var(--color-ink)]'
+                                      ? 'border-[#2F5D50] bg-[var(--color-bg)] text-[#2F5D50]'
+                                        : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-ink)]'
                                   }`}
                                 >
                                   {isFree && (
@@ -1092,7 +1220,7 @@ export function PksMapView({
                                 </span>
                               )}
                             </span>
-                            <span className="mt-1 block min-w-0 break-words text-sm font-bold leading-snug text-[var(--color-ink)]">
+                            <span className="mt-1 block min-w-0 break-words text-sm font-semibold leading-snug text-[var(--color-ink)]">
                               {event.title}
                             </span>
                             <span className="mt-1 block min-w-0 break-words text-[11px] text-[var(--color-ink-muted)]">
@@ -1219,6 +1347,7 @@ export function PksMapView({
                               )}
                           </div>
                         </div>
+                        </div>
                       </article>
                     )
                   })}
@@ -1231,25 +1360,25 @@ export function PksMapView({
         <div className="min-w-0 flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-3 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="font-bold text-slate-800">
-              Tapahtumalista ({activeCityFilter}): {cityFilteredAllEvents.length} kpl{' '}
+              Tapahtumalista ({getPksCityFilterLabel(activeCityFilter)}): {searchedMapEvents.length} kpl{' '}
               <span className="font-normal text-slate-500">
                 (kartalla enintään {MAX_MAP_EVENT_PINS} lähintä / kaupunki)
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-slate-500">Eräkoko:</span>
               {([25, 50] as const).map((size) => (
                 <button
                   key={size}
                   type="button"
+                  aria-pressed={listPageSize === size}
                   onClick={() => {
                     setListPageSize(size)
                     setListPage(1)
                   }}
-                  className={`min-h-11 px-2 py-0.5 rounded-md font-bold text-[11px] border ${
+                  className={`min-h-11 px-3 py-0.5 rounded-full font-bold text-[11px] ${
                     listPageSize === size
-                      ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]'
-                      : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)] hover:bg-[var(--color-bg)]'
+                      ? 'bg-[var(--color-accent)] text-white'
+                      : 'bg-transparent text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
                   }`}
                 >
                   {size} / sivu
@@ -1261,7 +1390,8 @@ export function PksMapView({
                     type="button"
                     disabled={safeListPage <= 1}
                     onClick={() => setListPage((page) => Math.max(1, page - 1))}
-                    className="min-h-11 min-w-11 px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] font-semibold disabled:opacity-40"
+                    aria-label="Edellinen tapahtumasivu"
+                    className="min-h-11 min-w-11 rounded-full text-[var(--color-ink)] font-semibold hover:bg-[var(--color-surface-alt)] disabled:opacity-40"
                   >
                     ←
                   </button>
@@ -1272,7 +1402,8 @@ export function PksMapView({
                     type="button"
                     disabled={safeListPage >= totalListPages}
                     onClick={() => setListPage((page) => Math.min(totalListPages, page + 1))}
-                    className="min-h-11 min-w-11 px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] font-semibold disabled:opacity-40"
+                    aria-label="Seuraava tapahtumasivu"
+                    className="min-h-11 min-w-11 rounded-full text-[var(--color-ink)] font-semibold hover:bg-[var(--color-surface-alt)] disabled:opacity-40"
                   >
                     →
                   </button>
@@ -1282,10 +1413,10 @@ export function PksMapView({
           </div>
           {paginatedBottomEvents.length === 0 ? (
             <div className="bg-white rounded-xl p-4 border border-slate-200 text-xs text-slate-500 text-center">
-              Ei tapahtumia valitussa kaupungissa ({activeCityFilter}).
+              Ei tapahtumia haulla ja alueella {getPksCityFilterLabel(activeCityFilter)}.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="space-y-2">
               {paginatedBottomEvents.map((event) => (
                 <div
                   key={event.id}
@@ -1297,7 +1428,7 @@ export function PksMapView({
                       {event.hasExactCoords ? '' : '~'}
                       {event.distanceKm} km • {event.ageGroup}
                     </div>
-                    <div className="font-bold text-slate-900 truncate">{event.title}</div>
+                    <div className="font-semibold text-slate-900 truncate">{event.title}</div>
                     <div className="text-[11px] text-slate-500 truncate">
                       {getEventVenueLabel(event)} • {getEventTimeLabel(event)}
                     </div>

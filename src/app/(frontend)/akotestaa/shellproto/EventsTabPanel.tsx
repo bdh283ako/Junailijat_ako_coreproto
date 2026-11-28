@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { buildGoogleCalendarUrl } from './googleCalendar'
 import { DEFAULT_PKS_COORDS, resolveCoordsTuple } from './mapGeoResolver'
+import { getPksCityFilterLabel } from './pksAreas'
 import { PksMapView } from './PksMapView'
 import { MapPeek } from './MapPeek'
 import type { FamilyEvent, FamilyProfile, UserProfileState } from './protoData'
@@ -45,6 +46,7 @@ interface EventsTabPanelProps {
   onEventSearchQueryChange: (query: string) => void
   hasActiveQuickEventFilter: boolean
   ignoreDefaultPresetTemp: boolean
+  defaultPresetFallback: boolean
   onToggleDefaultPreset: () => void
   onRefreshEvents: () => void
   onClearEventFilters: () => void
@@ -84,7 +86,6 @@ const CANONICAL_EVENT_TAGS = [
   'Leikki-ikäiset',
   'Kouluikäiset & perheet',
   'Kaikenikäisille / Perheet',
-  'Perhekahvila & vertaistuki',
   'Liikunta & ulkoilu',
   'Kulttuuri & askartelu',
   'Maksuton',
@@ -118,6 +119,7 @@ export function EventsTabPanel({
   onEventSearchQueryChange,
   hasActiveQuickEventFilter,
   ignoreDefaultPresetTemp,
+  defaultPresetFallback,
   onToggleDefaultPreset,
   onRefreshEvents,
   onClearEventFilters,
@@ -137,7 +139,7 @@ export function EventsTabPanel({
           </h2>
           <p className="text-[11px] text-[var(--color-ink-muted)]">
             Koti: <strong>{profile.area}</strong> • Suodatin:{' '}
-            <strong>{profile.filters.targetCity}</strong> ≤{' '}
+            <strong>{getPksCityFilterLabel(profile.filters.targetCity)}</strong> ≤{' '}
             <strong>{profile.filters.maxDistanceKm} km</strong>
           </p>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -148,19 +150,32 @@ export function EventsTabPanel({
               <span className="min-w-0 break-words">{sourceBadge.label}</span>
             </div>
             {profile.defaultPreset.enabled && (
-              <button
-                type="button"
-                onClick={onToggleDefaultPreset}
-                className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-colors ${
-                  ignoreDefaultPresetTemp
-                    ? 'bg-slate-100 text-slate-700 border-slate-300'
-                    : 'bg-[var(--color-amber)]/10 text-[var(--color-ink)] border-[var(--color-amber)]/40 hover:bg-[var(--color-amber)]/20'
-                }`}
-              >
-                {ignoreDefaultPresetTemp
-                  ? 'Oletusrajaus tauolla • Palauta oletus'
-                  : `Oletusrajaus aktiivinen (${profile.defaultPreset.favoriteActivities.length} aktiviteettia)`}
-              </button>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <span
+                  role="status"
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    ignoreDefaultPresetTemp
+                      ? 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-ink-muted)]'
+                      : defaultPresetFallback
+                        ? 'border-[#9E4B16]/40 bg-[var(--color-accent-soft)] text-[var(--color-ink)]'
+                        : 'border-[#2F5D50]/40 bg-[var(--color-accent-soft)] text-[var(--color-ink)]'
+                  }`}
+                >
+                  {ignoreDefaultPresetTemp
+                    ? 'Oletusrajaus pois käytöstä'
+                    : defaultPresetFallback
+                      ? 'Oletusrajaus ei löytänyt osumia — näytetään alueen tapahtumat'
+                      : 'Oletusrajaus käytössä'}
+                </span>
+                <button
+                  type="button"
+                  aria-pressed={!ignoreDefaultPresetTemp}
+                  onClick={onToggleDefaultPreset}
+                  className="min-h-11 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-[11px] font-bold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)]"
+                >
+                  {ignoreDefaultPresetTemp ? 'Palauta oletus' : 'Keskeytä oletus'}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -262,8 +277,8 @@ export function EventsTabPanel({
             Ei tapahtumia valituilla suodattimilla
           </h3>
           <p className="text-xs text-slate-500">
-            Kokeile näyttää kaikki {profile.filters.maxDistanceKm} km:n säteellä olevat tapahtumat
-            tai muokkaa profiilin oletusrajauksia.
+            Tapahtumia ei löytynyt tämän alueen ja suodattimien yhdistelmällä. Demosyötteen määrä
+            vaihtelee; kokeile laajentaa ikäryhmää tai sädettä tai keskeyttää oletusrajaus.
           </p>
           <div className="flex flex-wrap justify-center gap-2">
             {profile.defaultPreset.enabled && !ignoreDefaultPresetTemp && (
@@ -289,7 +304,6 @@ export function EventsTabPanel({
           {filteredSortedEvents.map((evt) => {
             const isGoing = joinedEventIds.has(evt.id)
             const dateLabel = parseEventDateLabel(evt.time)
-            const isFamilyAudienceTag = evt.ageGroup?.trim().toLowerCase() === 'lapset ja perheet'
             const isFreeEvent = evt.price.trim().toLowerCase().includes('maksuton')
             const participantCount = Object.hasOwn(countsByEventId, evt.id)
               ? countsByEventId[evt.id]
@@ -307,14 +321,14 @@ export function EventsTabPanel({
             return (
               <div
                 key={evt.id}
-                className="min-w-0 bg-[var(--color-surface)] rounded-3xl p-4 border border-[var(--color-border)] shadow-sm flex items-start gap-3"
+                className="min-w-0 bg-[var(--color-surface)] rounded-3xl p-4 border border-[var(--color-border)] flex items-start gap-3"
               >
                 {dateLabel && (
                   <div
                     aria-hidden="true"
-                    className="shrink-0 w-12 min-h-[72px] rounded-2xl bg-[var(--color-accent-soft)] border border-[var(--color-border)] text-[var(--color-ink)] flex flex-col items-center justify-center gap-1.5 pt-3 pb-2"
+                    className="shrink-0 w-12 min-h-[72px] rounded-2xl border border-[#9E4B16]/40 bg-[var(--color-accent-soft)] text-[var(--color-ink)] flex flex-col items-center justify-center gap-1.5 py-2"
                   >
-                    <span className="pt-1 text-[9px] font-normal uppercase tracking-[0.14em] leading-none">
+                    <span className="text-[9px] font-normal uppercase tracking-[0.14em] leading-none">
                       {dateLabel.month}
                     </span>
                     <span className="[font-family:var(--font-date-numeral)] text-2xl font-semibold leading-none">
@@ -333,24 +347,21 @@ export function EventsTabPanel({
                           {evt.distanceKm} km kotoa
                         </span>
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold ${
-                            isFamilyAudienceTag
-                              ? 'bg-[var(--color-bg)] text-[var(--color-ink)] border-[var(--color-border)]'
-                              : 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[var(--color-border)]'
-                          }`}
+                          className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[10px] font-bold text-[var(--color-ink)]"
                         >
-                          👶 {evt.ageGroup || 'Kaikki ikäryhmät'}
+                          <Users aria-hidden="true" className="h-3 w-3" strokeWidth={2} />
+                          {evt.ageGroup || 'Kaikki ikäryhmät'}
                         </span>
                       </div>
-                      <h3 className="min-w-0 break-words text-base font-bold text-[var(--color-ink)] leading-snug">
+                      <h3 className="min-w-0 break-words text-sm font-semibold leading-snug text-[var(--color-ink)]">
                         {evt.title}
                       </h3>
                     </div>
                     <span
-                      className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ${
+                      className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full border bg-[var(--color-bg)] text-[11px] ${
                         isFreeEvent
-                          ? 'border-[#2F5D50] bg-[var(--color-bg)] font-semibold text-[#2F5D50]'
-                          : 'border-[var(--color-border)] bg-[var(--color-bg)] font-medium text-[var(--color-ink-muted)]'
+                          ? 'border-[#2F5D50] font-semibold text-[#2F5D50]'
+                          : 'border-[var(--color-border)] font-medium text-[var(--color-ink-muted)]'
                       }`}
                     >
                       {isFreeEvent && <Tag aria-hidden="true" className="h-3 w-3" strokeWidth={2} />}

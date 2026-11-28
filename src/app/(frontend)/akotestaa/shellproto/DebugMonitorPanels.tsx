@@ -162,7 +162,7 @@ export function DebugMonitorPanels({
             {eventFeedDebug.lahellaDebug && (
               <p className="text-[9px] text-zinc-200">
                 Lähellä • raakaa {eventFeedDebug.lahellaDebug.rawItems ?? 0} |
-                {' '}PKS {eventFeedDebug.lahellaDebug.pksItems ?? 0} |
+                {' '}Pääkaupunkiseutu {eventFeedDebug.lahellaDebug.pksItems ?? 0} |
                 {' '}perhe {eventFeedDebug.lahellaDebug.familyItems ?? 0} |
                 {' '}suodatettu {eventFeedDebug.lahellaDebug.filteredItems ?? 0}
                 {typeof eventFeedDebug.lahellaDebug.elapsedMs === 'number'

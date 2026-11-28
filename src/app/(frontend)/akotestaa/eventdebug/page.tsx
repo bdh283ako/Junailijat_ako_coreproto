@@ -1,6 +1,10 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  CANONICAL_AGE_FILTERS,
+  CANONICAL_THEME_FILTERS,
+} from '../shellproto/eventTaxonomy'
 
 const SHELLPROTO_ROUTE_URL = '/api/events'
 const PER_CITY_TARGET = 25
@@ -18,6 +22,7 @@ interface DebugEventRow {
   coords?: [number, number]
   ageRangeLabel?: string
   ageGroup?: string
+  pricingStatus?: 'free' | 'paid' | 'unknown'
   description?: string
   address?: string
   price?: string
@@ -58,6 +63,23 @@ interface ApiEventsPayload {
     byCity?: Record<string, number>
   }
   lahellaDebug?: LahellaDebugPayload
+  taxonomyDebug?: {
+    ageCounts?: Record<string, number>
+    themeCounts?: Record<string, number>
+    pricing?: {
+      total?: number
+      paid?: number
+      free?: number
+      unknown?: number
+      paidBySource?: {
+        lahella?: number
+        linkedEvents?: number
+        eventPulse?: number
+        kauniainen?: number
+        other?: number
+      }
+    }
+  }
   sourceTiming?: {
     lahellaTimeoutMs?: number
     linkedEventsTimeoutMs?: number
@@ -226,7 +248,9 @@ function lahellaRawSummary(item: Record<string, unknown>) {
     street: typeof address.street === 'string' ? address.street : '-',
     lat,
     lng,
-    coordinateMode: isPks ? 'suora PKS-koordinaatti' : 'PKS-fallback / koordinaatti puuttuu tai alueen ulkopuolella',
+    coordinateMode: isPks
+      ? 'suora Pääkaupunkiseudun koordinaatti'
+      : 'Pääkaupunkiseudun varasijainti / koordinaatti puuttuu tai alueen ulkopuolella',
   }
 }
 
@@ -303,6 +327,9 @@ export default function EventSourcesDebugPage() {
   })
 
   const [lahellaDebug, setLahellaDebug] = useState<LahellaDebugPayload | null>(null)
+  const [taxonomyDebug, setTaxonomyDebug] =
+    useState<ApiEventsPayload['taxonomyDebug'] | null>(null)
+  const [taxonomyFilter, setTaxonomyFilter] = useState<string | null>(null)
   const [sourceTiming, setSourceTiming] = useState<ApiEventsPayload['sourceTiming'] | null>(null)
   const [cacheDebug, setCacheDebug] = useState<ApiEventsPayload['cacheDebug'] | null>(null)
   const [lahellaSearch, setLahellaSearch] = useState('')
@@ -456,6 +483,7 @@ export default function EventSourcesDebugPage() {
         warning: data.warning,
       })
       setLahellaDebug(data.lahellaDebug ?? null)
+      setTaxonomyDebug(data.taxonomyDebug ?? null)
       setSourceTiming(data.sourceTiming ?? null)
       setCacheDebug(data.cacheDebug ?? null)
 
@@ -465,7 +493,7 @@ export default function EventSourcesDebugPage() {
       )
       log(
         'INFO',
-        `Lähteet: Karo = ${karoCount} kpl | Linked+PKS = ${linkedEventsCount} kpl (HEL:${byEndpoint.helsinki}, ESP:${byEndpoint.espoo}, VAN:${byEndpoint.vantaa}, KAU:${byEndpoint.kauniainen})`,
+        `Lähteet: Karo = ${karoCount} kpl | Linked+Pääkaupunkiseutu = ${linkedEventsCount} kpl (HEL:${byEndpoint.helsinki}, ESP:${byEndpoint.espoo}, VAN:${byEndpoint.vantaa}, KAU:${byEndpoint.kauniainen})`,
       )
       log('INFO', `Kaupunkijakauma: ${JSON.stringify(byCity)}`)
 
@@ -660,14 +688,25 @@ export default function EventSourcesDebugPage() {
     }
   }
 
+  const taxonomyFilteredEvents = useMemo(
+    () =>
+      taxonomyFilter
+        ? events.filter((event) => {
+            const tags = [...(event.tags ?? []), event.ageGroup ?? '']
+            return tags.some((tag) => tag.toLowerCase().includes(taxonomyFilter.toLowerCase()))
+          })
+        : events,
+    [events, taxonomyFilter],
+  )
+
   const karoEvents = useMemo(
-    () => events.filter((e) => (e.source || '').toLowerCase().includes('karo')),
-    [events],
+    () => taxonomyFilteredEvents.filter((e) => (e.source || '').toLowerCase().includes('karo')),
+    [taxonomyFilteredEvents],
   )
 
   const linkedEvents = useMemo(
     () =>
-      events.filter((e) => {
+      taxonomyFilteredEvents.filter((e) => {
         const s = (e.source || '').toLowerCase()
         const tags = (e.tags || []).map((t) => t.toLowerCase())
         return (
@@ -676,12 +715,12 @@ export default function EventSourcesDebugPage() {
           tags.some((t) => t.includes('linked-events') || t.includes('kauniainen'))
         )
       }),
-    [events],
+    [taxonomyFilteredEvents],
   )
 
   const otherEvents = useMemo(
     () =>
-      events.filter(
+      taxonomyFilteredEvents.filter(
         (e) =>
           !(e.source || '').toLowerCase().includes('karo') &&
           !(e.source || '').toLowerCase().includes('linked') &&
@@ -691,12 +730,15 @@ export default function EventSourcesDebugPage() {
             (t) => t.toLowerCase().includes('linked-events') || t.toLowerCase().includes('kauniainen'),
           ),
       ),
-    [events],
+    [taxonomyFilteredEvents],
   )
 
   const lahellaEvents = useMemo(
-    () => events.filter((e) => (e.source || '').toLowerCase().includes('lahella')),
-    [events],
+    () =>
+      taxonomyFilteredEvents.filter((e) =>
+        (e.source || '').toLowerCase().includes('lahella'),
+      ),
+    [taxonomyFilteredEvents],
   )
 
   const filteredLahellaRawItems = useMemo(() => {
@@ -833,7 +875,7 @@ export default function EventSourcesDebugPage() {
           </div>
 
           <div className="bg-white rounded-2xl p-4 border border-slate-200">
-            <div className="text-[11px] font-bold text-slate-500 uppercase">Linked Events PKS</div>
+            <div className="text-[11px] font-bold text-slate-500 uppercase">Linked Events • Pääkaupunkiseutu</div>
             <div className="text-2xl font-extrabold text-emerald-700 mt-1">
               {meta.linkedEventsCount}
             </div>
@@ -844,7 +886,7 @@ export default function EventSourcesDebugPage() {
           </div>
 
           <div className="bg-white rounded-2xl p-4 border border-slate-200">
-            <div className="text-[11px] font-bold text-slate-500 uppercase">Lähellä.fi PKS</div>
+            <div className="text-[11px] font-bold text-slate-500 uppercase">Lähellä.fi • Pääkaupunkiseutu</div>
             <div className="text-2xl font-extrabold text-fuchsia-700 mt-1">
               {lahellaDebug?.filteredItems ?? lahellaEvents.length}
             </div>
@@ -863,6 +905,93 @@ export default function EventSourcesDebugPage() {
             </div>
           </div>
         </div>
+
+        <section
+          aria-labelledby="taxonomy-debug-heading"
+          className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2
+                id="taxonomy-debug-heading"
+                className="text-xs font-bold text-slate-800 uppercase tracking-wide"
+              >
+                Ikä- ja teemafiltterien osumat
+              </h2>
+              <p className="mt-1 text-[11px] text-slate-600">
+                Maksullisia {taxonomyDebug?.pricing?.paid ?? 0} /{' '}
+                {taxonomyDebug?.pricing?.total ?? events.length}; maksuttomia{' '}
+                {taxonomyDebug?.pricing?.free ?? 0}; hintatieto puuttuu{' '}
+                {taxonomyDebug?.pricing?.unknown ?? 0}.
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-pressed={taxonomyFilter === null}
+              onClick={() => setTaxonomyFilter(null)}
+              className={`min-h-11 px-3 rounded-xl border text-xs font-bold ${
+                taxonomyFilter === null
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-300 bg-slate-50 text-slate-900'
+              }`}
+            >
+              Kaikki tapahtumat
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-700">
+            Maksulliset lähteittäin: Lähellä.fi {taxonomyDebug?.pricing?.paidBySource?.lahella ?? 0}
+            {' • '}Linked Events {taxonomyDebug?.pricing?.paidBySource?.linkedEvents ?? 0}
+            {' • '}EventPulse {taxonomyDebug?.pricing?.paidBySource?.eventPulse ?? 0}
+            {' • '}Kauniainen {taxonomyDebug?.pricing?.paidBySource?.kauniainen ?? 0}
+          </p>
+
+          <div className="space-y-2">
+            <h3 className="text-[10px] font-bold text-slate-600 uppercase">Ikävaiheet</h3>
+            <div role="group" aria-label="Suodata ikävaiheen mukaan" className="flex flex-wrap gap-1.5">
+              {CANONICAL_AGE_FILTERS.map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={taxonomyFilter === label}
+                  onClick={() =>
+                    setTaxonomyFilter((current) => (current === label ? null : label))
+                  }
+                  className={`min-h-11 px-3 rounded-xl border text-[11px] font-semibold ${
+                    taxonomyFilter === label
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {label} ({taxonomyDebug?.ageCounts?.[label] ?? 0})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-[10px] font-bold text-slate-600 uppercase">Teemat</h3>
+            <div role="group" aria-label="Suodata teeman mukaan" className="flex flex-wrap gap-1.5">
+              {CANONICAL_THEME_FILTERS.map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={taxonomyFilter === label}
+                  onClick={() =>
+                    setTaxonomyFilter((current) => (current === label ? null : label))
+                  }
+                  className={`min-h-11 px-3 rounded-xl border text-[11px] font-semibold ${
+                    taxonomyFilter === label
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {label} ({taxonomyDebug?.themeCounts?.[label] ?? 0})
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <section className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -884,7 +1013,7 @@ export default function EventSourcesDebugPage() {
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {[
               ['Raakarivit', lahellaDebug?.rawItems ?? 0],
-              ['PKS-rivit', lahellaDebug?.pksItems ?? 0],
+              ['Pääkaupunkiseuturivit', lahellaDebug?.pksItems ?? 0],
               ['Lapset/perheet/viikko', lahellaDebug?.familyItems ?? 0],
               ['Lopulliset osumat', lahellaDebug?.filteredItems ?? lahellaEvents.length],
               ['Haetut sivut', lahellaDebug?.pagesFetched ?? 0],
@@ -964,12 +1093,23 @@ export default function EventSourcesDebugPage() {
                   <p className="text-slate-600">
                     {evt.address || evt.locationName || '-'} • {evt.ageRangeLabel || evt.ageGroup || '-'}
                   </p>
+                  <p className="text-slate-600">
+                    Hinta: {evt.price || 'Tarkista hinta'} • tila: {evt.pricingStatus || 'unknown'}
+                  </p>
                   <div className="flex flex-wrap gap-1">
-                    {(evt.tags ?? []).map((tag) => (
+                    {(evt.tags ?? [])
+                      .filter(
+                        (tag) =>
+                          CANONICAL_AGE_FILTERS.some((label) => label === tag) ||
+                          CANONICAL_THEME_FILTERS.some((label) => label === tag) ||
+                          tag === 'Maksullinen' ||
+                          tag === 'Maksuton',
+                      )
+                      .map((tag) => (
                       <span key={tag} className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700">
                         {tag}
                       </span>
-                    ))}
+                      ))}
                   </div>
                   {raw && (
                     <details className="rounded-lg border border-slate-200 bg-white">
@@ -1183,13 +1323,13 @@ export default function EventSourcesDebugPage() {
             emptyText="Ei tapahtumia Karon feedistä."
           />
           <SourceListCard
-            title="2. Linked Events & PKS"
+            title="2. Linked Events & Pääkaupunkiseutu"
             badgeClass="bg-emerald-100 text-emerald-800"
             items={linkedEvents}
             emptyText="Ei tapahtumia Linked Events -rajapinnasta."
           />
           <SourceListCard
-            title="3. Lähellä.fi / PKS-perheet"
+            title="3. Lähellä.fi / pääkaupunkiseudun perheet"
             badgeClass="bg-fuchsia-100 text-fuchsia-800"
             items={lahellaEvents}
             emptyText="Ei Lähellä.fi-lapsiperhetapahtumia."
@@ -1248,6 +1388,27 @@ function SourceListCard({
                   📍 {evt.locationName || evt.venue || 'Tuntematon paikka'} • 👶{' '}
                   {evt.ageRangeLabel || evt.ageGroup || '-'}
                 </p>
+                <p className="text-[11px] text-slate-600">
+                  Hinta: {evt.price || 'Tarkista hinta'} • tila: {evt.pricingStatus || 'unknown'}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {(evt.tags ?? [])
+                    .filter(
+                      (tag) =>
+                        CANONICAL_AGE_FILTERS.some((label) => label === tag) ||
+                        CANONICAL_THEME_FILTERS.some((label) => label === tag) ||
+                        tag === 'Maksullinen' ||
+                        tag === 'Maksuton',
+                    )
+                    .map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                </div>
               </div>
             )
           })}

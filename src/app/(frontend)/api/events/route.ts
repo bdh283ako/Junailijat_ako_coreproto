@@ -5,6 +5,10 @@ import {
   PKS_CITY_CENTERS,
   type PksCityName,
 } from '../../akotestaa/shellproto/pksAreas'
+import {
+  CANONICAL_AGE_FILTERS,
+  CANONICAL_THEME_FILTERS,
+} from '../../akotestaa/shellproto/eventTaxonomy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,6 +28,7 @@ export interface NormalizedFeedEvent {
   ageRangeLabel: string
   ageGroup: string
   price: string
+  pricingStatus?: 'free' | 'paid' | 'unknown'
   description?: string
   url?: string
   tags: string[]
@@ -159,6 +164,178 @@ function stripHtml(raw: string): string {
     .replace(/&gt;/gi, '>')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function classificationValues(value: unknown, depth = 0): string[] {
+  if (depth > 4 || value === null || value === undefined) return []
+  if (typeof value === 'string') {
+    const text = stripHtml(value)
+    return text ? [text] : []
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return [String(value)]
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => classificationValues(item, depth + 1))
+  }
+  if (typeof value !== 'object') return []
+
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !/^(?:@context|image|logo|location|position|url|sameas)$/i.test(key))
+    .flatMap(([, item]) => classificationValues(item, depth + 1))
+}
+
+function normalizeClassificationText(values: string[]): string {
+  return values
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function canonicalAgeLabels(options: {
+  ageValues?: unknown[]
+  contextText?: string
+  minAge?: number | null
+  maxAge?: number | null
+}): string[] {
+  const labels = new Set<string>()
+  const addRange = (min: number, max: number) => {
+    if (min <= 3 && max >= 0) labels.add(CANONICAL_AGE_FILTERS[0])
+    if (min <= 6 && max >= 4) labels.add(CANONICAL_AGE_FILTERS[1])
+    if (min <= 12 && max >= 7) labels.add(CANONICAL_AGE_FILTERS[2])
+    if (min <= 18 && max >= 13) labels.add(CANONICAL_AGE_FILTERS[3])
+    if (min <= 0 && max >= 18) labels.add(CANONICAL_AGE_FILTERS[4])
+  }
+
+  if (options.minAge !== undefined || options.maxAge !== undefined) {
+    addRange(options.minAge ?? 0, options.maxAge ?? 18)
+  }
+
+  const ageValues = (options.ageValues ?? []).flatMap((value) =>
+    classificationValues(value),
+  )
+  const ageText = normalizeClassificationText(ageValues)
+  for (const match of ageText.matchAll(
+    /(?:agegroup\/range\s*:\s*)?(\d{1,2})\s*[-–]\s*(\d{1,2})\b/g,
+  )) {
+    const min = Number(match[1])
+    const max = Number(match[2])
+    if (min <= max && max <= 99) addRange(min, max)
+  }
+
+  const context = normalizeClassificationText([
+    ...ageValues,
+    options.contextText ?? '',
+  ])
+  for (const match of context.matchAll(
+    /\b(\d{1,2})\s*[-–]\s*(\d{1,2})\s*(?:v(?:uot\w*)?|years?)/g,
+  )) {
+    const min = Number(match[1])
+    const max = Number(match[2])
+    if (min <= max && max <= 99) addRange(min, max)
+  }
+  if (/vauva|taaper|baby|toddler|infant/.test(context)) {
+    labels.add(CANONICAL_AGE_FILTERS[0])
+  }
+  if (/leikki.?ik|preschool/.test(context)) {
+    labels.add(CANONICAL_AGE_FILTERS[1])
+  }
+  if (/kouluik|koulul|school.?age/.test(context)) {
+    labels.add(CANONICAL_AGE_FILTERS[2])
+  }
+  if (/nuori|teini|teenager|adolescent/.test(context)) {
+    labels.add(CANONICAL_AGE_FILTERS[3])
+  }
+
+  if (labels.size === 0) labels.add(CANONICAL_AGE_FILTERS[4])
+  return CANONICAL_AGE_FILTERS.filter((label) => labels.has(label))
+}
+
+const CANONICAL_THEME_MATCHERS: Array<{
+  label: (typeof CANONICAL_THEME_FILTERS)[number]
+  pattern: RegExp
+}> = [
+  {
+    label: CANONICAL_THEME_FILTERS[0],
+    pattern: /liikunt|urheil|sport|fitness|exercise|football|jalkapall|uimakoul|jooga|yoga/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[1],
+    pattern: /ulkoil|puist|luonto|retki|playground|picnic|outdoor|nature|hiking/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[2],
+    pattern: /kulttuur|esity|teatter|museo|dance|performance|cinema|show/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[3],
+    pattern: /askartel|tyopaj|kasity|craft|workshop|maala|keramiik|art class/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[4],
+    pattern: /satu|tarin|kirjast|lukemis|story|stories|library|reading/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[5],
+    pattern: /musiik|muskari|sing|music|concert|song/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[6],
+    pattern: /vertaistuk|vanhemm|perhekahvil|parent|peer support|mother|father/,
+  },
+  {
+    label: CANONICAL_THEME_FILTERS[7],
+    pattern: /kiertotal|kierrat|kirpp|vaatevaih|arjen apu|ruoka-apu|recycl|reuse|repair|swap|second hand/,
+  },
+]
+
+function canonicalThemeTags(values: unknown[]): string[] {
+  const text = normalizeClassificationText(values.flatMap((value) =>
+    classificationValues(value),
+  ))
+  return CANONICAL_THEME_MATCHERS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ label }) => label)
+}
+
+type PricingStatus = 'free' | 'paid' | 'unknown'
+
+function pricingNumbers(value: unknown, depth = 0): number[] {
+  if (depth > 4 || value === null || value === undefined) return []
+  if (typeof value === 'number' && Number.isFinite(value)) return [value]
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => pricingNumbers(item, depth + 1))
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !/^(?:@context|image|logo|location|position|url|sameas)$/i.test(key))
+      .flatMap(([, item]) => pricingNumbers(item, depth + 1))
+  }
+  return []
+}
+
+function classifyPricing(
+  values: unknown[],
+  explicitFree?: boolean,
+): PricingStatus {
+  if (explicitFree === true) return 'free'
+  if (explicitFree === false) return 'paid'
+  const flattened = values.flatMap((value) => classificationValues(value))
+  const text = normalizeClassificationText(flattened)
+  if (/maksuton|ilmainen|\bfree\b|no charge/.test(text)) return 'free'
+  if (/maksullinen|\bpaid\b|fee|charge|€|\beur\b/.test(text)) return 'paid'
+
+  const numericValues = values.flatMap((value) => pricingNumbers(value))
+  if (numericValues.some((value) => value > 0)) return 'paid'
+  if (numericValues.length > 0 && numericValues.every((value) => value === 0)) {
+    return 'free'
+  }
+  return 'unknown'
+}
+
+function priceLabel(status: PricingStatus): string {
+  if (status === 'free') return 'Maksuton'
+  if (status === 'paid') return 'Maksullinen'
+  return 'Tarkista hinta'
 }
 
 function isPksCoordinate(lat: number, lng: number): boolean {
@@ -300,7 +477,7 @@ function resolvePksCity(
 
 function familySignal(
   item: Record<string, unknown>,
-): { accepted: boolean; ageRanges: string[] } {
+): boolean {
   const traits =
     item.traits && typeof item.traits === 'object'
       ? (item.traits as Record<string, unknown>)
@@ -310,7 +487,7 @@ function familySignal(
     : []
   const themes = Array.isArray(traits.theme) ? traits.theme.map(String) : []
   const childAgeRanges = demographics.filter((value) =>
-    /ageGroup\/range:(0-1|2-6|4-6|7-12)/.test(value),
+    /ageGroup\/range:(0-1|2-6|4-6|7-12|13-18)/.test(value),
   )
 
   const name = stripHtml(
@@ -363,67 +540,65 @@ function familySignal(
     !themesSignal
   const explicitOlderSignal = themes.includes('vt_ikaihmiset') && !familyTextSignal
 
-  return {
-    accepted:
-      (childAgeRanges.length > 0 || familyTextSignal || themesSignal) &&
-      !onlyOlderAdultSignal &&
-      !adultOnlySignal &&
-      !explicitOlderSignal,
-    ageRanges: childAgeRanges,
-  }
+  return (
+    (childAgeRanges.length > 0 || familyTextSignal || themesSignal) &&
+    !onlyOlderAdultSignal &&
+    !adultOnlySignal &&
+    !explicitOlderSignal
+  )
 }
 
 function canonicalTags(options: {
   title: string
   description: string
-  demographics?: string[]
-  themes?: string[]
+  ageLabels?: string[]
+  ageValues?: unknown[]
+  classificationData?: unknown[]
   isFree?: boolean
+  isPaid?: boolean
 }): string[] {
-  const tags: string[] = []
-  const text = `${options.title} ${options.description}`.toLowerCase()
-  const demographics = options.demographics ?? []
-  const themes = options.themes ?? []
+  const ageLabels =
+    options.ageLabels ??
+    canonicalAgeLabels({
+      ageValues: options.ageValues,
+      contextText: `${options.title} ${options.description}`,
+    })
+  const classificationData = [
+    options.title,
+    options.description,
+    ...(options.classificationData ?? []),
+  ]
+  const themeTags = canonicalThemeTags(classificationData)
+  const tags = [...ageLabels, ...themeTags]
 
+  const classificationText = normalizeClassificationText(
+    classificationData.flatMap((value) => classificationValues(value)),
+  )
   if (
-    demographics.some((value) =>
-      /ageGroup\/range:(0-1|2-6|4-6)/.test(value),
-    ) ||
-    /\bvauva|taaper/.test(text)
+    /hm_kohtaamispaikka|\bplace\b|kohtaamispaik|asukaspuist|perhepuist|perhekahvil|perhekeskus|family center|community center/.test(
+      classificationText,
+    )
   ) {
-    tags.push('Vauvat & taaperot')
-  }
-  if (
-    demographics.some((value) => /ageGroup\/range:(2-6|4-6)/.test(value)) ||
-    /\bleikki-ikä|päiväkoti|eskari/.test(text)
-  ) {
-    tags.push('Leikki-ikäiset')
+    tags.push('hm_kohtaamispaikka')
   }
   if (
-    demographics.some((value) => /ageGroup\/range:7-12/.test(value)) ||
-    /\bkoulul|kouluikä|kerho/.test(text) ||
-    themes.includes('vt_lapset_perheet')
+    /liikunt|urheil|ulkoil|puist|luonto|retki|uimakoul|pyoraily/.test(
+      classificationText,
+    )
   ) {
-    tags.push('Kouluikäiset & perheet')
-  }
-  if (
-    themes.includes('vt_lapset_perheet') ||
-    /\bperhe|lapsi|lapset|kerho/.test(text)
-  ) {
-    tags.push('Kaikenikäisille / Perheet')
-  }
-  if (/perhekahvil|kahvil|vertais(?:tuki|ryhmä)/.test(text)) {
-    tags.push('Perhekahvila & vertaistuki')
-  }
-  if (/liikunta|ulkoilu|retki|luonto|uint|kävely|pyörä/.test(text)) {
     tags.push('Liikunta & ulkoilu')
   }
-  if (/kulttuuri|askartelu|kirjasto|museo|musiikki|teatteri|maalaus|keramiikka/.test(text)) {
+  if (
+    /kulttuur|esity|teatter|museo|askartel|tyopaj|kirjast|musiik/.test(
+      classificationText,
+    )
+  ) {
     tags.push('Kulttuuri & askartelu')
   }
   if (options.isFree) {
     tags.push('Maksuton')
   }
+  if (options.isPaid) tags.push('Maksullinen')
   return Array.from(new Set(tags))
 }
 
@@ -503,9 +678,9 @@ async function fetchLahellaActivities(): Promise<{
 
   const events: NormalizedFeedEvent[] = []
   for (const [key, item] of rawItemsById) {
-    const familyResult = familySignal(item)
-    if (familyResult.accepted) familyItems += 1
-    if (familyResult.accepted === false) continue
+    const acceptedFamily = familySignal(item)
+    if (acceptedFamily) familyItems += 1
+    if (!acceptedFamily) continue
     const traits =
       item.traits && typeof item.traits === 'object'
         ? (item.traits as Record<string, unknown>)
@@ -627,36 +802,34 @@ async function fetchLahellaActivities(): Promise<{
       city,
     ].filter(Boolean)
 
-    const pricing = Array.isArray(traits.pricing)
-      ? traits.pricing.map(String)
-      : []
-    const isFree =
-      pricing.includes('free') ||
-      (typeof traits.price === 'number' && traits.price === 0)
     const demographics = Array.isArray(traits.demographic)
       ? traits.demographic.map(String)
       : []
     const themes = Array.isArray(traits.theme)
       ? traits.theme.map(String)
       : []
+    const formats = Array.isArray(traits.format)
+      ? traits.format.map(String)
+      : []
+    const pricingStatus = classifyPricing([traits.pricing, traits.price])
+    const ageLabels = canonicalAgeLabels({
+      ageValues: [demographics],
+      contextText: `${title} ${description}`,
+    })
     const tags = [
       'lahella-fi',
       ...canonicalTags({
         title,
         description,
-        demographics,
-        themes,
-        isFree,
+        ageLabels,
+        ageValues: [demographics],
+        classificationData: [themes, formats, demographics],
+        isFree: pricingStatus === 'free',
+        isPaid: pricingStatus === 'paid',
       }),
     ]
 
-    const ageRanges = familySignal(item).ageRanges
-    const ageRangeLabel =
-      ageRanges.length > 0
-        ? ageRanges
-            .map((value) => value.replace('ageGroup/range:', '').replace('-', '–'))
-            .join(', ') + ' v'
-        : 'Lapset & perheet'
+    const ageRangeLabel = ageLabels.join(', ')
 
     filteredItems += 1
     events.push({
@@ -672,7 +845,8 @@ async function fetchLahellaActivities(): Promise<{
       coords: [coordinates.lat, coordinates.lng] as [number, number],
       ageRangeLabel,
       ageGroup: ageRangeLabel,
-      price: isFree ? 'Maksuton' : 'Tarkista hinta',
+      price: priceLabel(pricingStatus),
+      pricingStatus,
       description: description || undefined,
       url:
         typeof firstChannel?.www === 'string'
@@ -728,27 +902,45 @@ function normalizeCityName(rawLocality: string, fallbackCity: string): string {
   return fallbackCity
 }
 
-function extractAgeLabel(raw: Record<string, unknown>, title: string, desc: string): string {
+function extractAgeLabels(
+  raw: Record<string, unknown>,
+  title: string,
+  desc: string,
+): string[] {
   const minAge = typeof raw.audience_min_age === 'number' ? raw.audience_min_age : null
   const maxAge = typeof raw.audience_max_age === 'number' ? raw.audience_max_age : null
-  if (minAge !== null && maxAge !== null) return `${minAge}–${maxAge} v`
-  if (minAge !== null) return `${minAge}+ v`
-  if (maxAge !== null) return `alle ${maxAge} v`
-
-  const combined = `${title} ${desc}`.toLowerCase()
-  if (/vauva|taapero|0[-–]3/.test(combined)) return '0–3 v'
-  if (/leikki-ikä|4[-–]6/.test(combined)) return '4–6 v'
-  if (/koululai|7[-–]12/.test(combined)) return '7–12 v'
-  return 'Lapset & perheet'
+  return canonicalAgeLabels({
+    ageValues: [
+      raw.audience,
+      raw.ageRange,
+      raw.age_range,
+      raw.typicalAgeRange,
+      raw.keywords,
+    ],
+    contextText: `${title} ${desc}`,
+    minAge,
+    maxAge,
+  })
 }
 
-function extractPriceLabel(raw: Record<string, unknown>): string {
+function extractPrice(raw: Record<string, unknown>): {
+  label: string
+  status: PricingStatus
+} {
   const offers = Array.isArray(raw.offers) ? raw.offers : []
   const firstOffer = offers[0] as Record<string, unknown> | undefined
-  if (!firstOffer) return 'Maksuton / tarkista'
-  if (firstOffer.is_free === true) return 'Maksuton'
-  const priceText = pickLocalizedText(firstOffer.price)
-  return priceText || 'Maksullinen'
+  const explicitFree =
+    typeof firstOffer?.is_free === 'boolean' ? firstOffer.is_free : undefined
+  const status = classifyPricing(
+    [firstOffer, firstOffer?.price, raw.price, raw.priceCurrency],
+    explicitFree,
+  )
+  const priceText = pickLocalizedText(firstOffer?.price)
+  const label =
+    status === 'paid' && priceText && /[\d€]|\beur\b/i.test(priceText)
+      ? stripHtml(priceText)
+      : priceLabel(status)
+  return { label, status }
 }
 
 function extractCollectionItems(payload: unknown): Record<string, unknown>[] {
@@ -911,7 +1103,8 @@ async function fetchKaroEventPulse(): Promise<{
       const descriptionRaw =
         typeof item.description === 'string'
           ? item.description
-          : pickLocalizedText(item.description)
+          : pickLocalizedText(item.description) ||
+            classificationValues(item.about).join(' ')
       const description = descriptionRaw ? stripHtml(descriptionRaw) : undefined
 
       const url =
@@ -921,18 +1114,49 @@ async function fetchKaroEventPulse(): Promise<{
             ? item['@id']
             : undefined
 
-      const ageLabel = String(
-        item.ageRangeLabel ?? item.typicalAgeRange ?? item.ageGroup ?? 'All ages',
+      const ageLabels = canonicalAgeLabels({
+        ageValues: [
+          item.ageRangeLabel,
+          item.typicalAgeRange,
+          item.ageGroup,
+          item.audience,
+          item.keywords,
+        ],
+        contextText: `${title} ${description ?? ''}`,
+      })
+      const explicitFree =
+        typeof item.isAccessibleForFree === 'boolean'
+          ? item.isAccessibleForFree
+          : undefined
+      const pricingStatus = classifyPricing(
+        [item.offers, item.price, item.priceSpecification],
+        explicitFree,
       )
-
-      const rawTags = Array.isArray(item.tags)
-        ? item.tags
-        : Array.isArray(item.keywords)
-          ? item.keywords
-          : typeof item.keywords === 'string'
-            ? item.keywords.split(',').map((s) => s.trim())
-            : ['EventPulse']
-      const tags = rawTags.map(String).filter(Boolean)
+      const rawTags = [
+        ...classificationValues(item.tags),
+        ...classificationValues(item.keywords),
+      ]
+      const tags = Array.from(
+        new Set([
+          'karo-eventpulse-feed',
+          ...rawTags,
+          ...canonicalTags({
+            title,
+            description: description ?? '',
+            ageLabels,
+            ageValues: [
+              item.ageRangeLabel,
+              item.typicalAgeRange,
+              item.ageGroup,
+              item.audience,
+              item.keywords,
+            ],
+            classificationData: [item.keywords, item.about, item.audience, item.tags],
+            isFree: pricingStatus === 'free',
+            isPaid: pricingStatus === 'paid',
+          }),
+        ]),
+      )
 
       const coords = parseCoords(item, locObj)
 
@@ -951,14 +1175,10 @@ async function fetchKaroEventPulse(): Promise<{
               coords: [coords.lat, coords.lng] as [number, number],
             }
           : {}),
-        ageRangeLabel: ageLabel,
-        ageGroup: ageLabel,
-        price:
-          typeof item.isAccessibleForFree === 'boolean'
-            ? item.isAccessibleForFree
-              ? 'Maksuton'
-              : 'Maksullinen'
-            : 'Maksuton / tarkista',
+        ageRangeLabel: ageLabels.join(', '),
+        ageGroup: ageLabels.join(', '),
+        price: priceLabel(pricingStatus),
+        pricingStatus,
         description,
         url,
         tags,
@@ -1021,12 +1241,21 @@ function mapLinkedEventRows(
     const lng = geoCoords && typeof geoCoords[0] === 'number' ? geoCoords[0] : undefined
 
     const infoUrl = pickLocalizedText(row.info_url)
-    const ageLabel = extractAgeLabel(row, title, description)
-    const price = extractPriceLabel(row)
+    const ageLabels = extractAgeLabels(row, title, description)
+    const price = extractPrice(row)
     const canonical = canonicalTags({
       title,
       description,
-      isFree: price === 'Maksuton',
+      ageLabels,
+      ageValues: [
+        row.audience_min_age,
+        row.audience_max_age,
+        row.audience,
+        row.keywords,
+      ],
+      classificationData: [row.keywords, row.audience],
+      isFree: price.status === 'free',
+      isPaid: price.status === 'paid',
     })
 
     results.push({
@@ -1044,9 +1273,10 @@ function mapLinkedEventRows(
             coords: [lat, lng] as [number, number],
           }
         : {}),
-      ageRangeLabel: ageLabel,
-      ageGroup: ageLabel,
-      price,
+      ageRangeLabel: ageLabels.join(', '),
+      ageGroup: ageLabels.join(', '),
+      price: price.label,
+      pricingStatus: price.status,
       description: description || undefined,
       url: infoUrl || undefined,
       tags: ['linked-events', config.sourceTag, ...canonical],
@@ -1192,6 +1422,7 @@ async function fetchKauniainenWebEvents(): Promise<NormalizedFeedEvent[]> {
       if (!link || !title || title.length < 4 || seen.has(link)) continue
       seen.add(link)
       const slug = link.replace(/\/+$/, '').split('/').pop() || String(items.length + 1)
+      const ageLabels = [CANONICAL_AGE_FILTERS[4]]
 
       items.push({
         id: `grani-web-${slug}`,
@@ -1201,11 +1432,19 @@ async function fetchKauniainenWebEvents(): Promise<NormalizedFeedEvent[]> {
         locationName: 'Kauniainen (Grani)',
         venue: 'Kauniainen',
         city: 'Kauniainen',
-        ageRangeLabel: 'Koko perhe',
-        ageGroup: 'Koko perhe',
+        ageRangeLabel: ageLabels.join(', '),
+        ageGroup: ageLabels.join(', '),
         price: 'Tarkista sivulta',
+        pricingStatus: 'unknown',
         url: link,
-        tags: ['kauniainen-web'],
+        tags: [
+          'kauniainen-web',
+          ...canonicalTags({
+            title,
+            description: '',
+            ageLabels,
+          }),
+        ],
         source: 'kauniainen-web',
       })
 
@@ -1253,6 +1492,63 @@ function rebuildFeedCache(): void {
     feedCache.vantaaResult?.hasNextPage === true ||
     feedCache.lahellaResult?.debug.hasMore === true
   feedCache.updatedAt = Date.now()
+}
+
+function getTaxonomyDebug(events: NormalizedFeedEvent[]) {
+  const ageCounts = Object.fromEntries(
+    CANONICAL_AGE_FILTERS.map((label) => [label, 0]),
+  ) as Record<(typeof CANONICAL_AGE_FILTERS)[number], number>
+  const themeCounts = Object.fromEntries(
+    CANONICAL_THEME_FILTERS.map((label) => [label, 0]),
+  ) as Record<(typeof CANONICAL_THEME_FILTERS)[number], number>
+  const paidBySource = {
+    lahella: 0,
+    linkedEvents: 0,
+    eventPulse: 0,
+    kauniainen: 0,
+    other: 0,
+  }
+  let paid = 0
+  let free = 0
+  let unknown = 0
+
+  for (const event of events) {
+    const tags = new Set(event.tags.map((tag) => tag.toLowerCase()))
+    const ageLabels = new Set(
+      event.ageGroup
+        .split(',')
+        .map((label) => label.trim().toLowerCase()),
+    )
+    for (const label of CANONICAL_AGE_FILTERS) {
+      if (tags.has(label.toLowerCase()) || ageLabels.has(label.toLowerCase())) {
+        ageCounts[label] += 1
+      }
+    }
+    for (const label of CANONICAL_THEME_FILTERS) {
+      if (tags.has(label.toLowerCase())) themeCounts[label] += 1
+    }
+
+    if (event.pricingStatus === 'paid') {
+      paid += 1
+      const source = event.source.toLowerCase()
+      if (source.includes('lahella')) paidBySource.lahella += 1
+      else if (source.includes('linked')) paidBySource.linkedEvents += 1
+      else if (source.includes('eventpulse') || source.includes('karo')) {
+        paidBySource.eventPulse += 1
+      } else if (source.includes('kauniainen')) paidBySource.kauniainen += 1
+      else paidBySource.other += 1
+    } else if (event.pricingStatus === 'free') {
+      free += 1
+    } else {
+      unknown += 1
+    }
+  }
+
+  return {
+    ageCounts,
+    themeCounts,
+    pricing: { total: events.length, paid, free, unknown, paidBySource },
+  }
 }
 
 async function startFeedRefresh(
@@ -1382,6 +1678,7 @@ export async function GET(request: NextRequest) {
 
   const linkedEventsTotal = feedCache.linkedEventsTotal
   const hasMorePages = feedCache.hasMorePages
+  const taxonomyDebug = getTaxonomyDebug(combined)
 
   return NextResponse.json(
     {
@@ -1412,6 +1709,7 @@ export async function GET(request: NextRequest) {
         },
         byCity,
       },
+      taxonomyDebug,
       karoDebug: feedCache.karoResult?.debug ?? null,
       lahellaDebug: feedCache.lahellaResult?.debug ?? null,
       cacheDebug: {

@@ -80,7 +80,7 @@ const TOPIC_ROOMS: TopicRoom[] = [
   {
     id: 'general',
     name: 'Yleinen',
-    description: 'PKS-perheiden yhteinen yleiskeskustelu ja arjen vinkit',
+    description: 'Pääkaupunkiseudun perheiden yhteinen yleiskeskustelu ja arjen vinkit',
     badge: 'Yleinen',
   },
   {

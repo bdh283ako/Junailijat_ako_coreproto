@@ -33,6 +33,7 @@ import {
   PKS_AREA_OPTIONS,
   PKS_CITIES,
   PKS_CITY_CENTERS,
+  resolvePksAreaOption,
   type PksCityName,
 } from './pksAreas'
 import { PksMapView } from './PksMapView'
@@ -157,6 +158,16 @@ function getCoarseCity(area: string, fallbackCity: string): PksCityName {
   )
 }
 
+function getFamilyMapCoords(
+  family: Pick<ApiFamilyProfile, 'id' | 'area'>,
+  city: PksCityName,
+): [number, number] {
+  const resolvedArea =
+    resolvePksAreaOption(family.area) ??
+    (family.id === 'bdh283' ? resolvePksAreaOption('Espoo • Leppävaara') : undefined)
+  return resolvedArea?.coords ?? PKS_CITY_CENTERS[city]
+}
+
 function getAgeGroups(summary?: string): string[] {
   const normalized = (summary ?? '')
     .toLowerCase()
@@ -231,11 +242,11 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
 
   const summaryParts = [
     sources.linkedEventsCount > 0
-      ? `Linked Events PKS (${sources.linkedEventsCount})`
-      : 'Linked Events PKS (0)',
+      ? `Linked Events • Pääkaupunkiseutu (${sources.linkedEventsCount})`
+      : 'Linked Events • Pääkaupunkiseutu (0)',
     sources.lahellaCount > 0
-      ? `Lähellä.fi PKS (${sources.lahellaCount})`
-      : 'Lähellä.fi PKS (0)',
+      ? `Lähellä.fi • Pääkaupunkiseutu (${sources.lahellaCount})`
+      : 'Lähellä.fi • Pääkaupunkiseutu (0)',
     sources.karoCount > 0 ? `EventPulse (${sources.karoCount})` : 'EventPulse (0)',
   ]
 
@@ -817,23 +828,40 @@ export default function PerheAppPrototypePage() {
 
   const normalizedEventQuery = eventSearchQuery.trim().toLowerCase()
 
-  const filteredSortedEvents = baseAreaSortedEvents.filter((evt) => {
-    if (!matchesEventAgeFilter(evt.ageGroup, eventAgeFilter)) {
-      return false
+  const defaultPresetIsActive = profile.defaultPreset.enabled && !ignoreDefaultPresetTemp
+  const matchesQuickEventFilters = (evt: (typeof baseAreaSortedEvents)[number]) => {
+    if (!matchesEventAgeFilter(evt.ageGroup, eventAgeFilter)) return false
+    if (normalizedEventQuery) {
+      const haystack = [
+        evt.title,
+        evt.venue,
+        evt.city,
+        evt.district ?? '',
+        evt.ageGroup,
+        evt.price,
+        evt.description ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      if (!haystack.includes(normalizedEventQuery)) return false
     }
-
-    if (profile.defaultPreset.enabled && !ignoreDefaultPresetTemp) {
+    return true
+  }
+  const matchesDefaultPreset = (evt: (typeof baseAreaSortedEvents)[number]) => {
+    if (defaultPresetIsActive) {
       if (profile.defaultPreset.onlyFreeEvents && !/maksuton|free/i.test(evt.price || '')) {
         return false
       }
       if (
         profile.defaultPreset.weekendOrEveningFocus &&
-        !/la|su|viikonlop|klo\s*(1[7-9]|2[0-2])|ilta/i.test(`${evt.time || ''} ${evt.title}`)
+        !/\b(?:la|su)\b|viikonlop|klo\s*(?:1[7-9]|2[0-2])\b|\bilta\b/i.test(
+          `${evt.time || ''} ${evt.title}`,
+        )
       ) {
         return false
       }
       if (activeAgeGroupsForEvents.length > 0) {
-        const evtAgeNorm = (evt.ageGroup || '').toLowerCase()
+        const evtAgeNorm = (evt.ageGroup || '').toLowerCase().replace(/[–—]/g, '-')
         const isGeneral =
           !evtAgeNorm ||
           evtAgeNorm.includes('kaikki') ||
@@ -866,25 +894,16 @@ export default function PerheAppPrototypePage() {
         }
       }
     }
-
-    if (normalizedEventQuery) {
-      const haystack = [
-        evt.title,
-        evt.venue,
-        evt.city,
-        evt.district ?? '',
-        evt.ageGroup,
-        evt.price,
-        evt.description ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
-      if (!haystack.includes(normalizedEventQuery)) {
-        return false
-      }
-    }
     return true
-  })
+  }
+
+  const quickFilteredEvents = baseAreaSortedEvents.filter(matchesQuickEventFilters)
+  const presetFilteredEvents = quickFilteredEvents.filter(matchesDefaultPreset)
+  const defaultPresetFallback =
+    defaultPresetIsActive && presetFilteredEvents.length === 0 && quickFilteredEvents.length > 0
+  const filteredSortedEvents = defaultPresetFallback
+    ? quickFilteredEvents
+    : presetFilteredEvents
 
   const hasActiveQuickEventFilter = eventAgeFilter !== 'all' || normalizedEventQuery.length > 0
 
@@ -894,7 +913,7 @@ export default function PerheAppPrototypePage() {
     () =>
       apiFamilyProfiles.map((family) => {
         const city = getCoarseCity(family.area, profile.homeCity)
-        const famCoords = resolveCoordsTuple(PKS_CITY_CENTERS[city], DEFAULT_PKS_COORDS)
+        const famCoords = getFamilyMapCoords(family, city)
         const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
         const familyProfile: FamilyProfile = {
           id: family.id,
@@ -942,6 +961,8 @@ export default function PerheAppPrototypePage() {
     () => familiesWithDistance.filter((family) => family.isMutualMatch),
     [familiesWithDistance],
   )
+  const homeFamilyCards = filteredDeck.length > 0 ? filteredDeck : matchedFamilies
+  const isShowingMatchesFallback = filteredDeck.length === 0 && matchedFamilies.length > 0
   const visibleMapFamilies =
     activeTab === 'families' && familySubTab === 'matches' ? matchedFamilies : filteredDeck
   const syncInferredAges = (prev: UserProfileState, nextChildren: ChildItem[]): string[] => {
@@ -1348,9 +1369,9 @@ export default function PerheAppPrototypePage() {
                 aria-label={`Muokkaa kotisijaintia: ${profile.homeCity} (${profile.area}), enintään ${profile.filters.maxDistanceKm} km`}
                 aria-haspopup="dialog"
                 aria-expanded={locationModalOpen}
-                className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 px-1 text-left text-[10px] text-slate-500 hover:text-[var(--color-ink)] md:text-xs"
+                className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-left text-[10px] text-[var(--color-ink-muted)] transition-colors hover:border-[#2F5D50] hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-ink)] md:text-xs"
               >
-                <span aria-hidden="true">🟠</span>
+                <MapPin aria-hidden="true" size={14} strokeWidth={2} className="shrink-0" />
                 <span className="min-w-0 truncate">
                   {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
                 </span>
@@ -1558,10 +1579,15 @@ export default function PerheAppPrototypePage() {
             currentUser &&
             isFamilyProfileComplete(profile) && (
               <FamilyHomeCarousel
-                families={filteredDeck}
+                families={homeFamilyCards}
                 familyApiError={familyApiError}
                 pendingFamilyLikeId={pendingFamilyLikeId}
+                isDiscoverable={profile.privacy.discoverable}
+                isShowingMatchesFallback={isShowingMatchesFallback}
                 onSwipe={(family, liked) => handleSwipe(liked, family)}
+                onOpenMatchesChat={(familyId) =>
+                  openHubChannel('matches', { directTargetId: familyId })
+                }
               />
             )}
           {activeTab === 'events' && (
@@ -1583,6 +1609,7 @@ export default function PerheAppPrototypePage() {
               onEventSearchQueryChange={setEventSearchQuery}
               hasActiveQuickEventFilter={hasActiveQuickEventFilter}
               ignoreDefaultPresetTemp={ignoreDefaultPresetTemp}
+              defaultPresetFallback={defaultPresetFallback}
               onToggleDefaultPreset={() => setIgnoreDefaultPresetTemp((prev) => !prev)}
               onRefreshEvents={() => void loadEventsFeed(true)}
               onClearEventFilters={() => {
@@ -1731,6 +1758,7 @@ export default function PerheAppPrototypePage() {
               showCloseRelativesInMatches={profile.privacy.showCloseRelativesInMatches}
               focusCoords={mapFocusCoords}
               onResetBounds={handleResetMapBounds}
+              onOpenMap={openOnMap}
               selectedCity={profile.filters.targetCity}
               onChangeSelectedCity={(nextCity) =>
                 setProfile((prev) => ({
@@ -1762,7 +1790,6 @@ export default function PerheAppPrototypePage() {
                 )
               }
               onLogSelection={recordDemoSelection}
-              onOpenMap={openOnMap}
             />
           )}
 

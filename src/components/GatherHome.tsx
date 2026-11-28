@@ -181,7 +181,7 @@ export function GatherHome() {
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-            PKS Lapsiperheiden tapahtumat
+            Pääkaupunkiseudun lapsiperhetapahtumat
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             Tapahtumasyöte ja kalenterivienti

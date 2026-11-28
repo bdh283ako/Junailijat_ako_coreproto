@@ -11,6 +11,7 @@ import {
 } from './protoData'
 import {
   findNearestPksArea,
+  getPksCityFilterLabel,
   PKS_AREA_OPTIONS,
   PKS_CITY_FILTER_OPTIONS,
   resolvePksAreaOption,
@@ -459,7 +460,7 @@ export function ProfileSettingsPanel({
               >
                 {PKS_CITY_FILTER_OPTIONS.map((city) => (
                   <option key={city} value={city}>
-                    {city}
+                    {getPksCityFilterLabel(city)}
                   </option>
                 ))}
               </select>

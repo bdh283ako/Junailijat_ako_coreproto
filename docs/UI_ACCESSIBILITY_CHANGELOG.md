@@ -248,3 +248,40 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 - Tapahtuma-, kohtaamispaikka- ja perhemätsipisarat pienennettiin noin 26 × 34 px:iin, kotimerkki 28 × 36 px:iin. Leafletin ikonin ulkokehys säilyy 44 × 44 px:n napautusalueena.
 - Samassa koordinaatissa ryhmitellyt tapahtumat näyttävät määrän valkoisena tekstinä suoraan pisarassa; ruudunlukijan nimi ja Leafletin tooltip kertovat ryhmän tapahtumamäärän. Normaalinäkymän ja debug-tilan värit säilyvät.
 
+## 2026-11-28 — Kartan perheosumien sijainti ja suodattimet
+
+- Perheosumien koordinaatit ratkaistaan tallennetusta `pksAreas`-alueesta; `bdh283` kohdistuu Leppävaaraan eikä käyttäjän kotisijaintiin.
+- Poistettiin mallintamaton `Perhekahvila & vertaistuki` -tägi sekä kartan turhat alue-/karttarajausmerkinnät. Kohtaamispaikoille on yksi oletuksena pois oleva Lucide-ikonillinen `aria-pressed`-kytkin (44 px).
+- Kaupunkivalikoissa ja näkyvissä lähde-/debug-teksteissä käytetään nimeä ”Pääkaupunkiseutu”; karttaselite käyttää kodin, tapahtumien, perheosumien ja kohtaamispaikkojen ikoneja.
+
+## 2026-11-28 — Shellproton versiointiperiaate
+
+- Shellproton kartan perheosumat esitetään vaakasuuntaisena, näppäimistöllä selattavana karusellina. Tapahtumalista sai haun ja kevyemmän sivutuksen; yläpalkin kohtaamispaikkakytkin eriytettiin tägisuodattimista.
+- Etusivun tapahtumakorttien otsikot käyttävät nyt karttakorttien kevyempää tyyliä. Shellproton versiotunnus annetaan vain tuotantopushista; saman päivän PATCH-numero järjestää tuotantopushit.
+
+## 2026-11-28 — Tapahtumien ikä- ja teemalajittelu
+
+- Tapahtumalähteiden ikävaiheet ja teemat normalisoidaan yhteisiin tunnisteisiin; `eventdebug` näyttää niiden osumat sekä maksullisten, maksuttomien ja tuntemattoman hintatiedon määrät.
+- Kartan ikä- ja teemasuodattimet käyttävät samoja tunnisteita. Kohtaamispaikat ovat erillinen 44 px:n `role="switch"`-tasokytkin, jolla on näkyvä tila ja meripihkainen taloikoni.
+
+## 2026-11-28 — Maksullisten tapahtumien karttasuodatin
+
+- Kartan hintasuodatin vaihtui `Maksuton`-valinnasta `Maksullinen`-valinnaksi, jotta käyttäjä voi rajata näkymään maksulliset tapahtumat.
+
+## 2026-11-28 — Perhekorttien aksentit ja kartan tasonkytkimet
+
+- Perhekorteissa korostetaan aluetta, lasten ikäryhmää ja kiinnostuksia hillityillä salvia-/terrakotta-aksenteilla sekä selkeillä verkostoitumis-, kartta- ja keskustelutoiminnoilla.
+- Tapahtumakorttien pohjat ja ikä-/hintamerkinnät pidettiin vaaleina ja neutraaleina. Kartan `Kohtaamispaikat`- ja `Maksullinen`-kytkimet erotettiin omaksi 44 px:n tasoryhmäksi; maksullisissa käytetään Coins-ikonia.
+- Yläpalkin sijainti- ja sädelinkki sai hillityn pilleritaustan, sijainti-ikonin sekä hover- ja näppäimistöfokustilan.
+
+## 2026-11-28 — Oletusrajauksen fallback ja korttien toimivuus
+
+- Tapahtumien ikäryhmävertailu normalisoi en- ja em-viivat; jos oletusrajaus ei löydä yhtään osumaa, alueen tulokset näytetään ja fallback kerrotaan erikseen.
+- Etusivun perhekaruselli näyttää rajausehtojen tyhjentyessä olemassa olevat keskinäiset mätsit tai kertoo demoprofiilien rajallisuudesta ja suodattimien laajentamisesta.
+- Perhekorttien liukuvärit vaihdettiin yhtenäiseen salvia-aksenttiin. Kartan perhekortti valitsee perheen ja kohdistaa kartan sen koordinaatteihin; tapahtumakortteihin lisättiin päivämäärälaatikot.
+
+## 2026-11-28 — Korttien viimeistely
+
+- Perhe- ja tapahtumakorttien yläreunan väripalkit poistettiin; päivämäärälaatikoiden hillityt taustat säilytettiin.
+- Etusivun tapahtumaruudukko säilyy mobiilissa yksipalstaisena ja tablettileveydellä kaksipalstaisena. Tapahtumaotsikoiden paino yhtenäistettiin kevyemmäksi, ja kartan päivämääränumero käyttää etusivun numerofonttia kompaktissa koossa.
+

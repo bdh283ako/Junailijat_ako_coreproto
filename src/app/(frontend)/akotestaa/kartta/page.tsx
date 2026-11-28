@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
+import { PKS_AREAS } from '../shellproto/pksAreas'
 
 interface MatchedFamilyPin {
   id: string
@@ -31,6 +32,9 @@ const FAMILY_COORDINATES: Record<string, [number, number]> = {
   'fam-202': [60.2189, 24.8124], // Mäkisen perhe (Leppävaara)
   'fam-203': [60.2114, 24.7265], // Korhosen perhe (Kauniainen)
   'fam-204': [60.1598, 24.7384], // Niemisen perhe (Matinkylä)
+  bdh283:
+    PKS_AREAS.find((area) => area.city === 'Espoo' && area.name === 'Leppävaara')?.coords ??
+    [60.2188, 24.8124],
 }
 
 // Tapahtumien sijainnit (samat otsikot kuin /akotestaa/matsit-sivulla)
@@ -71,16 +75,6 @@ export default function KarttaTestiPage() {
 
   const [status, setStatus] = useState('Pääkaupunkiseutu (Helsinki, Espoo, Vantaa)')
   const [matchedPins, setMatchedPins] = useState<MatchedFamilyPin[]>([])
-
-  // Apufunktio: sovittaa kartan pääkaupunkiseudun rajaukseen
-  const fitPksView = () => {
-    const L = (window as any).L
-    if (!L || !mapInstance.current) return
-    const bounds = L.latLngBounds(PKS_BOUNDS_COORDS[0], PKS_BOUNDS_COORDS[1])
-    mapInstance.current.closePopup()
-    mapInstance.current.fitBounds(bounds, { padding: [20, 20] })
-    setStatus('Pääkaupunkiseutu (Helsinki, Espoo, Vantaa)')
-  }
 
   // 1. Luetaan syntyneet perheosumat localStoragesta
   const loadMatchesFromStorage = () => {
@@ -468,7 +462,7 @@ export default function KarttaTestiPage() {
             )}
           </div>
 
-          {/* Rivi 3: Status, PKS-palautusnappi ja GPS-paikannus */}
+          {/* Rivi 3: Status ja GPS-paikannus */}
           <div
             style={{
               display: 'flex',
@@ -481,22 +475,6 @@ export default function KarttaTestiPage() {
             <span style={{ fontSize: 13, color: '#334155', fontWeight: 500 }}>{status}</span>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={fitPksView}
-                style={{
-                  background: '#f1f5f9',
-                  color: '#0f172a',
-                  border: '1px solid #cbd5e1',
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 13,
-                }}
-              >
-                Näytä koko PKS
-              </button>
               <button
                 type="button"
                 onClick={locateMe}

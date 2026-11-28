@@ -7,6 +7,10 @@ export const PKS_ALL_CITIES = 'Kaikki PKS' as const
 export const PKS_CITY_FILTER_OPTIONS = [PKS_ALL_CITIES, ...PKS_CITIES] as const
 export const DEFAULT_PKS_CITY: PksCityName = 'Helsinki'
 
+export function getPksCityFilterLabel(value: string): string {
+  return value === PKS_ALL_CITIES ? 'Pääkaupunkiseutu' : value
+}
+
 export const PKS_CITY_ALIASES: Record<PksCityName, readonly string[]> = {
   Espoo: ['espoo', 'esbo', 'espoossa', 'espooseen'],
   Helsinki: ['helsinki', 'helsingfors'],
