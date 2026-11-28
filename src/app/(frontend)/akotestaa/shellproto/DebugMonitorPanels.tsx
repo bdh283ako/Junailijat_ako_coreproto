@@ -98,7 +98,7 @@ export function DebugMonitorPanels({
           <div
             className={`rounded-lg px-2 py-1.5 border font-mono text-[10px] space-y-1 ${
               eventFeedStatus === 'live-api'
-                ? 'bg-[#2F5D50]/40 border-[#2F5D50]/60 text-[var(--color-accent-soft)]'
+                ? 'bg-[var(--color-amber)] text-white border-[var(--color-amber)]'
                 : eventFeedStatus === 'loading'
                   ? 'bg-zinc-900 border-zinc-700 text-zinc-300'
                   : 'bg-rose-950/60 border-rose-700/50 text-rose-300'
@@ -118,7 +118,7 @@ export function DebugMonitorPanels({
                   type="button"
                   disabled={eventFeedStatus === 'loading'}
                   onClick={onRefreshEvents}
-                  className="px-1.5 py-0.5 rounded bg-black/40 hover:bg-black/70 text-[9px] font-bold text-amber-300 disabled:opacity-50"
+                  className="min-h-11 rounded-lg bg-black/40 px-2 py-1 text-[9px] font-bold text-amber-300 hover:bg-black/70 disabled:opacity-50"
                 >
                   ↻ Päivitä
                 </button>
@@ -128,7 +128,7 @@ export function DebugMonitorPanels({
               <p className="text-[9px] text-rose-200 break-words">{eventFeedDebug.errorDetail}</p>
             ) : (
               eventFeedStatus === 'live-api' && (
-                <p className="text-[9px] text-[var(--color-accent-soft)]">
+                <p className="text-[9px] text-white">
                   OK • yht. {eventFeedDebug.count} (LE:{eventFeedSources?.linkedEventsCount ?? 0} |
                   EP:{eventFeedSources?.karoCount ?? 0})
                 </p>

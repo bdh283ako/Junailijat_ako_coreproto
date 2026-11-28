@@ -152,3 +152,56 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 - Ylätunnisteen ”Piiri”-sana ja ”Profiili valmis” -tunniste käyttävät nyt metsänvihreää ja hillittyä palettipintaa; tapahtumasyötteen aktiivisuusmerkki käyttää metsänvihreää pistettä, salvian taustaa ja tummaa tekstiä.
 - Shellproton vanhat emerald-, green-, cyan-, sky-, blue- ja teal-luokat poistettiin myös jäsen-, kartta-, tapahtuma- ja kehitysnäkymistä. Vaalealla salvialla käytetään tummaa tekstiä; täysillä metsänvihreillä pinnoilla valkoinen teksti säilyttää AA-kontrastin.
 
+## 2026-11-28 — Ylätunnisteen, lähdeinfopillien ja tapahtumatoimintojen viimeistely
+
+- `PerhePiiri` käyttää Caveat-fonttia tummalla tekstillä ja metsänvihreällä korostuksella. Tapahtumalähteiden ja oletusrajauksen infopillit käyttävät nyt rauhallista meripihkapintaa, tummaa tekstiä ja meripihkaista tilapistettä salvian sijaan.
+- Tapahtumakorttien lisätietolinkit ovat yhdenmukaisia 44 × 44 px:n ikonikohteita, joilla on ruudunlukijalle `aria-label`, hover-vihje ja globaali 3 px:n fokuskehys.
+
+## 2026-11-28 — Alapalkin navigaation yksirivisyys
+
+- Alapalkin navigaatio ja välilehtitekstit pysyvät yhdellä vaakarivillä ilman vaakasuuntaista ylivuotoa; kohteiden mitoitus säilyttää yhtenäisen korkeuden ja vähintään 44 × 44 px:n kosketusalueet.
+- Aktiivinen välilehti ilmaistaan `aria-current="page"`-attribuutilla; WCAG AA -kontrasti, rauhallinen animaatioton ilme ja 3 px:n `:focus-visible`-kehys säilyvät.
+
+## 2026-11-28 — Alapalkin aktiivisen välilehden hillitty korostus
+
+- Aktiivinen navigaatioikoni erottuu terrakotan värillä ja `strokeWidth={2.5}`-arvolla; muut ikonit pysyvät hillittyinä samalla Lucide-viivapiirrostyylillä. Salviatäyttö poistettiin aktiiviselta välilehdeltä.
+- Välilehtitekstit pysyvät yksirivisinä, painikkeiden vähintään 44 px:n korkeus, `aria-current="page"` ja globaali 3 px:n fokuskehys säilyvät; uusia animaatiokirjastoja ei lisätty.
+
+## 2026-11-28 — Mynerve-korostefontin rajattu käyttöönotto
+
+- Mynerve korvasi Caveatin päivämäärälaatikon päivänumerossa ja `PerhePiiri`-brändiotsikossa. Fontti on rajattu näihin elementteihin; kuukausitekstin lihavoimaton tyyli, väljyys ja päivämäärälaatikon korkeus säilyvät.
+- Leipätekstit, painikkeet, lomakkeet ja navigaatio käyttävät edelleen Interiä; WCAG AA -kontrastit, kosketusalueet ja fokuskehykset eivät muuttuneet.
+
+## 2026-11-28 — Etusivun 1×3-toimintokorttien ikonit ja ingressit
+
+- Perheet-, Tapahtumat- ja Yhteisö-korteissa on yhtenäiset `lucide-react`-viivapiirrosikonit (`strokeWidth={2}`) emojeiden sijaan sekä lyhyet, valkoisella tekstillä kuvatut ingressit terrakotta-/meripihkapinnoilla.
+- Korttien navigointi- ja tilalogiikka säilyi; kosketusalueet, `min-w-0`-mitoitus ja globaali 3 px:n `:focus-visible`-kehys säilyvät.
+
+## 2026-11-28 — PKS-alueiden keskitetty valintadata
+
+- Profiilin kotiseutu, kaupunki-/karttasuodattimet ja ilmoittautumisen kaupunkivalinta käyttävät nyt `pksAreas`-moduulin kaupunki-, alue- ja koordinaattitietoja. Vanhojen tallennettujen aluearvojen näyttö ja profiilisynkronointi säilyvät.
+- Sijaintivalinnat käyttävät saavutettavia väritokeneita, säilyttävät mobiilissa kutistuvan mitoituksen, vähintään 44 px:n korkeuden ja globaalin 3 px:n `:focus-visible`-kehyksen.
+
+## 2026-11-28 — Yhtenäinen kotisijainti ja mätsin jälkeinen sijaintisuostumus
+
+- Yläpalkin sijaintipilleri avaa saavutettavan valitsimen, joka käyttää `pksAreas`-alueita ja selainpaikannusta. Aluevalinta ja tarkka geolokaatiokoordinaatti tallentuvat samaan perheprofiilitilaan ja ohjaavat kotimarkkeria sekä `km kotoa` -laskentaa.
+- Muille perheille näytetään ennen mätsiä vain karkea alue ja etäisyys. Tarkka kotisijainti voidaan jakaa vasta mätsin jälkeen erillisellä, oletuksena poissa olevalla suostumuskytkimellä `Data & Tietosuoja` -asetuksissa.
+- Paikannustilan viestit käsittelevät luvan eväämisen, paikannuksen puuttumisen ja tallennuksen; valitsin säilyttää mobiili-/tablettimitoituksen, 44 px:n kosketusalueet ja globaalin 3 px:n fokuskehyksen.
+
+## 2026-11-28 — Paikannustoiminto asetussivulle
+
+- `ProfileSettingsPanel`-asetussivulle lisättiin selkeä oman tarkan sijainnin paikannuspainike. Se käyttää samaa `navigator.geolocation`-kydentää ja tallentaa koordinaatit sekä lähimmän `pksAreas`-alueen perheprofiilitilaan.
+- Haetaan-, tallennettu-, lupa evätty- ja ei saatavilla -tilat näytetään ruudunlukijalle ja visuaalisesti saavutettavasti. Tarkkoja koordinaatteja ei näytetä muille perheille ilman mätsin jälkeistä erillistä lupaa.
+- Yläpalkin sijaintipillin rinnalle lisätty valitsin säilyttää kompaktin otsakeasetuksen ilman erillistä pystytason harhaa. Kartan olemassa oleva aluevalinnan zoomauskäyttäytyminen säilyi muuttumattomana.
+
+## 2026-11-28 — Karttafeedin tapahtuma-/perhevalinnan zoomaus
+
+- Karttasivun feed käyttää tableteissa ja leveämmissä näkymissä kaksi palstaa (`Perheet` vasemmalla, aito tapahtumafeedi oikealla) ja mobiilissa pinoavaa yksipalstaisuutta. Tapahtumakortit ovat tiiviitä rivejä, avautuvat `aria-expanded`-tilalla ja säilyttävät yksiriviset Lucide-ikonitoiminnot.
+- Tapahtuman listasta, markkeristä tai kartalle-painikkeesta valinta keskittyy tapahtuman paikkaan ja zoomaa tasolle 14. Perheen valinta korostaa vastaavan markkerin ja kortin, mutta ei zoomaa karttaa eikä avaa perheelle erillistä kohdennus- tai zoomaukseen perustuvaa karttapeitettä.
+
+## 2026-11-28 — Debug-paneelien URL-rajattu näkyvyys ja kerrosjärjestys
+
+- Demo-Log- ja DB-Feed-paneelit näkyvät vain, kun URL-parametri on `debug=1` tai `debug=true`; muissa tapauksissa paneelit ja niiden valintanapit pysyvät piilossa.
+- Debug-paneelit käyttävät `z-[2000]`-kerrosta, joten ne pysyvät kartan, kelluvien paneelien, näkymäpeitteiden ja modaalien päällimmäisenä kerroksena.
+- Paneelien sulkeminen, päivittäminen ja debug-napit säilyttävät vähintään 44 × 44 px:n kosketusalueen, saavuttavat värit ja globaalin 3 px:n fokuskehyksen.
+

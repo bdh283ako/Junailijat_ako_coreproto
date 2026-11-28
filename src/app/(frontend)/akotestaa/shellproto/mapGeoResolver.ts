@@ -1,10 +1,13 @@
 import {
   DEFAULT_PKS_COORDS as PKS_DEFAULT_COORDS,
   PKS_AREAS,
+  PKS_CITY_ALIASES,
+  PKS_CITIES,
   PKS_CITY_CENTERS,
+  DEFAULT_PKS_CITY,
+  isPksCityName,
   type LatLngTuple,
   type PksAreaEntry,
-  type PksCityName,
 } from './pksAreas'
 
 export const DEFAULT_PKS_COORDS: LatLngTuple = PKS_DEFAULT_COORDS ?? [60.2055, 24.6559]
@@ -141,16 +144,23 @@ function collectLocationHaystack(evt: GeoResolvableEvent): string {
 
 function normalizeCity(rawCity?: string, haystack = ''): string {
   const clean = (rawCity || '').trim()
-  if (/helsinki|helsingfors/i.test(clean)) return 'Helsinki'
-  if (/espoo|esbo/i.test(clean)) return 'Espoo'
-  if (/vantaa|vanda/i.test(clean)) return 'Vantaa'
-  if (/kauniainen|grankulla/i.test(clean)) return 'Kauniainen'
+  const normalizedCity = clean.toLowerCase()
+  const knownCity = PKS_CITIES.find((city) =>
+    PKS_CITY_ALIASES[city].some((alias) => normalizedCity.includes(alias)),
+  )
+  if (knownCity) return knownCity
   if (clean) return clean
 
-  if (/\bespoo\b|\besbo\b|\bespoossa\b|\bespooseen\b/.test(haystack)) return 'Espoo'
-  if (/\bvantaa\b|\bvanda\b|\bvantaalla\b|\bvantaalle\b/.test(haystack)) return 'Vantaa'
-  if (/\bkauniainen\b|\bgrankulla\b|\bkauniaisissa\b/.test(haystack)) return 'Kauniainen'
-  return 'Helsinki'
+  const normalizedHaystack = haystack.toLowerCase()
+  const cityFromHaystack = PKS_CITIES.find((city) =>
+    PKS_CITY_ALIASES[city].some((alias) => {
+      const escapedAlias = alias.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
+      return new RegExp(`(?:^|[^a-zäöå0-9_-])${escapedAlias}(?:$|[^a-zäöå0-9_-])`).test(
+        normalizedHaystack,
+      )
+    }),
+  )
+  return cityFromHaystack ?? DEFAULT_PKS_CITY
 }
 
 function matchesAliasInText(textLower: string, alias: string): boolean {
@@ -231,7 +241,7 @@ export function resolveEventsForMap<T extends GeoResolvableEvent>(
       continue
     }
 
-    const knownCityCenter = PKS_CITY_CENTERS[city as PksCityName]
+    const knownCityCenter = isPksCityName(city) ? PKS_CITY_CENTERS[city] : undefined
     const cityCenter = knownCityCenter ?? resolveCoordsTuple(fallbackCoords, DEFAULT_PKS_COORDS)
     const [gLat, gLng] = deterministicJitter(`city-list-${city}`, 0.0025)
     const groupCoords: LatLngTuple = [cityCenter[0] + gLat, cityCenter[1] + gLng]

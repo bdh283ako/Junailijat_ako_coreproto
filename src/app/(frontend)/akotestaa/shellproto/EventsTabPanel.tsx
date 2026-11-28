@@ -1,6 +1,14 @@
 'use client'
 
-import { CalendarPlus, MapPin, MessageCircle, Tag, UserPlus, Users } from 'lucide-react'
+import {
+  CalendarPlus,
+  ExternalLink,
+  MapPin,
+  MessageCircle,
+  Tag,
+  UserPlus,
+  Users,
+} from 'lucide-react'
 import { buildGoogleCalendarUrl } from './googleCalendar'
 import { DEFAULT_PKS_COORDS, resolveCoordsTuple } from './mapGeoResolver'
 import { PksMapView } from './PksMapView'
@@ -135,7 +143,7 @@ export function EventsTabPanel({
                 className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-colors ${
                   ignoreDefaultPresetTemp
                     ? 'bg-slate-100 text-slate-700 border-slate-300'
-                    : 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[#2F5D50]/40 hover:brightness-95'
+                    : 'bg-[var(--color-amber)]/10 text-[var(--color-ink)] border-[var(--color-amber)]/40 hover:bg-[var(--color-amber)]/20'
                 }`}
               >
                 {ignoreDefaultPresetTemp
@@ -413,9 +421,11 @@ export function EventsTabPanel({
                       href={evt.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-semibold hover:bg-[var(--color-bg)]"
+                      aria-label={`Lisätiedot tapahtumasta: ${evt.title}`}
+                      title="Avaa tapahtuman lisätiedot"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-ink)] transition-colors hover:bg-[var(--color-bg)]"
                     >
-                      Lisätiedot ↗
+                      <ExternalLink aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
                     </a>
                   )}
                 </div>

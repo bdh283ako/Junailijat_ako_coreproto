@@ -1325,6 +1325,10 @@ export function CommunityHubPanel({
                 Muille perheille näytetään vain karkea alue ja hakusäde, esimerkiksi{' '}
                 {profile.homeCity}, {profile.area} ja enintään {profile.filters.maxDistanceKm} km.
                 Kotiosoitetta tai tarkkoja koordinaatteja ei näytetä muille perheille.
+                Tarkka sijainti voi tulla näkyviin vain mätsin jälkeen,
+                jos {profile.privacy.shareExactLocationAfterMatch
+                  ? 'olet sallinut sen'
+                  : 'sallit sen erikseen profiilin tietosuoja-asetuksissa'}.
               </p>
             </section>
 

@@ -102,7 +102,7 @@ export function FloatingDockWindow({
           ? { position: 'fixed', left: `${pos.x}px`, top: `${pos.y}px`, right: 'auto' }
           : undefined
       }
-      className={`fixed right-3 z-40 w-[290px] md:w-[320px] max-w-[calc(100vw-1.5rem)] rounded-2xl shadow-2xl border ${borderToneClass} bg-zinc-950/95 text-zinc-100 overflow-hidden backdrop-blur-sm`}
+      className={`fixed right-3 z-[2000] w-[290px] md:w-[320px] max-w-[calc(100vw-1.5rem)] rounded-2xl shadow-2xl border ${borderToneClass} bg-zinc-950/95 text-zinc-100 overflow-hidden backdrop-blur-sm`}
     >
       <div
         onPointerDown={handlePointerDown}
@@ -121,7 +121,7 @@ export function FloatingDockWindow({
           <button
             type="button"
             onClick={onClose}
-            className="px-1.5 py-0.5 rounded bg-black/35 hover:bg-black/60 text-[10px] font-bold"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl bg-black/35 hover:bg-black/60 text-[12px] font-bold"
             aria-label="Piilota paneeli"
           >
             ✕

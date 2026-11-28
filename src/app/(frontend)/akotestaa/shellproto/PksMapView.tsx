@@ -14,6 +14,7 @@ import {
 import { calcDistanceKm, FamilyEvent, FamilyProfile, PKS_MLL_FAMILY_CAFES } from './protoData'
 import { buildGoogleCalendarUrl } from './googleCalendar'
 import { DEFAULT_PKS_COORDS, resolveEventsForMap, type CityOnlyGroup } from './mapGeoResolver'
+import { PKS_ALL_CITIES, PKS_CITY_FILTER_OPTIONS } from './pksAreas'
 
 interface LeafletCircleMarker {
   addTo: (target: LeafletMapInstance | LeafletLayerGroup) => LeafletCircleMarker
@@ -165,7 +166,7 @@ export function PksMapView({
   const familyCardRefs = useRef(new Map<string, HTMLButtonElement>())
 
   // Geneerinen kaupunkifiltteri (synkronoitu profiilin filtterin kanssa tai paikallinen)
-  const [internalCityFilter, setInternalCityFilter] = useState<string>('Kaikki PKS')
+  const [internalCityFilter, setInternalCityFilter] = useState<string>(PKS_ALL_CITIES)
   const activeCityFilter = selectedCity ?? internalCityFilter
 
   const handleCityChange = (nextCity: string) => {
@@ -198,7 +199,7 @@ export function PksMapView({
         distanceKm: calcDistanceKm(safeHome, effectiveCoords),
       }))
       .filter((evt) => {
-        if (activeCityFilter === 'Kaikki PKS') return true
+        if (activeCityFilter === PKS_ALL_CITIES) return true
         return (evt.city || '').toLowerCase() === activeCityFilter.toLowerCase()
       })
       .sort((a, b) => a.distanceKm - b.distanceKm)
@@ -234,14 +235,14 @@ export function PksMapView({
     }))
       .filter(
         (cafe) =>
-          activeCityFilter === 'Kaikki PKS' ||
+          activeCityFilter === PKS_ALL_CITIES ||
           cafe.city.toLowerCase() === activeCityFilter.toLowerCase(),
       )
       .sort((a, b) => a.distanceKm - b.distanceKm)
   }, [showMllCafes, activeCityFilter, safeHome])
 
   const visibleMatchedFamilies = useMemo(() => {
-    if (activeCityFilter === 'Kaikki PKS') return matchedFamilies
+    if (activeCityFilter === PKS_ALL_CITIES) return matchedFamilies
     return matchedFamilies.filter((f) => f.city.toLowerCase() === activeCityFilter.toLowerCase())
   }, [matchedFamilies, activeCityFilter])
 
@@ -277,10 +278,9 @@ export function PksMapView({
     [cityFilteredAllEvents, listPageSize],
   )
 
-  const selectFamily = useCallback((familyId: string, coords: [number, number]) => {
+  const selectFamily = useCallback((familyId: string) => {
     setSelectedFamilyId(familyId)
     setSelectedEventId(null)
-    mapInstanceRef.current?.setView(coords, 14)
   }, [])
 
   useEffect(() => {
@@ -563,7 +563,7 @@ export function PksMapView({
         .bindPopup(
           `<strong>🤝 ${fam.name}</strong><br/>${fam.area} (${fam.childrenAges})${eventNote}${relativesNote}`,
         )
-        .on('click', () => selectFamily(fam.id, fam.coords))
+        .on('click', () => selectFamily(fam.id))
     })
   }, [
     mapReady,
@@ -608,7 +608,7 @@ export function PksMapView({
                 aria-label="Kaupunkifiltteri"
                 className="min-h-11 px-2.5 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-ink)] font-bold text-xs"
               >
-                {['Kaikki PKS', 'Espoo', 'Helsinki', 'Vantaa', 'Kauniainen'].map((city) => (
+                {PKS_CITY_FILTER_OPTIONS.map((city) => (
                   <option key={city} value={city}>
                     {city}
                   </option>
@@ -753,8 +753,7 @@ export function PksMapView({
                       type="button"
                       aria-pressed={selectedFamilyId === family.id}
                       onClick={() => {
-                        selectFamily(family.id, family.coords)
-                        onOpenMap?.(family.coords, family.id)
+                        selectFamily(family.id)
                       }}
                       className={`min-h-11 w-full min-w-0 rounded-2xl border p-3 text-left transition-colors ${
                         selectedFamilyId === family.id

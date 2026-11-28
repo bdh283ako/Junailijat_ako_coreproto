@@ -1,6 +1,22 @@
 export type LatLngTuple = [number, number]
 
-export type PksCityName = 'Helsinki' | 'Espoo' | 'Vantaa' | 'Kauniainen'
+export const PKS_CITIES = ['Espoo', 'Helsinki', 'Vantaa', 'Kauniainen'] as const
+export type PksCityName = (typeof PKS_CITIES)[number]
+
+export const PKS_ALL_CITIES = 'Kaikki PKS' as const
+export const PKS_CITY_FILTER_OPTIONS = [PKS_ALL_CITIES, ...PKS_CITIES] as const
+export const DEFAULT_PKS_CITY: PksCityName = 'Helsinki'
+
+export const PKS_CITY_ALIASES: Record<PksCityName, readonly string[]> = {
+  Espoo: ['espoo', 'esbo', 'espoossa', 'espooseen'],
+  Helsinki: ['helsinki', 'helsingfors'],
+  Vantaa: ['vantaa', 'vanda', 'vantaalla', 'vantaalle'],
+  Kauniainen: ['kauniainen', 'grankulla', 'kauniaisissa'],
+}
+
+export function isPksCityName(value: string): value is PksCityName {
+  return PKS_CITIES.some((city) => city === value)
+}
 
 export interface PksAreaEntry {
   name: string
@@ -67,5 +83,61 @@ export const PKS_AREAS: PksAreaEntry[] = [
   { name: 'Koivukylä / Korso / Rekola', city: 'Vantaa', coords: [60.324, 25.053], aliases: ['koivukylä', 'korso', 'rekola', 'havukoski', 'pejas', 'mikkola', 'leppäkorpi', 'vallinoja'] },
 
   // --- KAUNIAINEN ---
-  { name: 'Kauniainen', city: 'Kauniainen', coords: [60.2134, 24.7267], aliases: ['kauniainen', 'grankulla'] },
+  { name: 'Kauniainen', city: 'Kauniainen', coords: [60.2134, 24.7267], aliases: ['kauniainen', 'grani', 'grankulla'] },
 ]
+
+export interface PksAreaOption extends PksAreaEntry {
+  value: string
+}
+
+export const PKS_AREA_OPTIONS: PksAreaOption[] = PKS_AREAS.map((area) => ({
+  ...area,
+  value: `${area.city} • ${area.name}`,
+}))
+
+export function resolvePksAreaOption(value: string): PksAreaOption | undefined {
+  const exactMatch = PKS_AREA_OPTIONS.find((area) => area.value === value)
+  if (exactMatch) return exactMatch
+
+  const separatorIndex = value.indexOf(' • ')
+  if (separatorIndex < 0) return undefined
+
+  const city = value.slice(0, separatorIndex)
+  if (!isPksCityName(city)) return undefined
+
+  const areaLabel = value.slice(separatorIndex + 3).toLowerCase()
+  return PKS_AREA_OPTIONS.find(
+    (area) =>
+      area.city === city &&
+      (areaLabel.includes(area.name.toLowerCase()) ||
+        area.aliases.some((alias) => areaLabel.includes(alias.toLowerCase()))),
+  )
+}
+
+function haversineDistanceKm(a: LatLngTuple, b: LatLngTuple): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180
+  const earthRadiusKm = 6371
+  const deltaLat = toRadians(b[0] - a[0])
+  const deltaLng = toRadians(b[1] - a[1])
+  const latA = toRadians(a[0])
+  const latB = toRadians(b[0])
+  const sinLat = Math.sin(deltaLat / 2)
+  const sinLng = Math.sin(deltaLng / 2)
+  const h = sinLat * sinLat + Math.cos(latA) * Math.cos(latB) * sinLng * sinLng
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+export function findNearestPksArea(coords: LatLngTuple): PksAreaOption | undefined {
+  let nearest: PksAreaOption | undefined
+  let nearestDistance = Number.POSITIVE_INFINITY
+
+  for (const area of PKS_AREA_OPTIONS) {
+    const distance = haversineDistanceKm(coords, area.coords)
+    if (distance < nearestDistance) {
+      nearest = area
+      nearestDistance = distance
+    }
+  }
+
+  return nearest
+}

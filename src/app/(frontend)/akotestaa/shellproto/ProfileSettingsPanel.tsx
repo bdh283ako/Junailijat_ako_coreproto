@@ -1,14 +1,20 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
+import { LocateFixed, Navigation } from 'lucide-react'
 import {
   AGE_GROUP_OPTIONS,
-  AREA_COORDS,
   AuthenticatedGoogleUser,
   DEFAULT_ACTIVITY_TAGS,
   inferAgeGroupsFromChildren,
   UserProfileState,
 } from './protoData'
+import {
+  findNearestPksArea,
+  PKS_AREA_OPTIONS,
+  PKS_CITY_FILTER_OPTIONS,
+  resolvePksAreaOption,
+} from './pksAreas'
 
 interface ProfileSettingsPanelProps {
   currentUser: AuthenticatedGoogleUser
@@ -46,14 +52,63 @@ export function ProfileSettingsPanel({
   onLogSelection,
 }: ProfileSettingsPanelProps) {
   const inferredAges = inferAgeGroupsFromChildren(profile.children)
+  const [locationStatus, setLocationStatus] = useState<
+    'idle' | 'locating' | 'ready' | 'saved' | 'denied' | 'unavailable' | 'error'
+  >(profile.exactLocation ? 'saved' : 'idle')
+  const [locationError, setLocationError] = useState('')
+
+  const locateExactPosition = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('unavailable')
+      setLocationError('Selainpaikannus ei ole saatavilla tässä laitteessa.')
+      return
+    }
+
+    setLocationStatus('locating')
+    setLocationError('')
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords: [number, number] = [position.coords.latitude, position.coords.longitude]
+        const nearestArea = findNearestPksArea(coords)
+        onChangeProfile((prev) => ({
+          ...prev,
+          homeCity: nearestArea?.city ?? prev.homeCity,
+          area: nearestArea?.value ?? prev.area,
+          homeCoords: coords,
+          locationSource: 'geolocation',
+          exactLocation: { lat: coords[0], lng: coords[1], source: 'geolocation' },
+        }))
+        onLogSelection(
+          'PROFILE_GEOLOCATION',
+          nearestArea ? nearestArea.value : 'exact coordinates',
+        )
+        setLocationStatus('saved')
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationStatus('denied')
+          setLocationError('Paikannuslupa evättiin. Voit silti valita alueen käsin.')
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setLocationStatus('unavailable')
+          setLocationError('Paikannus ei ole tällä hetkellä saatavilla.')
+        } else {
+          setLocationStatus('error')
+          setLocationError('Paikannusta ei voitu suorittaa. Yritä uudelleen.')
+        }
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    )
+  }
 
   const handleAreaChange = (nextArea: string) => {
-    const meta = AREA_COORDS[nextArea]
+    const meta = resolvePksAreaOption(nextArea)
     onChangeProfile((prev) => ({
       ...prev,
       area: nextArea,
       homeCity: meta?.city ?? prev.homeCity,
       homeCoords: meta?.coords ?? prev.homeCoords,
+      locationSource: 'area',
+      exactLocation: null,
     }))
     onLogSelection('PROFILE_AREA', nextArea)
   }
@@ -277,14 +332,44 @@ export function ProfileSettingsPanel({
               <select
                 value={profile.area}
                 onChange={(e) => handleAreaChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
+                className="w-full min-w-0 min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm bg-[var(--color-bg)] text-[var(--color-ink)]"
               >
-                {Object.keys(AREA_COORDS).map((areaName) => (
-                  <option key={areaName} value={areaName}>
-                    {areaName}
+                {!PKS_AREA_OPTIONS.some(({ value }) => value === profile.area) && profile.area && (
+                  <option value={profile.area}>{profile.area}</option>
+                )}
+                {PKS_AREA_OPTIONS.map(({ value }) => (
+                  <option key={value} value={value}>
+                    {value}
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={locateExactPosition}
+                disabled={locationStatus === 'locating'}
+                className="mt-2 inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] px-4 py-2 text-xs font-bold text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {locationStatus === 'locating' ? (
+                  <Navigation aria-hidden="true" size={20} strokeWidth={2} />
+                ) : (
+                  <LocateFixed aria-hidden="true" size={20} strokeWidth={2} />
+                )}
+                {locationStatus === 'locating'
+                  ? 'Haetaan omaa sijaintia…'
+                  : 'Paikanna oma tarkka sijainti'}
+              </button>
+              <div aria-live="polite" className="mt-2">
+                {locationStatus === 'saved' && (
+                  <p className="rounded-xl border border-[#2F5D50]/40 bg-[#2F5D50]/10 p-2.5 text-[11px] text-[var(--color-ink)]">
+                    Tarkka kotikoordinaatti tallennettu. Sijaintia ei näytetä muille perheille ilman mätsin jälkeistä erillistä lupaa.
+                  </p>
+                )}
+                {locationError && (
+                  <p role="alert" className="rounded-xl border border-[var(--color-carmine)]/40 bg-white p-2.5 text-[11px] text-[var(--color-ink)]">
+                    {locationError}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="p-3 rounded-3xl bg-[var(--color-bg)] border border-[var(--color-border)] flex items-center justify-between gap-3">
@@ -370,13 +455,13 @@ export function ProfileSettingsPanel({
                     filters: { ...prev.filters, targetCity: e.target.value },
                   }))
                 }
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white"
+                className="w-full min-w-0 min-h-11 px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm bg-[var(--color-bg)] text-[var(--color-ink)]"
               >
-                <option value="Kaikki PKS">Kaikki PKS</option>
-                <option value="Espoo">Espoo</option>
-                <option value="Helsinki">Helsinki</option>
-                <option value="Vantaa">Vantaa</option>
-                <option value="Kauniainen">Kauniainen</option>
+                {PKS_CITY_FILTER_OPTIONS.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -522,6 +607,28 @@ export function ProfileSettingsPanel({
                   })
                 }
                 className="accent-[var(--color-accent)] w-4 h-4"
+              />
+            </label>
+            <label className="flex min-h-11 items-center justify-between gap-3 py-2">
+              <span className="min-w-0">
+                Jaa tarkka kotisijainti vasta mätsin jälkeen
+                <span className="block text-[10px] font-normal text-[var(--color-ink-muted)]">
+                  Oletus on pois päältä. Ennen mätsiä näytetään vain karkea alue.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={profile.privacy.shareExactLocationAfterMatch}
+                onChange={(e) =>
+                  onChangeProfile({
+                    ...profile,
+                    privacy: {
+                      ...profile.privacy,
+                      shareExactLocationAfterMatch: e.target.checked,
+                    },
+                  })
+                }
+                className="accent-[var(--color-accent)] h-4 w-4 shrink-0"
               />
             </label>
           </section>

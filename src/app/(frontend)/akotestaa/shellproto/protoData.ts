@@ -1,3 +1,10 @@
+import {
+  PKS_ALL_CITIES,
+  PKS_CITIES,
+  resolvePksAreaOption,
+  type PksCityName,
+} from './pksAreas'
+
 export interface ChildItem {
   id: string
   ageLabel: string
@@ -33,6 +40,12 @@ export interface UserProfileState {
   homeCity: string
   area: string
   homeCoords: [number, number]
+  locationSource: 'area' | 'geolocation' | 'legacy'
+  exactLocation: {
+    lat: number
+    lng: number
+    source: 'geolocation'
+  } | null
   onboardingCompleted: boolean
   children: ChildItem[]
   closeRelatives: CloseRelativeItem[]
@@ -48,6 +61,7 @@ export interface UserProfileState {
     discoverable: boolean
     shareEventsWithMatches: boolean
     showCloseRelativesInMatches: boolean
+    shareExactLocationAfterMatch: boolean
   }
 }
 
@@ -119,21 +133,6 @@ export const PKS_DEFAULT_BOUNDS: [[number, number], [number, number]] = [
   [60.345, 25.165],
 ]
 
-export const AREA_COORDS: Record<string, { city: string; coords: [number, number] }> = {
-  'Espoo • Leppävaara': { city: 'Espoo', coords: [60.2185, 24.8126] },
-  'Espoo • Tapiola': { city: 'Espoo', coords: [60.1756, 24.8041] },
-  'Espoo • Matinkylä & Olari': { city: 'Espoo', coords: [60.1602, 24.7385] },
-  'Espoo • Espoon keskus': { city: 'Espoo', coords: [60.2055, 24.6559] },
-  'Espoo • Espoonlahti': { city: 'Espoo', coords: [60.1502, 24.6525] },
-  'Kauniainen • Grani': { city: 'Kauniainen', coords: [60.2148, 24.7267] },
-  'Helsinki • Kallio & Vallila': { city: 'Helsinki', coords: [60.1841, 24.9502] },
-  'Helsinki • Lauttasaari': { city: 'Helsinki', coords: [60.1588, 24.8814] },
-  'Helsinki • Töölö & Pasila': { city: 'Helsinki', coords: [60.1986, 24.9336] },
-  'Helsinki • Vuosaari': { city: 'Helsinki', coords: [60.2087, 25.1439] },
-  'Vantaa • Tikkurila': { city: 'Vantaa', coords: [60.2934, 25.0378] },
-  'Vantaa • Myyrmäki': { city: 'Vantaa', coords: [60.2614, 24.8548] },
-}
-
 // 10 uutta oletustägiä / mieliaktiviteettia
 export const DEFAULT_ACTIVITY_TAGS: string[] = [
   'Ulkoilu & puistot',
@@ -162,9 +161,11 @@ export const NERD_DB_QUIPS: string[] = [
 export const BASE_DEFAULT_PROFILE: UserProfileState = {
   familyName: 'Oma perhe',
   parentDisplayName: 'Vanhempi',
-  homeCity: 'Espoo',
+  homeCity: PKS_CITIES[0],
   area: 'Espoo • Leppävaara',
   homeCoords: [60.2185, 24.8126],
+  locationSource: 'area',
+  exactLocation: null,
   onboardingCompleted: false,
   children: [{ id: 'c-1', ageLabel: '5 v', group: '4-6v' }],
   closeRelatives: [],
@@ -184,13 +185,14 @@ export const BASE_DEFAULT_PROFILE: UserProfileState = {
   },
   filters: {
     maxDistanceKm: 15,
-    targetCity: 'Kaikki PKS',
+    targetCity: PKS_ALL_CITIES,
     targetAgeGroups: ['4-6v'],
   },
   privacy: {
     discoverable: true,
     shareEventsWithMatches: true,
     showCloseRelativesInMatches: false,
+    shareExactLocationAfterMatch: false,
   },
 }
 
@@ -241,7 +243,7 @@ export function buildInitialProfileForGoogleUser(user: AuthenticatedGoogleUser):
     filters: {
       ...BASE_DEFAULT_PROFILE.filters,
       maxDistanceKm: 15,
-      targetCity: 'Kaikki PKS',
+      targetCity: PKS_ALL_CITIES,
       targetAgeGroups: ['4-6v'],
     },
     privacy: { ...BASE_DEFAULT_PROFILE.privacy },
@@ -273,7 +275,7 @@ export function normalizeProfile(
 ): UserProfileState {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
   const area = typeof obj.area === 'string' && obj.area.trim() ? obj.area : fallback.area
-  const areaMeta = AREA_COORDS[area]
+  const areaMeta = resolvePksAreaOption(area)
   const homeCity =
     typeof obj.homeCity === 'string' && obj.homeCity.trim()
       ? obj.homeCity
@@ -368,6 +370,22 @@ export function normalizeProfile(
 
   const rawPrivacy =
     obj.privacy && typeof obj.privacy === 'object' ? (obj.privacy as Record<string, unknown>) : {}
+  const rawExactLocation =
+    obj.exactLocation && typeof obj.exactLocation === 'object'
+      ? (obj.exactLocation as Record<string, unknown>)
+      : null
+  const exactLat =
+    typeof rawExactLocation?.lat === 'number' ? rawExactLocation.lat : null
+  const exactLng =
+    typeof rawExactLocation?.lng === 'number' ? rawExactLocation.lng : null
+  const exactLocation =
+    exactLat !== null && exactLng !== null && rawExactLocation?.source === 'geolocation'
+      ? { lat: exactLat, lng: exactLng, source: 'geolocation' as const }
+      : null
+  const locationSource =
+    obj.locationSource === 'area' || obj.locationSource === 'geolocation'
+      ? obj.locationSource
+      : 'legacy'
 
   return {
     familyName:
@@ -381,6 +399,8 @@ export function normalizeProfile(
     homeCity,
     area,
     homeCoords,
+    locationSource,
+    exactLocation,
     onboardingCompleted:
       typeof obj.onboardingCompleted === 'boolean'
         ? obj.onboardingCompleted
@@ -414,6 +434,10 @@ export function normalizeProfile(
         typeof rawPrivacy.showCloseRelativesInMatches === 'boolean'
           ? rawPrivacy.showCloseRelativesInMatches
           : fallback.privacy.showCloseRelativesInMatches,
+      shareExactLocationAfterMatch:
+        typeof rawPrivacy.shareExactLocationAfterMatch === 'boolean'
+          ? rawPrivacy.shareExactLocationAfterMatch
+          : fallback.privacy.shareExactLocationAfterMatch,
     },
   }
 }
@@ -512,7 +536,7 @@ export interface MllCafeSpot {
   id: string
   name: string
   organizer: string
-  city: 'Espoo' | 'Helsinki' | 'Vantaa' | 'Kauniainen'
+  city: PksCityName
   district: string
   venue: string
   address: string

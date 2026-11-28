@@ -3,11 +3,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   AGE_GROUP_OPTIONS,
-  AREA_COORDS,
   type AuthenticatedGoogleUser,
   type ChildItem,
   type UserProfileState,
 } from '@shellproto/protoData'
+import {
+  PKS_AREA_OPTIONS,
+  PKS_CITIES,
+  resolvePksAreaOption,
+} from '@shellproto/pksAreas'
 import type { PendingEnrollmentIntent } from '@/hooks/useEnrollmentFlow'
 
 interface FamilyEnrollmentModalProps {
@@ -21,7 +25,7 @@ interface FamilyEnrollmentModalProps {
   onCancel: () => void
 }
 
-const CITY_OPTIONS = ['Espoo', 'Helsinki', 'Vantaa', 'Kauniainen', 'Muu']
+const CITY_OPTIONS: string[] = [...PKS_CITIES, 'Muu']
 const AGE_GROUP_LABELS: Record<string, string> = {
   '0-3v': '0–3 v',
   '4-6v': '4–6 v',
@@ -61,7 +65,7 @@ export function FamilyEnrollmentModal({
   onCancel,
 }: FamilyEnrollmentModalProps) {
   const [parentDisplayName, setParentDisplayName] = useState('')
-  const [cityChoice, setCityChoice] = useState('Espoo')
+  const [cityChoice, setCityChoice] = useState<string>(PKS_CITIES[0])
   const [customCity, setCustomCity] = useState('')
   const [children, setChildren] = useState<ChildItem[]>([])
   const [interestsText, setInterestsText] = useState('')
@@ -152,9 +156,16 @@ export function FamilyEnrollmentModal({
     setIsSaving(true)
 
     const selectedCity = cityChoice === 'Muu' ? customCity.trim() : cityChoice
-    const selectedArea = Object.entries(AREA_COORDS).find(
-      ([, metadata]) => metadata.city === selectedCity,
+    const currentArea = resolvePksAreaOption(initialProfile.area)
+    const selectedArea =
+      (currentArea?.city === selectedCity ? currentArea : undefined) ??
+      PKS_AREA_OPTIONS.find((area) => area.city === selectedCity)
+    const keepExactLocation = Boolean(
+      initialProfile.locationSource === 'geolocation' &&
+      initialProfile.exactLocation &&
+      (!selectedArea || selectedArea.city === initialProfile.homeCity),
     )
+    const exactLocation = keepExactLocation ? initialProfile.exactLocation : null
     const interests = interestsText
       .split(/[,\n]/)
       .map((interest) => interest.trim())
@@ -165,8 +176,12 @@ export function FamilyEnrollmentModal({
         ...initialProfile,
         parentDisplayName: parentDisplayName.trim(),
         homeCity: selectedCity,
-        area: selectedArea?.[0] ?? initialProfile.area,
-        homeCoords: selectedArea?.[1].coords ?? initialProfile.homeCoords,
+        area: selectedArea?.value ?? initialProfile.area,
+        homeCoords: keepExactLocation
+          ? [exactLocation?.lat ?? initialProfile.homeCoords[0], exactLocation?.lng ?? initialProfile.homeCoords[1]]
+          : (selectedArea?.coords ?? initialProfile.homeCoords),
+        locationSource: keepExactLocation ? 'geolocation' : 'area',
+        exactLocation,
         children,
         interests: interests.length > 0 ? interests : initialProfile.interests,
         onboardingCompleted: true,
@@ -191,7 +206,7 @@ export function FamilyEnrollmentModal({
         aria-describedby="family-enrollment-description"
         aria-labelledby="family-enrollment-heading"
         aria-modal="true"
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+        className="max-h-[90vh] w-full min-w-0 max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
         role="dialog"
       >
         <header className="mb-5">
@@ -244,7 +259,7 @@ export function FamilyEnrollmentModal({
               onChange={(event) => setCityChoice(event.target.value)}
               required
               value={cityChoice}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+              className="w-full min-w-0 min-h-11 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-ink)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent-soft)]"
             >
               {CITY_OPTIONS.map((city) => (
                 <option key={city} value={city}>
@@ -256,7 +271,7 @@ export function FamilyEnrollmentModal({
               <input
                 aria-label="Muu kotikaupunki tai alue"
                 autoComplete="address-level2"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                className="mt-2 w-full min-w-0 min-h-11 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-ink)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent-soft)]"
                 maxLength={80}
                 onChange={(event) => setCustomCity(event.target.value)}
                 placeholder="Kirjoita kaupunki tai alue"

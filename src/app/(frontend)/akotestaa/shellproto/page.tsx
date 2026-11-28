@@ -1,7 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Home, MapPin, MessageSquare, User, Users } from 'lucide-react'
+import {
+  CalendarDays,
+  LocateFixed,
+  Home,
+  MapPin,
+  MessageSquare,
+  Navigation,
+  User,
+  Users,
+  X,
+} from 'lucide-react'
 import { CommunityHubPanel, type HubSection } from './CommunityHubPanel'
 import { DebugMonitorPanels, type FeedSourcesMeta } from './DebugMonitorPanels'
 import { EventChatWindow } from './EventChatWindow'
@@ -15,6 +25,16 @@ import {
 } from './FamiliesTabPanel'
 import { FamilyMembersPanel } from './FamilyMembersPanel'
 import { DEFAULT_PKS_COORDS, resolveCoordsTuple, resolveEventsForMap } from './mapGeoResolver'
+import {
+  DEFAULT_PKS_CITY,
+  findNearestPksArea,
+  isPksCityName,
+  PKS_ALL_CITIES,
+  PKS_AREA_OPTIONS,
+  PKS_CITIES,
+  PKS_CITY_CENTERS,
+  type PksCityName,
+} from './pksAreas'
 import { PksMapView } from './PksMapView'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import { StoreInspectorPanel } from './StoreInspectorPanel'
@@ -66,13 +86,6 @@ type ScoredApiFamily = FamilyProfile &
     distanceKm: number
     match: ReturnType<typeof calcFamilyMatch>
   }
-
-const COARSE_CITY_COORDS: Record<string, [number, number]> = {
-  Helsinki: [60.1699, 24.9384],
-  Espoo: [60.2055, 24.6559],
-  Vantaa: [60.2934, 25.0378],
-  Kauniainen: [60.212, 24.727],
-}
 
 function parseApiFamily(value: unknown): ApiFamilyProfile {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -136,13 +149,12 @@ function areApiFamilyProfilesEqual(
   )
 }
 
-function getCoarseCity(area: string, fallbackCity: string): string {
+function getCoarseCity(area: string, fallbackCity: string): PksCityName {
   const normalized = area.toLowerCase()
-  if (normalized.includes('helsinki')) return 'Helsinki'
-  if (normalized.includes('espoo')) return 'Espoo'
-  if (normalized.includes('vantaa')) return 'Vantaa'
-  if (normalized.includes('kauniainen')) return 'Kauniainen'
-  return fallbackCity in COARSE_CITY_COORDS ? fallbackCity : 'Helsinki'
+  return (
+    PKS_CITIES.find((city) => normalized.includes(city.toLowerCase())) ??
+    (isPksCityName(fallbackCity) ? fallbackCity : DEFAULT_PKS_CITY)
+  )
 }
 
 function getAgeGroups(summary?: string): string[] {
@@ -224,23 +236,25 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
     return {
       label: `Live-lähteet aktiivisia: ${summaryParts.join(' + ')}`,
       className:
-        'bg-[var(--color-accent-soft)] text-[var(--color-ink)] border-[#2F5D50]/40',
-      dotClass: 'bg-[#2F5D50]',
+        'bg-[var(--color-amber)]/10 text-[var(--color-ink)] border-[var(--color-amber)]/40',
+      dotClass: 'bg-[var(--color-amber)]',
     }
   }
 
   if (activeSourceCount === 1) {
     return {
       label: `Osittainen syöte (1/2): ${summaryParts.join(' • ')}`,
-      className: 'bg-amber-50 text-amber-800 border-amber-200',
-      dotClass: 'bg-amber-500',
+      className:
+        'bg-[var(--color-amber)]/10 text-[var(--color-ink)] border-[var(--color-amber)]/40',
+      dotClass: 'bg-[var(--color-amber)]',
     }
   }
 
   return {
     label: 'Demo-varadata (0 tapahtumaa lähteistä)',
-    className: 'bg-amber-50 text-amber-800 border-amber-200',
-    dotClass: 'bg-amber-500',
+    className:
+      'bg-[var(--color-amber)]/10 text-[var(--color-ink)] border-[var(--color-amber)]/40',
+    dotClass: 'bg-[var(--color-amber)]',
   }
 }
 
@@ -279,7 +293,15 @@ export default function PerheAppPrototypePage() {
 
   const [showDemoMonitor, setShowDemoMonitor] = useState(true)
   const [showNerdDbFloat, setShowNerdDbFloat] = useState(true)
+  const [debugPanelsEnabled, setDebugPanelsEnabled] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [locationModalOpen, setLocationModalOpen] = useState(false)
+  const [locationStatus, setLocationStatus] = useState<
+    'idle' | 'locating' | 'ready' | 'saved' | 'denied' | 'unavailable' | 'error'
+  >('idle')
+  const [locationError, setLocationError] = useState('')
+  const [locationDraftArea, setLocationDraftArea] = useState('Espoo • Leppävaara')
+  const [locationDraftCoords, setLocationDraftCoords] = useState<[number, number] | null>(null)
   const [demoFloatPos, setDemoFloatPos] = useState<FloatingPos | null>(null)
   const [dbFloatPos, setDbFloatPos] = useState<FloatingPos | null>(null)
   const [chatFloatPos, setChatFloatPos] = useState<FloatingPos | null>(null)
@@ -351,6 +373,26 @@ export default function PerheAppPrototypePage() {
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [accountMenuOpen])
+
+  useEffect(() => {
+    const syncDebugPanelVisibility = () => {
+      const debugValue = new URLSearchParams(window.location.search).get('debug')
+      setDebugPanelsEnabled(debugValue === '1' || debugValue === 'true')
+    }
+
+    syncDebugPanelVisibility()
+    window.addEventListener('popstate', syncDebugPanelVisibility)
+    return () => window.removeEventListener('popstate', syncDebugPanelVisibility)
+  }, [])
+
+  useEffect(() => {
+    if (!locationModalOpen) return
+    const handleLocationEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLocationModalOpen(false)
+    }
+    document.addEventListener('keydown', handleLocationEscape)
+    return () => document.removeEventListener('keydown', handleLocationEscape)
+  }, [locationModalOpen])
 
   const {
     profile,
@@ -633,6 +675,82 @@ export default function PerheAppPrototypePage() {
     transientToastTimerRef.current = setTimeout(() => setTransientResetToast(false), 2500)
   }
 
+  const openLocationModal = () => {
+    setLocationDraftArea(profile.area)
+    setLocationDraftCoords(
+      profile.exactLocation
+        ? [profile.exactLocation.lat, profile.exactLocation.lng]
+        : null,
+    )
+    setLocationStatus(profile.exactLocation ? 'saved' : 'idle')
+    setLocationError('')
+    setLocationModalOpen(true)
+  }
+
+  const selectLocationArea = (nextArea: string) => {
+    setLocationDraftArea(nextArea)
+    setLocationDraftCoords(null)
+    setLocationStatus('idle')
+    setLocationError('')
+  }
+
+  const locateCurrentPosition = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('unavailable')
+      setLocationError('Selainpaikannus ei ole saatavilla tässä laitteessa.')
+      return
+    }
+
+    setLocationStatus('locating')
+    setLocationError('')
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords: [number, number] = [position.coords.latitude, position.coords.longitude]
+        const nearest = findNearestPksArea(coords)
+        setLocationDraftCoords(coords)
+        if (nearest) setLocationDraftArea(nearest.value)
+        setLocationStatus('ready')
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationStatus('denied')
+          setLocationError('Paikannuslupa evättiin. Voit valita alueen listasta.')
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setLocationStatus('unavailable')
+          setLocationError('Paikannus ei ole tällä hetkellä saatavilla.')
+        } else {
+          setLocationStatus('error')
+          setLocationError('Paikannusta ei voitu suorittaa. Yritä uudelleen.')
+        }
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    )
+  }
+
+  const saveLocationSelection = () => {
+    const area = PKS_AREA_OPTIONS.find((option) => option.value === locationDraftArea)
+    if (!area) {
+      setLocationStatus('error')
+      setLocationError('Valitse kotialue pksAreas-listasta.')
+      return
+    }
+
+    const nextProfile: UserProfileState = {
+      ...profile,
+      homeCity: area.city,
+      area: area.value,
+      homeCoords: locationDraftCoords ?? area.coords,
+      locationSource: locationDraftCoords ? 'geolocation' : 'area',
+      exactLocation: locationDraftCoords
+        ? { lat: locationDraftCoords[0], lng: locationDraftCoords[1], source: 'geolocation' }
+        : null,
+    }
+    setProfile(nextProfile)
+    void saveProfileFeedback(nextProfile)
+    setLocationStatus('saved')
+    setLocationError('')
+  }
+
   const safeEvents = Array.isArray(events) ? events : INITIAL_EVENTS
   const safeHomeCoords = useMemo(
     () => resolveCoordsTuple(profile.homeCoords, DEFAULT_PKS_COORDS),
@@ -653,7 +771,7 @@ export default function PerheAppPrototypePage() {
       .filter((evt) => {
         if (evt.distanceKm > profile.filters.maxDistanceKm) return false
         if (
-          profile.filters.targetCity !== 'Kaikki PKS' &&
+          profile.filters.targetCity !== PKS_ALL_CITIES &&
           (evt.city || '').toLowerCase() !== profile.filters.targetCity.toLowerCase()
         ) {
           return false
@@ -756,7 +874,7 @@ export default function PerheAppPrototypePage() {
     () =>
       apiFamilyProfiles.map((family) => {
         const city = getCoarseCity(family.area, profile.homeCity)
-        const famCoords = resolveCoordsTuple(COARSE_CITY_COORDS[city], DEFAULT_PKS_COORDS)
+        const famCoords = resolveCoordsTuple(PKS_CITY_CENTERS[city], DEFAULT_PKS_COORDS)
         const distanceKm = calcDistanceKm(safeHomeCoords, famCoords)
         const familyProfile: FamilyProfile = {
           id: family.id,
@@ -786,7 +904,7 @@ export default function PerheAppPrototypePage() {
       if (!profile.privacy.discoverable) return false
       if (fam.passedByMe || dismissedIds.includes(fam.id) || matchedIds.includes(fam.id)) return false
       if (fam.distanceKm > profile.filters.maxDistanceKm) return false
-      if (profile.filters.targetCity !== 'Kaikki PKS' && fam.city !== profile.filters.targetCity) {
+      if (profile.filters.targetCity !== PKS_ALL_CITIES && fam.city !== profile.filters.targetCity) {
         return false
       }
       if (profile.filters.targetAgeGroups.length > 0) {
@@ -1199,22 +1317,25 @@ export default function PerheAppPrototypePage() {
       <div className="mx-auto flex h-dvh w-full min-w-0 max-w-[430px] flex-col overflow-hidden border-x border-slate-800 bg-slate-50 shadow-2xl relative transition-all duration-300 sm:max-w-2xl md:max-w-3xl md:h-[92dvh] md:max-h-[1180px] md:rounded-[2rem] md:border-[3px]">
         <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-col">
-              <h1 className="text-base md:text-lg font-extrabold text-slate-900 tracking-tight">
-                Perhe<span className="text-[#2F5D50]">Piiri</span>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0">
+              <h1 className="[font-family:var(--font-date-numeral)] text-2xl font-semibold leading-none tracking-tight sm:text-3xl">
+                <span className="text-[#2E211B]">Perhe</span>
+                <span className="text-[#2F5D50]">Piiri</span>
               </h1>
+              <button
+                type="button"
+                onClick={openLocationModal}
+                aria-label={`Muokkaa kotisijaintia: ${profile.homeCity} (${profile.area}), enintään ${profile.filters.maxDistanceKm} km`}
+                aria-haspopup="dialog"
+                aria-expanded={locationModalOpen}
+                className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 px-1 text-left text-[10px] text-slate-500 hover:text-[var(--color-ink)] md:text-xs"
+              >
+                <span aria-hidden="true">🟠</span>
+                <span className="min-w-0 truncate">
+                  {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
+                </span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => openOnMap(safeHomeCoords, 'home-location')}
-              aria-label={`Avaa kartta: ${profile.homeCity} (${profile.area}), enintään ${profile.filters.maxDistanceKm} km`}
-              className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 text-left text-[10px] text-slate-500 hover:text-[var(--color-ink)] md:text-xs"
-            >
-              <span aria-hidden="true">🟠</span>
-              <span className="min-w-0 truncate">
-                {profile.homeCity} ({profile.area}) • max {profile.filters.maxDistanceKm} km
-              </span>
-            </button>
           </div>
           {authStatus === 'authenticated' && currentUser ? (
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
@@ -1288,22 +1409,24 @@ export default function PerheAppPrototypePage() {
                   </button>
                 </div>
               </div>
-              <div className="hidden items-center gap-1.5 lg:flex">
-                <button
-                  type="button"
-                  onClick={() => setShowDemoMonitor((prev) => !prev)}
-                  className="rounded-full bg-zinc-900 px-2 py-1 text-[10px] font-mono font-bold text-amber-400 hover:bg-zinc-800"
-                >
-                  {showDemoMonitor ? '◼ Demo-Log' : '◻ Demo-Log'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowNerdDbFloat((prev) => !prev)}
-                  className="rounded-full bg-indigo-950 px-2 py-1 text-[10px] font-mono font-bold text-[var(--color-accent-soft)] hover:bg-indigo-900"
-                >
-                  {showNerdDbFloat ? '◼ DB-Feed' : '◻ DB-Feed'}
-                </button>
-              </div>
+              {debugPanelsEnabled && (
+                <div className="hidden items-center gap-1.5 lg:flex">
+                  <button
+                    type="button"
+                    onClick={() => setShowDemoMonitor((prev) => !prev)}
+                    className="min-h-11 rounded-full bg-zinc-900 px-3 py-1 text-[10px] font-mono font-bold text-amber-400 hover:bg-zinc-800"
+                  >
+                    {showDemoMonitor ? '◼ Demo-Log' : '◻ Demo-Log'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNerdDbFloat((prev) => !prev)}
+                    className="min-h-11 rounded-full bg-indigo-950 px-3 py-1 text-[10px] font-mono font-bold text-[var(--color-accent-soft)] hover:bg-indigo-900"
+                  >
+                    {showNerdDbFloat ? '◼ DB-Feed' : '◻ DB-Feed'}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex min-w-0 shrink-0 items-center gap-2">
@@ -1371,14 +1494,17 @@ export default function PerheAppPrototypePage() {
               >
                 Mitä etsit tänään?
               </h2>
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+              <div className="grid min-w-0 grid-cols-3 gap-2.5 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => requestProtectedTab('families')}
                   className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-accent)] px-2 py-3 text-center text-xs font-semibold text-white transition-colors hover:brightness-95 sm:min-h-[84px] sm:gap-1.5 sm:px-3"
                 >
-                  <span aria-hidden="true" className="text-lg leading-none">🤝</span>
+                  <Users aria-hidden="true" className="shrink-0" size={20} strokeWidth={2} />
                   <span className="min-w-0 truncate">Perheet</span>
+                  <span className="min-w-0 text-[11px] font-medium leading-tight">
+                    Löydä seuraa läheltä
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -1388,16 +1514,22 @@ export default function PerheAppPrototypePage() {
                   }}
                   className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-amber)] px-2 py-3 text-center text-xs font-semibold text-white transition-colors hover:brightness-95 sm:min-h-[84px] sm:gap-1.5 sm:px-3"
                 >
-                  <span aria-hidden="true" className="text-lg leading-none">📅</span>
+                  <CalendarDays aria-hidden="true" className="shrink-0" size={20} strokeWidth={2} />
                   <span className="min-w-0 truncate">Tapahtumat</span>
+                  <span className="min-w-0 text-[11px] font-medium leading-tight">
+                    Löydä tekemistä
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => requestProtectedTab('conversations')}
                   className="flex min-w-0 min-h-[76px] flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--color-border)] bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-amber)] px-2 py-3 text-center text-xs font-semibold text-white transition-[filter] hover:brightness-95 sm:min-h-[84px] sm:gap-1.5 sm:px-3"
                 >
-                  <span aria-hidden="true" className="text-lg leading-none">💬</span>
+                  <MessageSquare aria-hidden="true" className="shrink-0" size={20} strokeWidth={2} />
                   <span className="min-w-0 truncate">Yhteisö</span>
+                  <span className="min-w-0 text-[11px] font-medium leading-tight">
+                    Juttele ja jaa vinkkejä
+                  </span>
                 </button>
               </div>
             </section>
@@ -1779,6 +1911,7 @@ export default function PerheAppPrototypePage() {
               <button
                 key={tab.key}
                 type="button"
+                aria-current={active ? 'page' : undefined}
                 onClick={() => {
                   const selectTab = () => {
                     setActiveTab(tab.key as TabKey)
@@ -1795,17 +1928,17 @@ export default function PerheAppPrototypePage() {
                 }}
                 className={`flex min-w-0 w-full flex-col items-center justify-center gap-0.5 min-h-11 py-1 px-1 rounded-2xl transition-colors ${
                   active
-                    ? 'bg-[var(--color-accent-soft)] text-[var(--color-ink)] font-bold'
-                    : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] hover:bg-[var(--color-bg)]'
+                    ? 'text-[var(--color-accent)] font-semibold'
+                    : 'text-[var(--color-ink-muted)] font-medium hover:text-[var(--color-ink)] hover:bg-[var(--color-bg)]'
                 }`}
               >
                 <Icon
                   aria-hidden="true"
                   className="h-5 w-5 shrink-0"
-                  strokeWidth={2}
+                  strokeWidth={active ? 2.5 : 1.75}
                 />
-                <span className="flex w-full min-w-0 items-center justify-center gap-1 text-center text-[11px] leading-tight sm:text-xs">
-                  <span className="min-w-0 truncate">{tab.label}</span>
+                <span className="flex w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap text-center text-[11px] leading-tight sm:text-xs">
+                  <span className="min-w-0 whitespace-nowrap">{tab.label}</span>
                   {tab.key === 'hub' && unreadChatChannelIds.size > 0 && (
                     <span className="min-w-4 rounded-full border border-white bg-[var(--color-carmine)] px-1 text-[9px] leading-4 text-white">
                       {unreadChatChannelIds.size}
@@ -1819,8 +1952,8 @@ export default function PerheAppPrototypePage() {
       </div>
 
       <DebugMonitorPanels
-        showDemoMonitor={showDemoMonitor}
-        showNerdDbFloat={showNerdDbFloat}
+        showDemoMonitor={debugPanelsEnabled && showDemoMonitor}
+        showNerdDbFloat={debugPanelsEnabled && showNerdDbFloat}
         currentUser={currentUser}
         demoFloatPos={demoFloatPos}
         dbFloatPos={dbFloatPos}
@@ -1900,6 +2033,114 @@ export default function PerheAppPrototypePage() {
           onClose={closeMapOverlay}
           onResetBounds={handleResetMapBounds}
         />
+      )}
+      {locationModalOpen && (
+        <div
+          className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-950/50 p-3 sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLocationModalOpen(false)
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="location-modal-title"
+            className="max-h-[90dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl sm:p-6"
+          >
+            <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                  Kotisijainti
+                </p>
+                <h2 id="location-modal-title" className="mt-1 text-lg font-bold text-[var(--color-ink)]">
+                  Valitse tai paikanna kotiseutu
+                </h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Sulje sijaintivalitsin"
+                title="Sulje"
+                onClick={() => setLocationModalOpen(false)}
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-ink)]"
+              >
+                <X aria-hidden="true" size={20} strokeWidth={2} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="location-area" className="mb-1.5 block text-xs font-bold text-[var(--color-ink)]">
+                  Alue tai kaupunginosa
+                </label>
+                <select
+                  id="location-area"
+                  value={locationDraftArea}
+                  onChange={(event) => selectLocationArea(event.target.value)}
+                  className="min-h-11 w-full min-w-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-ink)]"
+                >
+                  {PKS_AREA_OPTIONS.map((area) => (
+                    <option key={area.value} value={area.value}>
+                      {area.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={locateCurrentPosition}
+                disabled={locationStatus === 'locating'}
+                className="inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] px-4 py-2 text-sm font-bold text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {locationStatus === 'locating' ? (
+                  <Navigation aria-hidden="true" size={20} strokeWidth={2} />
+                ) : (
+                  <LocateFixed aria-hidden="true" size={20} strokeWidth={2} />
+                )}
+                {locationStatus === 'locating' ? 'Paikannetaan…' : 'Paikanna tarkka kotisijainti'}
+              </button>
+
+              {locationStatus === 'ready' && locationDraftCoords && (
+                <p role="status" className="rounded-xl border border-[#2F5D50]/40 bg-[#2F5D50]/10 p-3 text-xs text-[var(--color-ink)]">
+                  Tarkka sijainti paikannettu: {locationDraftCoords[0].toFixed(5)}, {locationDraftCoords[1].toFixed(5)}.
+                  Tallennus vaatii vielä vahvistuksen.
+                </p>
+              )}
+              {locationStatus === 'saved' && (
+                <p role="status" className="rounded-xl border border-[#2F5D50]/40 bg-[#2F5D50]/10 p-3 text-xs text-[var(--color-ink)]">
+                  Kotisijainti tallennettu.
+                </p>
+              )}
+              {locationError && (
+                <p role="alert" className="rounded-xl border border-[var(--color-carmine)]/40 bg-white p-3 text-xs text-[var(--color-ink)]">
+                  {locationError}
+                </p>
+              )}
+
+              <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+                Muille perheille näytetään ennen mätsiä vain valittu karkea alue ja etäisyys.
+              </p>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLocationModalOpen(false)}
+                  className="min-h-11 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-2 text-sm font-bold text-[var(--color-ink)]"
+                >
+                  Peruuta
+                </button>
+                <button
+                  type="button"
+                  onClick={saveLocationSelection}
+                  className="min-h-11 rounded-xl border border-[var(--color-accent)] bg-[var(--color-accent)] px-4 py-2 text-sm font-bold text-white"
+                >
+                  Tallenna kotisijainti
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   )
