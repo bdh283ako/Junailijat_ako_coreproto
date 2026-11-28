@@ -145,6 +145,12 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 
 - Karttanäkymän alle lisättiin kapealla näytöllä pinoutuva ja `md:`-leveydellä kaksipalstainen perheosumien ja oikean tapahtumasyötteen näkymä. Tapahtumakortti avautuu saavutettavalla `aria-expanded`-painikkeella, ja ikonitoiminnot säilyttävät osallistumis-, chat-, kalenteri-, kartta- ja lisätietopolut.
 - Kartan tapahtuma- ja perhemarkkerien valinta avaa ja korostaa vastaavan feedikortin; kortin valinta kohdistaa kartan. Toiminnot käyttävät olemassa olevia osallistumis-, ilmoittautumis-, chat- ja valintalokituksen käsittelijöitä.
+
+## 2026-11-28 — Lähellä.fi-tapahtumasyötteen lapsiperheraajaus
+
+- `/api/events` yhdistää Lähellä.fi- ja Linked Events -syötteet säilyttäen olemassa olevat kartta-, osallistumis-, chat-, kalenteri- ja sijaintitoiminnot.
+- Lähellä.fi haetaan useammilta sivuilta hallitulla sivurajalla ja aikakatkaisulla. Kohteet rajataan pääkaupunkiseudulle kaupunkitiedon, koordinaattien ja `pksAreas`-fallbackin perusteella.
+- Ei-lapsiperhetoiminta suodatetaan pois ja hyväksytyt kohteet mäpitetään yhteisiin kanonisiin tägeihin; HTML ja HTML-entiteetit siivotaan näkyvästä tekstistä.
 - Feedin kortit sallivat sisällön kutistumisen ja rivittymisen; ikonipainikkeet säilyttävät vähintään 44 × 44 px kosketusalueen, tekstien kontrastitokenit ja globaalin 3 px `:focus-visible`-kehyksen.
 
 ## 2026-11-28 — Shellproton vihreiden ja siniturkoosien sävyjen yhtenäistäminen
@@ -204,4 +210,15 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 - Demo-Log- ja DB-Feed-paneelit näkyvät vain, kun URL-parametri on `debug=1` tai `debug=true`; muissa tapauksissa paneelit ja niiden valintanapit pysyvät piilossa.
 - Debug-paneelit käyttävät `z-[2000]`-kerrosta, joten ne pysyvät kartan, kelluvien paneelien, näkymäpeitteiden ja modaalien päällimmäisenä kerroksena.
 - Paneelien sulkeminen, päivittäminen ja debug-napit säilyttävät vähintään 44 × 44 px:n kosketusalueen, saavuttavat värit ja globaalin 3 px:n fokuskehyksen.
+
+## 2026-11-28 — Shellkuoren tabletileveys
+
+- Mobiilissa kuori säilyttää täysleveän `w-full`-/`min-w-0`-mitoituksen käytettävissä olevaan ruutuleveyteen.
+- Tabletissa ja leveämmissä näkymissä kuoren ja alapalkin maksimileveys laajenee hallitusti `md:max-w-4xl`-luokkaan (896 px), jolloin noin 834 px:n tabletissa kuori ei veny liian leveäksi eikä riko kaksipalstaisen feedin asettelua.
+
+## 2026-11-28 — Lähteiden mitatut aikakatkaisut
+
+- Lähellä.fi-, Linked Events- ja EventPulse-haut erotetaan omiin rinnakkais-haaroihinsa. Hidas EventPulse ei jarruta Le- tai Lähellä-tuloksia, ja 60 sekunnin palvelinvälimuisti palauttaa valmiit tulokset viiveettä.
+- Aikakatkaisut johdettiin erikseen `curl`-mitatusta vasteajasta kertomalla 1,5:llä: Lähellä.fi 2413 ms, Linked Events 3860 ms, EventPulse 13011 ms ja Kauniainen 207 ms.
+- `?debug=1` ja `?debug=true` näyttävät lähde- ja aikakatkaisutilat säilyttäen 44 px kosketusalueet ja 3 px fokuskehyksen.
 

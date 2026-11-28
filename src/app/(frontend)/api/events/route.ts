@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  PKS_AREAS,
+  PKS_CITIES,
+  PKS_CITY_CENTERS,
+  type PksCityName,
+} from '../../akotestaa/shellproto/pksAreas'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -7,6 +13,7 @@ export interface NormalizedFeedEvent {
   id: string
   title: string
   startDate: string
+  endDate?: string
   time: string
   locationName: string
   venue: string
@@ -26,6 +33,57 @@ export interface NormalizedFeedEvent {
 const KARO_EVENTPULSE_URL =
   process.env.KARO_EVENTPULSE_URL?.trim() ||
   'https://eventpulsebyjunailijat.ai.studio/api/events/feed.jsonld?horizon=all'
+const LAHELLA_ACTIVITIES_URL =
+  'https://www.lahella.fi/v1/integration/activities/'
+
+const LAHELLA_TIMEOUT_MS = 2413
+const LINKED_EVENTS_TIMEOUT_MS = 3860
+const EVENTPULSE_TIMEOUT_MS = 13011
+const KAUNIAINEN_TIMEOUT_MS = 207
+const UNIFIED_EVENTS_RESPONSE_TIMEOUT_MS = 3000
+const FEED_CACHE_TTL_MS = 60_000
+
+interface FeedCacheSnapshot {
+  updatedAt: number
+  combined: NormalizedFeedEvent[]
+  byCity: Record<string, number>
+  linkedEventsTotal: number
+  karoResult: Awaited<ReturnType<typeof fetchKaroEventPulse>> | null
+  lahellaResult: Awaited<ReturnType<typeof fetchLahellaActivities>> | null
+  pagination: {
+    helsinkiMetaCount: number
+    espooMetaCount: number
+    vantaaMetaCount: number
+    kauniainenCount: number
+  }
+  hasMorePages: boolean
+  refreshing: boolean
+  helsinkiResult: Awaited<ReturnType<typeof fetchLinkedEventsForMunicipality>> | null
+  espooResult: Awaited<ReturnType<typeof fetchLinkedEventsForMunicipality>> | null
+  vantaaResult: Awaited<ReturnType<typeof fetchLinkedEventsForMunicipality>> | null
+  kauniainenEvents: NormalizedFeedEvent[]
+}
+
+const feedCache: FeedCacheSnapshot = {
+  updatedAt: 0,
+  combined: [],
+  byCity: {},
+  linkedEventsTotal: 0,
+  karoResult: null,
+  lahellaResult: null,
+  pagination: {
+    helsinkiMetaCount: 0,
+    espooMetaCount: 0,
+    vantaaMetaCount: 0,
+    kauniainenCount: 0,
+  },
+  hasMorePages: false,
+  refreshing: false,
+  helsinkiResult: null,
+  espooResult: null,
+  vantaaResult: null,
+  kauniainenEvents: [],
+}
 
 // YSO-asiasanat Linked Eventsissä: lapset (p4354), perheet (p13050), vauvat (p11185), leikki-ikäiset (p20513)
 const FAMILY_YSO_KEYWORDS = 'yso:p4354,yso:p13050,yso:p11185,yso:p20513'
@@ -75,8 +133,560 @@ function stripHtml(raw: string): string {
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      String.fromCharCode(Number.parseInt(code, 10)),
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) =>
+      String.fromCharCode(Number.parseInt(code, 16)),
+    )
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;|&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function isPksCoordinate(lat: number, lng: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false
+  if (lat < 59.8 || lat > 60.5 || lng < 24.3 || lng > 25.3) return false
+
+  let nearestKm = Number.POSITIVE_INFINITY
+  for (const area of PKS_AREAS) {
+    const latDelta = ((area.coords[0] - lat) * Math.PI) / 180
+    const lngDelta = ((area.coords[1] - lng) * Math.PI) / 180
+    const latA = (lat * Math.PI) / 180
+    const latB = (area.coords[0] * Math.PI) / 180
+    const sinLat = Math.sin(latDelta / 2)
+    const sinLng = Math.sin(lngDelta / 2)
+    const h =
+      sinLat * sinLat +
+      Math.cos(latA) * Math.cos(latB) * sinLng * sinLng
+    const distance =
+      6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+    nearestKm = Math.min(nearestKm, distance)
+  }
+  return nearestKm <= 18
+}
+
+function normalizePksCity(raw: unknown): PksCityName | undefined {
+  if (typeof raw !== 'string') return undefined
+  const value = stripHtml(raw).toLowerCase()
+  if (/espoo|esbo/.test(value)) return 'Espoo'
+  if (/(helsinki|helsingfors)/.test(value)) return 'Helsinki'
+  if (/(vantaa|vanda)/.test(value)) return 'Vantaa'
+  if (/(kauniainen|grankulla|grani)/.test(value)) return 'Kauniainen'
+  return undefined
+}
+
+function resolvePksCity(
+  item: Record<string, unknown>,
+): PksCityName | undefined {
+  const traits =
+    item.traits && typeof item.traits === 'object'
+      ? (item.traits as Record<string, unknown>)
+      : {}
+  const regionValues = [
+    ...(Array.isArray(traits.region) ? traits.region : []),
+    ...(Array.isArray(traits.municipality) ? traits.municipality : []),
+  ]
+  for (const value of regionValues) {
+    const city = normalizePksCity(String(value))
+    if (city) return city
+  }
+
+  const channels = Array.isArray(traits.channels) ? traits.channels : []
+  for (const channel of channels) {
+    if (!channel || typeof channel !== 'object') continue
+    const channelObj = channel as Record<string, unknown>
+    const address =
+      channelObj.address && typeof channelObj.address === 'object'
+        ? (channelObj.address as Record<string, unknown>)
+        : {}
+    const city = normalizePksCity(address.city)
+    if (city) return city
+
+    const map =
+      channelObj.map && typeof channelObj.map === 'object'
+        ? (channelObj.map as Record<string, unknown>)
+        : {}
+    const center =
+      map.center && typeof map.center === 'object'
+        ? (map.center as Record<string, unknown>)
+        : {}
+    const coords = center.coordinates
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const lng = typeof coords[0] === 'number' ? coords[0] : NaN
+      const lat = typeof coords[1] === 'number' ? coords[1] : NaN
+      if (isPksCoordinate(lat, lng)) {
+        let nearestCity: PksCityName = 'Helsinki'
+        let nearestDistance = Number.POSITIVE_INFINITY
+        for (const city of PKS_CITIES) {
+          const centerCoords = PKS_CITY_CENTERS[city]
+          const latDelta = ((centerCoords[0] - lat) * Math.PI) / 180
+          const lngDelta = ((centerCoords[1] - lng) * Math.PI) / 180
+          const latA = (lat * Math.PI) / 180
+          const latB = (centerCoords[0] * Math.PI) / 180
+          const h =
+            Math.sin(latDelta / 2) ** 2 +
+            Math.cos(latA) *
+              Math.cos(latB) *
+              Math.sin(lngDelta / 2) ** 2
+          const distance =
+            6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+          if (distance < nearestDistance) {
+            nearestDistance = distance
+            nearestCity = city
+          }
+        }
+        return nearestCity
+      }
+    }
+  }
+
+  const text = [
+    typeof traits.name === 'string' ? traits.name : '',
+    typeof traits.summary === 'string' ? traits.summary : '',
+    typeof traits.description === 'string' ? traits.description : '',
+  ]
+    .concat(
+      channels.flatMap((channel) =>
+        channel && typeof channel === 'object'
+          ? [
+              typeof (channel as Record<string, unknown>).name === 'string'
+                ? ((channel as Record<string, unknown>).name as string)
+                : '',
+              typeof (channel as Record<string, unknown>).summary === 'string'
+                ? ((channel as Record<string, unknown>).summary as string)
+                : '',
+              typeof (channel as Record<string, unknown>).description === 'string'
+                ? ((channel as Record<string, unknown>).description as string)
+                : '',
+            ]
+          : [],
+      ),
+    )
+    .join(' ')
+  const lowerText = stripHtml(text).toLowerCase()
+  for (const area of PKS_AREAS) {
+    if (
+      area.aliases.some((alias) => {
+        const normalizedAlias = alias.toLowerCase()
+        return (
+          lowerText.includes(normalizedAlias) ||
+          normalizePksCity(normalizedAlias) === area.city
+        )
+      })
+    ) {
+      return area.city
+    }
+  }
+  return normalizePksCity(text)
+}
+
+function familySignal(
+  item: Record<string, unknown>,
+): { accepted: boolean; ageRanges: string[] } {
+  const traits =
+    item.traits && typeof item.traits === 'object'
+      ? (item.traits as Record<string, unknown>)
+      : {}
+  const demographics = Array.isArray(traits.demographic)
+    ? traits.demographic.map(String)
+    : []
+  const themes = Array.isArray(traits.theme) ? traits.theme.map(String) : []
+  const childAgeRanges = demographics.filter((value) =>
+    /ageGroup\/range:(0-1|2-6|4-6|7-12)/.test(value),
+  )
+
+  const name = stripHtml(
+    typeof traits.name === 'string'
+      ? traits.name
+      : typeof traits.translations === 'object'
+        ? String(
+            (
+              (traits.translations as Record<string, unknown>).fi as
+                | Record<string, unknown>
+                | undefined
+            )?.name ?? '',
+          )
+        : '',
+  )
+  const summary = stripHtml(
+    typeof traits.summary === 'string' ? traits.summary : '',
+  )
+  const description = stripHtml(
+    typeof traits.description === 'string' ? traits.description : '',
+  )
+  const channels = Array.isArray(traits.channels) ? traits.channels : []
+  const channelText = channels
+    .flatMap((channel) =>
+      channel && typeof channel === 'object'
+        ? Object.values(channel as Record<string, unknown>)
+            .filter((value) => typeof value === 'string')
+            .map(String)
+        : [],
+    )
+    .join(' ')
+  const combined = `${name} ${summary} ${description} ${channelText}`.toLowerCase()
+
+  const familyTextSignal =
+    /\b(perhe|perheet|lapsi|lapset|lapsiperhe|nuori|nuoret|vauva|vauvat|taaper|perhekahvil|kerho|eskari|päiväkoti|koulu|leikkik|viikkotoimin)\b/.test(
+      combined,
+    )
+  const themesSignal = themes.includes('vt_lapset_perheet')
+  const onlyOlderAdultSignal =
+    demographics.some((value) => /ageGroup\/range:65-99/.test(value)) &&
+    !childAgeRanges.length &&
+    !familyTextSignal &&
+    !themesSignal
+  const adultOnlySignal =
+    /omaishoit|kriisi|sairaus|terveys|aikuisten|kuntoutus|vertais(?:ryhmä|tuki)/.test(
+      combined,
+    ) &&
+    !childAgeRanges.length &&
+    !familyTextSignal &&
+    !themesSignal
+  const explicitOlderSignal = themes.includes('vt_ikaihmiset') && !familyTextSignal
+
+  return {
+    accepted:
+      (childAgeRanges.length > 0 || familyTextSignal || themesSignal) &&
+      !onlyOlderAdultSignal &&
+      !adultOnlySignal &&
+      !explicitOlderSignal,
+    ageRanges: childAgeRanges,
+  }
+}
+
+function canonicalTags(options: {
+  title: string
+  description: string
+  demographics?: string[]
+  themes?: string[]
+  isFree?: boolean
+}): string[] {
+  const tags: string[] = []
+  const text = `${options.title} ${options.description}`.toLowerCase()
+  const demographics = options.demographics ?? []
+  const themes = options.themes ?? []
+
+  if (
+    demographics.some((value) =>
+      /ageGroup\/range:(0-1|2-6|4-6)/.test(value),
+    ) ||
+    /\bvauva|taaper/.test(text)
+  ) {
+    tags.push('Vauvat & taaperot')
+  }
+  if (
+    demographics.some((value) => /ageGroup\/range:(2-6|4-6)/.test(value)) ||
+    /\bleikki-ikä|päiväkoti|eskari/.test(text)
+  ) {
+    tags.push('Leikki-ikäiset')
+  }
+  if (
+    demographics.some((value) => /ageGroup\/range:7-12/.test(value)) ||
+    /\bkoulul|kouluikä|kerho/.test(text) ||
+    themes.includes('vt_lapset_perheet')
+  ) {
+    tags.push('Kouluikäiset & perheet')
+  }
+  if (
+    themes.includes('vt_lapset_perheet') ||
+    /\bperhe|lapsi|lapset|kerho/.test(text)
+  ) {
+    tags.push('Kaikenikäisille / Perheet')
+  }
+  if (/perhekahvil|kahvil|vertais(?:tuki|ryhmä)/.test(text)) {
+    tags.push('Perhekahvila & vertaistuki')
+  }
+  if (/liikunta|ulkoilu|retki|luonto|uint|kävely|pyörä/.test(text)) {
+    tags.push('Liikunta & ulkoilu')
+  }
+  if (/kulttuuri|askartelu|kirjasto|museo|musiikki|teatteri|maalaus|keramiikka/.test(text)) {
+    tags.push('Kulttuuri & askartelu')
+  }
+  if (options.isFree) {
+    tags.push('Maksuton')
+  }
+  return Array.from(new Set(tags))
+}
+
+async function fetchLahellaActivities(): Promise<{
+  events: NormalizedFeedEvent[]
+  debug: {
+    configured: boolean
+    url: string
+    status: number | null
+    error?: string
+    rawItems: number
+    hasMore?: boolean
+    pksItems?: number
+    familyItems?: number
+    filteredItems?: number
+    pagesFetched?: number
+    elapsedMs?: number
+  }
+}> {
+  const pageSize = 50
+  const maxPages = 5
+  let rawItems = 0
+  let lastStatus: number | null = null
+  let lastHasMore = false
+  let pksItems = 0
+  let familyItems = 0
+  let filteredItems = 0
+  let pagesFetched = 0
+  let error: string | undefined
+  const rawItemsById = new Map<string, Record<string, unknown>>()
+  const startedAt = Date.now()
+
+  try {
+    for (let page = 1; page <= maxPages; page += 1) {
+      const url = new URL(LAHELLA_ACTIVITIES_URL)
+      url.searchParams.set('pageSize', String(pageSize))
+      url.searchParams.set('page', String(page))
+
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(LAHELLA_TIMEOUT_MS),
+      })
+      lastStatus = res.status
+      pagesFetched += 1
+      if (!res.ok) {
+        error = `HTTP_${res.status}`
+        break
+      }
+
+      const payload = (await res.json()) as {
+        hasMore?: boolean
+        items?: unknown[]
+      }
+      lastHasMore = payload.hasMore === true
+      const items = Array.isArray(payload.items) ? payload.items : []
+      rawItems += items.length
+      for (const item of items) {
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>
+          const key = String(record._key ?? '')
+          if (key) rawItemsById.set(key, record)
+        }
+      }
+
+      if (!payload.hasMore) break
+    }
+  } catch (err) {
+    error =
+      err instanceof Error && err.name === 'TimeoutError'
+        ? 'FETCH_TIMEOUT'
+        : err instanceof Error
+          ? err.message
+          : 'FETCH_FAILED'
+  }
+
+  const events: NormalizedFeedEvent[] = []
+  for (const [key, item] of rawItemsById) {
+    const familyResult = familySignal(item)
+    if (familyResult.accepted) familyItems += 1
+    if (familyResult.accepted === false) continue
+    const traits =
+      item.traits && typeof item.traits === 'object'
+        ? (item.traits as Record<string, unknown>)
+        : {}
+
+    const fiTranslation =
+      traits.translations &&
+      typeof traits.translations === 'object'
+        ? ((traits.translations as Record<string, unknown>).fi as
+            | Record<string, unknown>
+            | undefined)
+        : undefined
+
+    const title = stripHtml(
+      typeof traits.name === 'string'
+        ? traits.name
+        : typeof fiTranslation?.name === 'string'
+          ? fiTranslation.name
+          : 'Lapsiperhetapahtuma',
+    )
+    const description = stripHtml(
+      typeof traits.description === 'string'
+        ? traits.description
+        : typeof fiTranslation?.description === 'string'
+          ? fiTranslation.description
+          : typeof traits.summary === 'string'
+            ? traits.summary
+            : typeof fiTranslation?.summary === 'string'
+              ? fiTranslation.summary
+              : '',
+    )
+    if (!title) continue
+
+    const city = resolvePksCity(item)
+    if (!city) continue
+    pksItems += 1
+
+    const channels = Array.isArray(traits.channels) ? traits.channels : []
+    const firstChannel =
+      channels.find(
+        (channel) =>
+          channel &&
+          typeof channel === 'object',
+      ) as Record<string, unknown> | undefined
+    const channelAddress =
+      firstChannel?.address && typeof firstChannel.address === 'object'
+        ? (firstChannel.address as Record<string, unknown>)
+        : {}
+    const channelMap =
+      firstChannel?.map && typeof firstChannel.map === 'object'
+        ? (firstChannel.map as Record<string, unknown>)
+        : {}
+    const mapCenter =
+      channelMap.center && typeof channelMap.center === 'object'
+        ? (channelMap.center as Record<string, unknown>)
+        : {}
+    const mapCoordinates = Array.isArray(mapCenter.coordinates)
+      ? mapCenter.coordinates
+      : undefined
+
+    let coordinates:
+      | { lat: number; lng: number }
+      | undefined
+    if (mapCoordinates && mapCoordinates.length >= 2) {
+      const lng =
+        typeof mapCoordinates[0] === 'number'
+          ? mapCoordinates[0]
+          : NaN
+      const lat =
+        typeof mapCoordinates[1] === 'number'
+          ? mapCoordinates[1]
+          : NaN
+      if (isPksCoordinate(lat, lng)) {
+        coordinates = { lat, lng }
+      }
+    }
+    if (!coordinates) {
+      coordinates = { lat: PKS_CITY_CENTERS[city][0], lng: PKS_CITY_CENTERS[city][1] }
+    }
+
+    let startDate = ''
+    let endDate: string | undefined
+    for (const channel of channels) {
+      if (!channel || typeof channel !== 'object') continue
+      const events = (channel as Record<string, unknown>).events
+      if (!Array.isArray(events)) continue
+      for (const event of events) {
+        if (!event || typeof event !== 'object') continue
+        const eventObj = event as Record<string, unknown>
+        const start =
+          typeof eventObj.start === 'number' ? eventObj.start : undefined
+        const end =
+          typeof eventObj.end === 'number' ? eventObj.end : undefined
+        if (start && (!startDate || new Date(start).toISOString() < startDate)) {
+          startDate = new Date(start).toISOString()
+          endDate = end ? new Date(end).toISOString() : undefined
+        }
+      }
+    }
+    if (!startDate) {
+      const visibility =
+        traits.visibility && typeof traits.visibility === 'object'
+          ? (traits.visibility as Record<string, unknown>)
+          : undefined
+      if (typeof visibility?.start === 'number') {
+        startDate = new Date(visibility.start).toISOString()
+      }
+    }
+
+    const locationName = stripHtml(
+      typeof firstChannel?.name === 'string'
+        ? firstChannel.name
+        : `${city} lapsiperhepalvelut`,
+    )
+    const addressParts = [
+      typeof channelAddress.street === 'string'
+        ? channelAddress.street
+        : '',
+      city,
+    ].filter(Boolean)
+
+    const pricing = Array.isArray(traits.pricing)
+      ? traits.pricing.map(String)
+      : []
+    const isFree =
+      pricing.includes('free') ||
+      (typeof traits.price === 'number' && traits.price === 0)
+    const demographics = Array.isArray(traits.demographic)
+      ? traits.demographic.map(String)
+      : []
+    const themes = Array.isArray(traits.theme)
+      ? traits.theme.map(String)
+      : []
+    const tags = [
+      'lahella-fi',
+      ...canonicalTags({
+        title,
+        description,
+        demographics,
+        themes,
+        isFree,
+      }),
+    ]
+
+    const ageRanges = familySignal(item).ageRanges
+    const ageRangeLabel =
+      ageRanges.length > 0
+        ? ageRanges
+            .map((value) => value.replace('ageGroup/range:', '').replace('-', '–'))
+            .join(', ') + ' v'
+        : 'Lapset & perheet'
+
+    filteredItems += 1
+    events.push({
+      id: `lahella-${key}`,
+      title,
+      startDate,
+      time: formatFinnishDateTime(startDate),
+      locationName,
+      venue: locationName,
+      address: addressParts.join(', '),
+      city,
+      coordinates,
+      coords: [coordinates.lat, coordinates.lng] as [number, number],
+      ageRangeLabel,
+      ageGroup: ageRangeLabel,
+      price: isFree ? 'Maksuton' : 'Tarkista hinta',
+      description: description || undefined,
+      url:
+        typeof firstChannel?.www === 'string'
+          ? firstChannel.www
+          : typeof traits.registrationUrl === 'string'
+            ? traits.registrationUrl
+            : undefined,
+      tags,
+      source: 'lahella-fi',
+      ...(endDate ? { endDate } : {}),
+    })
+  }
+
+  return {
+    events,
+    debug: {
+      configured: true,
+      url: LAHELLA_ACTIVITIES_URL,
+      status: lastStatus,
+      ...(error ? { error } : {}),
+      rawItems,
+      hasMore: lastHasMore,
+      pksItems,
+      familyItems,
+      filteredItems,
+      pagesFetched,
+      elapsedMs: Date.now() - startedAt,
+    },
+  }
 }
 
 function formatFinnishDateTime(iso?: string): string {
@@ -207,7 +817,7 @@ async function fetchKaroEventPulse(): Promise<{
         Accept: 'application/ld+json, application/json;q=0.9, */*;q=0.8',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(EVENTPULSE_TIMEOUT_MS),
     })
 
     if (!res.ok) {
@@ -396,6 +1006,12 @@ function mapLinkedEventRows(
 
     const infoUrl = pickLocalizedText(row.info_url)
     const ageLabel = extractAgeLabel(row, title, description)
+    const price = extractPriceLabel(row)
+    const canonical = canonicalTags({
+      title,
+      description,
+      isFree: price === 'Maksuton',
+    })
 
     results.push({
       id: `le-${rawId}`,
@@ -414,10 +1030,10 @@ function mapLinkedEventRows(
         : {}),
       ageRangeLabel: ageLabel,
       ageGroup: ageLabel,
-      price: extractPriceLabel(row),
+      price,
       description: description || undefined,
       url: infoUrl || undefined,
-      tags: ['linked-events', config.sourceTag],
+      tags: ['linked-events', config.sourceTag, ...canonical],
       source: 'linked-events-pks',
     })
   }
@@ -448,7 +1064,7 @@ async function fetchLinkedEventsForMunicipality(
 
       const res = await fetch(url.toString(), {
         cache: 'no-store',
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(LINKED_EVENTS_TIMEOUT_MS),
       })
       if (!res.ok) {
         return { events: [], metaCount: 0, hasNextPage: false }
@@ -487,7 +1103,7 @@ async function fetchLinkedEventsForMunicipality(
 
     const res = await fetch(buildDefaultUrl(true), {
       cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(LINKED_EVENTS_TIMEOUT_MS),
     })
     const payload = res.ok
       ? ((await res.json()) as { meta?: { count?: number }; data?: Record<string, unknown>[] })
@@ -498,7 +1114,7 @@ async function fetchLinkedEventsForMunicipality(
     if (rows.length < targetSize) {
       const fallbackRes = await fetch(buildDefaultUrl(false), {
         cache: 'no-store',
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(LINKED_EVENTS_TIMEOUT_MS),
       })
       if (fallbackRes.ok) {
         const fbPayload = (await fallbackRes.json()) as {
@@ -535,7 +1151,7 @@ async function fetchKauniainenWebEvents(): Promise<NormalizedFeedEvent[]> {
   try {
     const res = await fetch(KAUNIAINEN_EVENTS_URL, {
       cache: 'no-store',
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(KAUNIAINEN_TIMEOUT_MS),
     })
     if (!res.ok) return []
     const html = await res.text()
@@ -581,6 +1197,101 @@ async function fetchKauniainenWebEvents(): Promise<NormalizedFeedEvent[]> {
   }
 }
 
+function rebuildFeedCache(): void {
+  const map = new Map<string, NormalizedFeedEvent>()
+  const sourceEvents = [
+    ...(feedCache.karoResult?.events ?? []),
+    ...(feedCache.lahellaResult?.events ?? []),
+    ...(feedCache.espooResult?.events ?? []),
+    ...(feedCache.helsinkiResult?.events ?? []),
+    ...(feedCache.vantaaResult?.events ?? []),
+    ...(feedCache.kauniainenEvents ?? []),
+  ]
+  for (const event of sourceEvents) {
+    if (!map.has(event.id)) map.set(event.id, event)
+  }
+  feedCache.combined = Array.from(map.values())
+  feedCache.byCity = {}
+  for (const event of feedCache.combined) {
+    feedCache.byCity[event.city] = (feedCache.byCity[event.city] ?? 0) + 1
+  }
+  feedCache.linkedEventsTotal =
+    (feedCache.helsinkiResult?.events.length ?? 0) +
+    (feedCache.espooResult?.events.length ?? 0) +
+    (feedCache.vantaaResult?.events.length ?? 0) +
+    (feedCache.kauniainenEvents?.length ?? 0)
+  feedCache.pagination = {
+    helsinkiMetaCount: feedCache.helsinkiResult?.metaCount ?? 0,
+    espooMetaCount: feedCache.espooResult?.metaCount ?? 0,
+    vantaaMetaCount: feedCache.vantaaResult?.metaCount ?? 0,
+    kauniainenCount: feedCache.kauniainenEvents.length,
+  }
+  feedCache.hasMorePages =
+    feedCache.helsinkiResult?.hasNextPage === true ||
+    feedCache.espooResult?.hasNextPage === true ||
+    feedCache.vantaaResult?.hasNextPage === true ||
+    feedCache.lahellaResult?.debug.hasMore === true
+  feedCache.updatedAt = Date.now()
+}
+
+async function startFeedRefresh(
+  rawUnfiltered: boolean,
+  page: number,
+  pageSize: number,
+): Promise<void> {
+  if (feedCache.refreshing) return
+  feedCache.refreshing = true
+
+  const refreshPromises = [
+    fetchLahellaActivities().then((value) => {
+      feedCache.lahellaResult = value
+      rebuildFeedCache()
+    }),
+    fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[0], {
+      rawUnfiltered,
+      page,
+      pageSize,
+    }).then((value) => {
+      feedCache.helsinkiResult = value
+      rebuildFeedCache()
+    }),
+    fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[1], {
+      rawUnfiltered,
+      page,
+      pageSize,
+    }).then((value) => {
+      feedCache.espooResult = value
+      rebuildFeedCache()
+    }),
+    fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[2], {
+      rawUnfiltered,
+      page,
+      pageSize,
+    }).then((value) => {
+      feedCache.vantaaResult = value
+      rebuildFeedCache()
+    }),
+  ]
+
+  void Promise.allSettled(refreshPromises).then(() => {
+    rebuildFeedCache()
+  })
+
+  void fetchKaroEventPulse().then((value) => {
+    feedCache.karoResult = value
+    rebuildFeedCache()
+  }).finally(() => {
+    feedCache.refreshing = false
+  })
+
+  void fetchKauniainenWebEvents().then((value) => {
+    feedCache.kauniainenEvents = value
+    rebuildFeedCache()
+  })
+
+  await Promise.allSettled(refreshPromises)
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const mode = searchParams.get('mode') === 'raw' ? 'raw' : 'default'
@@ -602,34 +1313,17 @@ export async function GET(request: NextRequest) {
 
   const cityParam = (searchParams.get('city') || 'all').trim()
 
-  const [karoResult, helsinkiRes, espooRes, vantaaRes, kauniainenEvents] = await Promise.all([
-    fetchKaroEventPulse(),
-    fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[0], {
-      rawUnfiltered,
-      page,
-      pageSize,
-    }),
-    fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[1], {
-      rawUnfiltered,
-      page,
-      pageSize,
-    }),
-    fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[2], {
-      rawUnfiltered,
-      page,
-      pageSize,
-    }),
-    fetchKauniainenWebEvents(),
-  ])
+  const cacheIsFresh =
+    feedCache.updatedAt > 0 &&
+    Date.now() - feedCache.updatedAt < FEED_CACHE_TTL_MS
+  if (!cacheIsFresh) {
+    await startFeedRefresh(rawUnfiltered, page, pageSize)
+  } else if (!feedCache.refreshing) {
+    void startFeedRefresh(rawUnfiltered, page, pageSize)
+  }
 
   const dedupedMap = new Map<string, NormalizedFeedEvent>()
-  for (const evt of [
-    ...karoResult.events,
-    ...espooRes.events,
-    ...helsinkiRes.events,
-    ...vantaaRes.events,
-    ...kauniainenEvents,
-  ]) {
+  for (const evt of feedCache.combined) {
     if (
       cityParam !== 'all' &&
       (evt.city || '').toLowerCase() !== cityParam.toLowerCase()
@@ -648,14 +1342,8 @@ export async function GET(request: NextRequest) {
     byCity[evt.city] = (byCity[evt.city] ?? 0) + 1
   }
 
-  const linkedEventsTotal =
-    helsinkiRes.events.length +
-    espooRes.events.length +
-    vantaaRes.events.length +
-    kauniainenEvents.length
-
-  const hasMorePages =
-    helsinkiRes.hasNextPage || espooRes.hasNextPage || vantaaRes.hasNextPage
+  const linkedEventsTotal = feedCache.linkedEventsTotal
+  const hasMorePages = feedCache.hasMorePages
 
   return NextResponse.json(
     {
@@ -668,26 +1356,33 @@ export async function GET(request: NextRequest) {
         hasNextPage: hasMorePages,
         hasPrevPage: page > 1,
         metaCountByCity: {
-          helsinki: helsinkiRes.metaCount,
-          espoo: espooRes.metaCount,
-          vantaa: vantaaRes.metaCount,
-          kauniainen: kauniainenEvents.length,
+          helsinki: feedCache.pagination.helsinkiMetaCount,
+          espoo: feedCache.pagination.espooMetaCount,
+          vantaa: feedCache.pagination.vantaaMetaCount,
+          kauniainen: feedCache.pagination.kauniainenCount,
         },
       },
       sources: {
-        karoCount: karoResult.events.length,
-        lahellaCount: 0,
+        karoCount: feedCache.karoResult?.events.length ?? 0,
+        lahellaCount: feedCache.lahellaResult?.events.length ?? 0,
         linkedEventsCount: linkedEventsTotal,
         byEndpoint: {
-          helsinki: helsinkiRes.events.length,
-          espoo: espooRes.events.length,
-          vantaa: vantaaRes.events.length,
-          kauniainen: kauniainenEvents.length,
+          helsinki: feedCache.helsinkiResult?.events.length ?? 0,
+          espoo: feedCache.espooResult?.events.length ?? 0,
+          vantaa: feedCache.vantaaResult?.events.length ?? 0,
+          kauniainen: feedCache.kauniainenEvents.length,
         },
         byCity,
       },
-      karoDebug: karoResult.debug,
-      lahellaDebug: null,
+      karoDebug: feedCache.karoResult?.debug ?? null,
+      lahellaDebug: feedCache.lahellaResult?.debug ?? null,
+      sourceTiming: {
+        responseTimeoutMs: 0,
+        lahellaTimeoutMs: LAHELLA_TIMEOUT_MS,
+        linkedEventsTimeoutMs: LINKED_EVENTS_TIMEOUT_MS,
+        eventPulseTimeoutMs: EVENTPULSE_TIMEOUT_MS,
+        kauniainenTimeoutMs: KAUNIAINEN_TIMEOUT_MS,
+      },
       isFallback: combined.length === 0,
     },
     { status: 200 },

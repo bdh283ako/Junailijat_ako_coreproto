@@ -221,7 +221,11 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
     }
   }
 
-  const activeSourceCount = [sources.karoCount > 0, sources.linkedEventsCount > 0].filter(
+  const activeSourceCount = [
+    sources.karoCount > 0,
+    sources.lahellaCount > 0,
+    sources.linkedEventsCount > 0,
+  ].filter(
     Boolean,
   ).length
 
@@ -229,6 +233,9 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
     sources.linkedEventsCount > 0
       ? `Linked Events PKS (${sources.linkedEventsCount})`
       : 'Linked Events PKS (0)',
+    sources.lahellaCount > 0
+      ? `Lähellä.fi PKS (${sources.lahellaCount})`
+      : 'Lähellä.fi PKS (0)',
     sources.karoCount > 0 ? `EventPulse (${sources.karoCount})` : 'EventPulse (0)',
   ]
 
@@ -1314,7 +1321,7 @@ export default function PerheAppPrototypePage() {
 
   return (
     <div className="min-h-dvh w-full overflow-x-hidden bg-zinc-900 px-3.5 py-0 flex justify-center items-center sm:px-6 md:py-5">
-      <div className="mx-auto flex h-dvh w-full min-w-0 max-w-[430px] flex-col overflow-hidden border-x border-slate-800 bg-slate-50 shadow-2xl relative transition-all duration-300 sm:max-w-2xl md:max-w-3xl md:h-[92dvh] md:max-h-[1180px] md:rounded-[2rem] md:border-[3px]">
+      <div className="mx-auto flex h-dvh w-full min-w-0 max-w-[430px] flex-col overflow-hidden border-x border-slate-800 bg-slate-50 shadow-2xl relative transition-all duration-300 sm:max-w-2xl md:max-w-4xl md:h-[92dvh] md:max-h-[1180px] md:rounded-[2rem] md:border-[3px]">
         <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0">
@@ -1486,7 +1493,7 @@ export default function PerheAppPrototypePage() {
           {activeTab === 'events' && (
             <section
               aria-labelledby="quick-actions-heading"
-              className="mx-auto w-full max-w-[430px] px-4 pt-4 sm:max-w-2xl sm:px-6 md:max-w-3xl"
+              className="mx-auto w-full max-w-[430px] px-4 pt-4 sm:max-w-2xl sm:px-6 md:max-w-4xl"
             >
               <h2
                 id="quick-actions-heading"
@@ -1598,7 +1605,7 @@ export default function PerheAppPrototypePage() {
             />
           )}
           {activeTab === 'families' && currentUser && isFamilyProfileComplete(profile) && (
-            <div className="mx-auto w-full max-w-[430px] px-4 sm:max-w-2xl sm:px-6 md:max-w-3xl">
+            <div className="mx-auto w-full max-w-[430px] px-4 sm:max-w-2xl sm:px-6 md:max-w-4xl">
               <MapPeek
                 label={familySubTab === 'matches' ? 'Perheosumien kartta' : 'Perhekartta'}
                 itemCount={visibleMapFamilies.length}
@@ -1897,7 +1904,7 @@ export default function PerheAppPrototypePage() {
           </div>
         )}
 
-        <nav className="mx-auto w-full min-w-0 max-w-[430px] bg-[var(--color-surface)] border-t border-[var(--color-border)] grid grid-cols-5 gap-1 px-2 py-2 shrink-0 sm:max-w-2xl md:max-w-3xl">
+        <nav className="mx-auto w-full min-w-0 max-w-[430px] bg-[var(--color-surface)] border-t border-[var(--color-border)] grid grid-cols-5 gap-1 px-2 py-2 shrink-0 sm:max-w-2xl md:max-w-4xl">
           {[
             { key: 'events', icon: Home, label: 'Koti' },
             { key: 'families', icon: Users, label: 'Perheet' },

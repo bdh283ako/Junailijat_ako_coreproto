@@ -76,6 +76,7 @@ flowchart TB
     EventPulse(("EventPulse<br/>JSON-LD-syöte"))
     LinkedEvents(("Linked Events API<br/>Helsinki, Espoo, Vantaa"))
     Kauniainen(("Kauniaisten tapahtumasivu<br/>HTML-haku"))
+    Lahella(("Lähellä.fi<br/>activities-integraatio"))
 
     Browser -->|localhost:3000| UI
     UI -->|HTTP-pyynnöt| Routes
@@ -92,6 +93,7 @@ flowchart TB
     Routes -->|tapahtumahaku| EventPulse
     Routes -->|tapahtumahaku| LinkedEvents
     Routes -->|tapahtumahaku| Kauniainen
+    Routes -->|sivutettu lapsiperhetapahtumahaku| Lahella
 
     DevCommand -.->|pnpm data:import-legacy| LegacyJson
 ```

@@ -44,7 +44,27 @@ export function useEventsFeed({ onLogSelection }: UseEventsFeedOptions): EventsF
           | {
               sources?: {
                 karoCount?: number
+                lahellaCount?: number
                 linkedEventsCount?: number
+              }
+              lahellaDebug?: {
+                configured?: boolean
+                url?: string
+                status?: number | null
+                error?: string
+                rawItems?: number
+                pksItems?: number
+                familyItems?: number
+                filteredItems?: number
+                pagesFetched?: number
+                elapsedMs?: number
+              }
+              sourceTiming?: {
+                responseTimeoutMs: number
+                lahellaTimeoutMs: number
+                linkedEventsTimeoutMs: number
+                eventPulseTimeoutMs: number
+                kauniainenTimeoutMs: number
               }
             }
           | undefined
@@ -52,6 +72,7 @@ export function useEventsFeed({ onLogSelection }: UseEventsFeedOptions): EventsF
         const parsedSources: FeedSourcesMeta | null = rawPayload?.sources
           ? {
               karoCount: Number(rawPayload.sources.karoCount ?? 0),
+              lahellaCount: Number(rawPayload.sources.lahellaCount ?? 0),
               linkedEventsCount: Number(rawPayload.sources.linkedEventsCount ?? 0),
             }
           : null
@@ -63,6 +84,8 @@ export function useEventsFeed({ onLogSelection }: UseEventsFeedOptions): EventsF
           httpStatus: typeof result?.httpStatus === 'number' ? result.httpStatus : 200,
           errorDetail: result?.errorDetail,
           count: typeof result?.rawCount === 'number' ? result.rawCount : nextEvents.length,
+          sourceTiming: rawPayload?.sourceTiming,
+          lahellaDebug: rawPayload?.lahellaDebug,
         })
         const statusStr = result?.httpStatus ? `HTTP ${result.httpStatus}` : 'LOCAL_FALLBACK'
         const sourceSummary = parsedSources

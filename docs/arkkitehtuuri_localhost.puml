@@ -42,6 +42,7 @@ cloud "Google Identity\nOAuth 2.0 / OIDC" as Google
 cloud "EventPulse\nJSON-LD-syöte" as EventPulse
 cloud "Linked Events API\nHelsinki, Espoo, Vantaa" as LinkedEvents
 cloud "Kauniaisten tapahtumasivu\nHTML-haku" as Kauniainen
+cloud "Lähellä.fi\nactivities-integraatio" as Lahella
 
 Developer --> DevCommand : käynnistää
 DevCommand --> AppRuntime : Next.js dev -palvelin
@@ -60,6 +61,7 @@ Postgres --> PGVolume : pysyvä paikallinen data
 Routes --> EventPulse : tapahtumahaku
 Routes --> LinkedEvents : tapahtumahaku
 Routes --> Kauniainen : tapahtumahaku
+Routes --> Lahella : sivutettu tapahtumahaku
 UI --> BrowserStorage : vain akotestaa-prototyypit\nja lukukuittaukset
 
 DevCommand ..> LegacyJson : pnpm data:import-legacy\nvain kertaluonteinen tuonti
@@ -91,8 +93,8 @@ end note
 
 note bottom of Routes
   Tapahtumat haetaan ulkoisista lähteistä.
-  Lähellä.fi ei ole tällä hetkellä kytketty
-  tähän tapahtumareittiin.
+  Lähellä.fi ja Linked Events muodostavat
+  yhdistetyn /api/events-syötteen.
 end note
 
 note as VercelDemo

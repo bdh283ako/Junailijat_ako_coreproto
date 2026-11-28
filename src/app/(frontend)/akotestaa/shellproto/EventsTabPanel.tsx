@@ -79,6 +79,17 @@ const FI_MONTH_SHORT = [
   'joulu',
 ]
 
+const CANONICAL_EVENT_TAGS = [
+  'Vauvat & taaperot',
+  'Leikki-ikäiset',
+  'Kouluikäiset & perheet',
+  'Kaikenikäisille / Perheet',
+  'Perhekahvila & vertaistuki',
+  'Liikunta & ulkoilu',
+  'Kulttuuri & askartelu',
+  'Maksuton',
+] as const
+
 // Vain visuaalinen apuri: poimii päivän ja kuukauden tapahtuman aikatekstistä
 // (esim. "pe 27.11. klo 17.00"), jotta kortin reunaan saadaan päivämääräblokki.
 // Alkuperäinen aikateksti näytetään silti aina myös tekstinä.
@@ -356,6 +367,24 @@ export function EventsTabPanel({
                       {evt.description}
                     </p>
                   )}
+
+                  <div className="flex flex-wrap gap-1.5" aria-label="Tapahtuman kanoniset tägit">
+                    {[...(evt.tags ?? []), ...(evt.keywords ?? [])]
+                      .filter((tag, index, tags) =>
+                        CANONICAL_EVENT_TAGS.includes(
+                          tag as (typeof CANONICAL_EVENT_TAGS)[number],
+                        ) &&
+                        tags.indexOf(tag) === index,
+                      )
+                      .map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-[10px] font-bold text-[var(--color-ink)]"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                  </div>
 
                   {matchedGoing.length > 0 && (
                     <div className="px-2.5 py-1.5 rounded-lg bg-[var(--color-accent-soft)] border border-[var(--color-border)] text-xs text-[var(--color-ink)]">

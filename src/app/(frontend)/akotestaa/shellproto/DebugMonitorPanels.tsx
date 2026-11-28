@@ -11,6 +11,7 @@ import { FloatingDockWindow } from './FloatingDockWindow'
 
 export interface FeedSourcesMeta {
   karoCount: number
+  lahellaCount: number
   linkedEventsCount: number
 }
 
@@ -18,6 +19,22 @@ export interface EventFeedDebug {
   httpStatus: number | null
   errorDetail?: string
   count: number
+  lahellaCount?: number
+  sourceTiming?: {
+    responseTimeoutMs: number
+    lahellaTimeoutMs: number
+    linkedEventsTimeoutMs: number
+    eventPulseTimeoutMs: number
+    kauniainenTimeoutMs: number
+  }
+  lahellaDebug?: {
+    rawItems?: number
+    pksItems?: number
+    familyItems?: number
+    filteredItems?: number
+    pagesFetched?: number
+    elapsedMs?: number
+  }
 }
 
 export function DebugMonitorPanels({
@@ -130,9 +147,28 @@ export function DebugMonitorPanels({
               eventFeedStatus === 'live-api' && (
                 <p className="text-[9px] text-white">
                   OK • yht. {eventFeedDebug.count} (LE:{eventFeedSources?.linkedEventsCount ?? 0} |
+                  Lähellä:{eventFeedSources?.lahellaCount ?? 0} |
                   EP:{eventFeedSources?.karoCount ?? 0})
                 </p>
               )
+            )}
+            {eventFeedDebug.sourceTiming && (
+              <p className="text-[9px] text-zinc-200">
+                timeout • L:{eventFeedDebug.sourceTiming.lahellaTimeoutMs} ms |
+                {' '}LE:{eventFeedDebug.sourceTiming.linkedEventsTimeoutMs} ms |
+                {' '}EP:{eventFeedDebug.sourceTiming.eventPulseTimeoutMs} ms
+              </p>
+            )}
+            {eventFeedDebug.lahellaDebug && (
+              <p className="text-[9px] text-zinc-200">
+                Lähellä • raakaa {eventFeedDebug.lahellaDebug.rawItems ?? 0} |
+                {' '}PKS {eventFeedDebug.lahellaDebug.pksItems ?? 0} |
+                {' '}perhe {eventFeedDebug.lahellaDebug.familyItems ?? 0} |
+                {' '}suodatettu {eventFeedDebug.lahellaDebug.filteredItems ?? 0}
+                {typeof eventFeedDebug.lahellaDebug.elapsedMs === 'number'
+                  ? ` | ${eventFeedDebug.lahellaDebug.elapsedMs} ms`
+                  : ''}
+              </p>
             )}
           </div>
 

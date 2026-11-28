@@ -11,6 +11,11 @@ export interface LahellaFeedDebug {
   status?: number | null
   error?: string
   rawItems?: number
+  pksItems?: number
+  familyItems?: number
+  filteredItems?: number
+  pagesFetched?: number
+  elapsedMs?: number
 }
 
 export interface KaroFeedDebug {
@@ -62,6 +67,13 @@ export interface FetchEventsResult {
   sources?: EventFeedSourcesMeta
   lahellaDebug?: LahellaFeedDebug
   karoDebug?: KaroFeedDebug
+  sourceTiming?: {
+    responseTimeoutMs: number
+    lahellaTimeoutMs: number
+    linkedEventsTimeoutMs: number
+    eventPulseTimeoutMs: number
+    kauniainenTimeoutMs: number
+  }
 }
 
 export interface KaroEventsFeedResult {
@@ -73,6 +85,13 @@ export interface KaroEventsFeedResult {
   sources?: EventFeedSourcesMeta
   lahellaDebug?: LahellaFeedDebug
   karoDebug?: KaroFeedDebug
+  sourceTiming?: {
+    responseTimeoutMs: number
+    lahellaTimeoutMs: number
+    linkedEventsTimeoutMs: number
+    eventPulseTimeoutMs: number
+    kauniainenTimeoutMs: number
+  }
 }
 
 export const DEFAULT_FEED_URL =
@@ -570,6 +589,22 @@ export async function fetchNormalizedEvents(
           }
         : undefined
 
+    const payloadSourceTiming =
+      isRecord(payload) && isRecord(payload.sourceTiming)
+        ? {
+          responseTimeoutMs:
+            asFiniteNumber(payload.sourceTiming.responseTimeoutMs) ?? 3000,
+          lahellaTimeoutMs:
+            asFiniteNumber(payload.sourceTiming.lahellaTimeoutMs) ?? 2413,
+          linkedEventsTimeoutMs:
+            asFiniteNumber(payload.sourceTiming.linkedEventsTimeoutMs) ?? 3860,
+          eventPulseTimeoutMs:
+            asFiniteNumber(payload.sourceTiming.eventPulseTimeoutMs) ?? 13011,
+          kauniainenTimeoutMs:
+            asFiniteNumber(payload.sourceTiming.kauniainenTimeoutMs) ?? 207,
+        }
+        : undefined
+
     const payloadLahellaDebug: LahellaFeedDebug | undefined =
       isRecord(payload) && isRecord(payload.lahellaDebug)
         ? {
@@ -584,6 +619,11 @@ export async function fetchNormalizedEvents(
                 : asFiniteNumber(payload.lahellaDebug.status),
             error: asNonEmptyString(payload.lahellaDebug.error),
             rawItems: asFiniteNumber(payload.lahellaDebug.rawItems),
+            pksItems: asFiniteNumber(payload.lahellaDebug.pksItems),
+            familyItems: asFiniteNumber(payload.lahellaDebug.familyItems),
+            filteredItems: asFiniteNumber(payload.lahellaDebug.filteredItems),
+            pagesFetched: asFiniteNumber(payload.lahellaDebug.pagesFetched),
+            elapsedMs: asFiniteNumber(payload.lahellaDebug.elapsedMs),
           }
         : undefined
 
@@ -610,6 +650,7 @@ export async function fetchNormalizedEvents(
       sources: payloadSources,
       lahellaDebug: payloadLahellaDebug,
       karoDebug: payloadKaroDebug,
+      sourceTiming: payloadSourceTiming,
     }
   } catch (err) {
     const message =
@@ -706,5 +747,6 @@ export async function fetchKaroEventsFeed(
     sources: result.sources,
     lahellaDebug: result.lahellaDebug,
     karoDebug: result.karoDebug,
+    sourceTiming: result.sourceTiming,
   }
 }
