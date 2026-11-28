@@ -170,6 +170,28 @@ export function DebugMonitorPanels({
                   : ''}
               </p>
             )}
+            {typeof window !== 'undefined' &&
+              ['1', 'true'].includes(
+                new URLSearchParams(window.location.search).get('debug') ?? '',
+              ) && (
+                <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-[9px] text-zinc-200">
+                  <p className="mb-1 font-bold text-zinc-300">TAPAHTUMAMARKKERIEN LÄHDEVÄRIT</p>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-3 w-3 rounded-full border border-white bg-[#9E4B16]" />
+                      Linked Events
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-3 w-3 rounded-full border border-white bg-[#BE5518]" />
+                      Lähellä.fi
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-3 w-3 rounded-full border border-white bg-[#6B3F79]" />
+                      EventPulse
+                    </span>
+                  </div>
+                </div>
+              )}
           </div>
 
           <div className="bg-zinc-900 rounded-lg px-2 py-1.5 border border-zinc-800 font-mono text-[10px] text-zinc-200 truncate">

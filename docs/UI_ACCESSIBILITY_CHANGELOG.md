@@ -222,3 +222,29 @@ Fonttimuuttujat `next/font/google` -latauksesta (`layout.tsx`): `--font-sans` (I
 - Aikakatkaisut johdettiin erikseen `curl`-mitatusta vasteajasta kertomalla 1,5:llä: Lähellä.fi 2413 ms, Linked Events 3860 ms, EventPulse 13011 ms ja Kauniainen 207 ms.
 - `?debug=1` ja `?debug=true` näyttävät lähde- ja aikakatkaisutilat säilyttäen 44 px kosketusalueet ja 3 px fokuskehyksen.
 
+## 2026-11-28 — Alustan selainvälilehden tunniste
+
+- Selainvälilehden nimi näyttää alustan: `[localhost]` paikallisessa kehityksessä ja `[vercel]` muissa ympäristöissä. Sivun ulkoasu tai muu käyttöliittymä ei muutu.
+
+## 2026-11-28 — Lähellä.fi-diagnostiikka eventdebug-näkymässä
+
+- Eventdebug-näkymä näyttää Lähellä.fi-suppilon laskurit (raakarivit, PKS-rivit, lapsiperhe-/viikkorivit, lopulliset osumat ja haetut sivut), vasteajan, HTTP-tilan, lähdekohtaiset timeoutit ja välimuistin tilan.
+- Lähellä.fi-kohteet avautuvat normalisoituina kortteina ja raakakohteina; raakakatselussa näkyvät `demographic`, `theme`, `format`, `pricing`, `group`, osoite, koordinaatit sekä sijaintitarkkuuden/fallbackin tila.
+- Haku ja lisätietojen avaus käyttävät olemassa olevia saavutettavuus-, kontrasti-, kosketusalue- ja fokuskehyssääntöjä.
+
+## 2026-11-28 — Eventdebugin kelluva lähde- ja lokisuodatus
+
+- Eventdebugin yhteenvetorivit korostavat Lähellä.fi:n PKS-osumia; HTTP- ja viivetiedot erotetaan per lähde (Lähellä.fi, Linked Events, EventPulse ja Kauniainen).
+- Debug-console on kelluva `z-[2000]`-paneeli, jota voi suodattaa hakusanalla, lokitasolla (OK, INFO, WARN, ERR) ja lähteellä. Paneeli säilyttää 44 px kosketusalueet ja 3 px fokuskehyksen.
+
+## 2026-11-28 — Karttamarkkerien ja -filtterien lähdevisuaalisuus
+
+- Karttasivulle lisättiin kanoniset ikä- ja sisältöpillerisuodattimet sekä Kohtaamispaikat-kytkin. Kohtaamispaikat ovat oletuksena piilossa, ja ne voi ottaa mukaan tai valita ainoaksi markkeriluokaksi.
+- Tapahtuma-, koti-, perhematsi- ja kohtaamispaikkamerkit toteutettiin SVG-pisaroilla. Normaalitilassa perhematsit käyttävät salviaa/syvää vihreää, tapahtumat terrakottaa/karmiinia, kohtaamispaikat meripihkaa ja koti syvää sinistä.
+- `?debug=1` ja `?debug=true` värittävät tapahtuma- ja paikkamarkkerit lähteittäin: Linked Events terrakotta, Lähellä.fi meripihka ja EventPulse syvä luumu. Lähdevärit esitetään myös debug-paneelissa.
+
+## 2026-11-28 — Kartan pisaramarkkerien koko ja ryhmälukumäärä
+
+- Tapahtuma-, kohtaamispaikka- ja perhemätsipisarat pienennettiin noin 26 × 34 px:iin, kotimerkki 28 × 36 px:iin. Leafletin ikonin ulkokehys säilyy 44 × 44 px:n napautusalueena.
+- Samassa koordinaatissa ryhmitellyt tapahtumat näyttävät määrän valkoisena tekstinä suoraan pisarassa; ruudunlukijan nimi ja Leafletin tooltip kertovat ryhmän tapahtumamäärän. Normaalinäkymän ja debug-tilan värit säilyvät.
+

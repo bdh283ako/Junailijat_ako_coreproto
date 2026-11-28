@@ -266,6 +266,19 @@ function getSourceStatusBadge(status: EventFeedStatus, sources: FeedSourcesMeta 
 }
 
 export default function PerheAppPrototypePage() {
+  useEffect(() => {
+    const previousTitle = document.title
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]'
+    const platform = isLocalhost ? 'localhost' : 'vercel'
+    document.title = `[${platform}] Junailijat — perheiden tapahtumat`
+    return () => {
+      document.title = previousTitle
+    }
+  }, [])
+
   const [activeTab, setActiveTab] = useState<TabKey>('events')
   const [mapOverlaySource, setMapOverlaySource] = useState<MapOverlaySource | null>(null)
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main')

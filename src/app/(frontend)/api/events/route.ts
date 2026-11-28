@@ -45,6 +45,8 @@ const FEED_CACHE_TTL_MS = 60_000
 
 interface FeedCacheSnapshot {
   updatedAt: number
+  sourceElapsedMs: Record<'lahella' | 'linked' | 'eventPulse' | 'kauniainen', number | null>
+  sourceStatus: Record<'lahella' | 'linked' | 'eventPulse' | 'kauniainen', number | null>
   combined: NormalizedFeedEvent[]
   byCity: Record<string, number>
   linkedEventsTotal: number
@@ -66,6 +68,18 @@ interface FeedCacheSnapshot {
 
 const feedCache: FeedCacheSnapshot = {
   updatedAt: 0,
+  sourceElapsedMs: {
+    lahella: null,
+    linked: null,
+    eventPulse: null,
+    kauniainen: null,
+  },
+  sourceStatus: {
+    lahella: null,
+    linked: null,
+    eventPulse: null,
+    kauniainen: null,
+  },
   combined: [],
   byCity: {},
   linkedEventsTotal: 0,
@@ -427,6 +441,7 @@ async function fetchLahellaActivities(): Promise<{
     filteredItems?: number
     pagesFetched?: number
     elapsedMs?: number
+    items?: Record<string, unknown>[]
   }
 }> {
   const pageSize = 50
@@ -685,6 +700,7 @@ async function fetchLahellaActivities(): Promise<{
       filteredItems,
       pagesFetched,
       elapsedMs: Date.now() - startedAt,
+      items: Array.from(rawItemsById.values()),
     },
   }
 }
@@ -1050,7 +1066,8 @@ async function fetchLinkedEventsForMunicipality(
     defaultPageSize: number
   },
   options: { rawUnfiltered: boolean; page: number; pageSize: number },
-): Promise<{ events: NormalizedFeedEvent[]; metaCount: number; hasNextPage: boolean }> {
+): Promise<{ events: NormalizedFeedEvent[]; metaCount: number; hasNextPage: boolean; status: number | null; elapsedMs: number }> {
+  const startedAt = Date.now()
   try {
     if (options.rawUnfiltered) {
       const url = new URL(config.baseUrl)
@@ -1067,7 +1084,7 @@ async function fetchLinkedEventsForMunicipality(
         signal: AbortSignal.timeout(LINKED_EVENTS_TIMEOUT_MS),
       })
       if (!res.ok) {
-        return { events: [], metaCount: 0, hasNextPage: false }
+        return { events: [], metaCount: 0, hasNextPage: false, status: res.status, elapsedMs: Date.now() - startedAt }
       }
 
       const payload = (await res.json()) as {
@@ -1082,6 +1099,8 @@ async function fetchLinkedEventsForMunicipality(
         events: mapLinkedEventRows(rows, config, options.pageSize),
         metaCount,
         hasNextPage,
+        status: res.status,
+        elapsedMs: Date.now() - startedAt,
       }
     }
 
@@ -1141,9 +1160,11 @@ async function fetchLinkedEventsForMunicipality(
       events: mapLinkedEventRows(rows, config, targetSize),
       metaCount,
       hasNextPage: metaCount > targetSize,
+      status: res.status,
+      elapsedMs: Date.now() - startedAt,
     }
   } catch {
-    return { events: [], metaCount: 0, hasNextPage: false }
+    return { events: [], metaCount: 0, hasNextPage: false, status: null, elapsedMs: Date.now() - startedAt }
   }
 }
 
@@ -1245,6 +1266,8 @@ async function startFeedRefresh(
   const refreshPromises = [
     fetchLahellaActivities().then((value) => {
       feedCache.lahellaResult = value
+      feedCache.sourceElapsedMs.lahella = value.debug.elapsedMs ?? null
+      feedCache.sourceStatus.lahella = value.debug.status
       rebuildFeedCache()
     }),
     fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[0], {
@@ -1253,6 +1276,11 @@ async function startFeedRefresh(
       pageSize,
     }).then((value) => {
       feedCache.helsinkiResult = value
+      feedCache.sourceElapsedMs.linked = Math.max(
+        feedCache.sourceElapsedMs.linked ?? 0,
+        value.elapsedMs,
+      )
+      feedCache.sourceStatus.linked = value.status
       rebuildFeedCache()
     }),
     fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[1], {
@@ -1261,6 +1289,8 @@ async function startFeedRefresh(
       pageSize,
     }).then((value) => {
       feedCache.espooResult = value
+      feedCache.sourceElapsedMs.linked = Math.max(feedCache.sourceElapsedMs.linked ?? 0, value.elapsedMs)
+      feedCache.sourceStatus.linked = value.status
       rebuildFeedCache()
     }),
     fetchLinkedEventsForMunicipality(LINKED_EVENTS_ENDPOINTS[2], {
@@ -1269,6 +1299,8 @@ async function startFeedRefresh(
       pageSize,
     }).then((value) => {
       feedCache.vantaaResult = value
+      feedCache.sourceElapsedMs.linked = Math.max(feedCache.sourceElapsedMs.linked ?? 0, value.elapsedMs)
+      feedCache.sourceStatus.linked = value.status
       rebuildFeedCache()
     }),
   ]
@@ -1277,15 +1309,21 @@ async function startFeedRefresh(
     rebuildFeedCache()
   })
 
+  const eventPulseStartedAt = Date.now()
   void fetchKaroEventPulse().then((value) => {
     feedCache.karoResult = value
+    feedCache.sourceStatus.eventPulse = value.debug.status
+    feedCache.sourceElapsedMs.eventPulse = Date.now() - eventPulseStartedAt
     rebuildFeedCache()
   }).finally(() => {
     feedCache.refreshing = false
   })
 
+  const kauniainenStartedAt = Date.now()
   void fetchKauniainenWebEvents().then((value) => {
     feedCache.kauniainenEvents = value
+    feedCache.sourceElapsedMs.kauniainen = Date.now() - kauniainenStartedAt
+    feedCache.sourceStatus.kauniainen = value.length > 0 ? 200 : null
     rebuildFeedCache()
   })
 
@@ -1376,6 +1414,15 @@ export async function GET(request: NextRequest) {
       },
       karoDebug: feedCache.karoResult?.debug ?? null,
       lahellaDebug: feedCache.lahellaResult?.debug ?? null,
+      cacheDebug: {
+        ttlMs: FEED_CACHE_TTL_MS,
+        updatedAt: feedCache.updatedAt,
+        ageMs: feedCache.updatedAt > 0 ? Date.now() - feedCache.updatedAt : null,
+        fresh: feedCache.updatedAt > 0 && Date.now() - feedCache.updatedAt < FEED_CACHE_TTL_MS,
+        refreshing: feedCache.refreshing,
+        sourceStatus: feedCache.sourceStatus,
+        sourceElapsedMs: feedCache.sourceElapsedMs,
+      },
       sourceTiming: {
         responseTimeoutMs: 0,
         lahellaTimeoutMs: LAHELLA_TIMEOUT_MS,

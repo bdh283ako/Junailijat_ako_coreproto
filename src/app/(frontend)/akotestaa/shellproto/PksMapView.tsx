@@ -53,7 +53,10 @@ interface LeafletGlobal {
     iconSize?: [number, number]
     iconAnchor?: [number, number]
   }) => unknown
-  marker: (coords: [number, number], options?: { icon?: unknown }) => LeafletDivIconMarker
+  marker: (
+    coords: [number, number],
+    options?: { icon?: unknown; title?: string },
+  ) => LeafletDivIconMarker
   circleMarker: (
     coords: [number, number],
     options: {
@@ -70,6 +73,7 @@ type MapEventRecord = FamilyEvent & {
   locationName?: string
   startDate?: string
   coordinates?: unknown
+  source?: string
 }
 
 interface PksMapViewProps {
@@ -108,6 +112,87 @@ const MAP_MARKER_COLORS = {
   family: '#2F5D50',
   cafe: '#6E567F',
 } as const
+
+const MAP_SOURCE_COLORS = {
+  linked: '#9E4B16',
+  lahella: '#BE5518',
+  eventPulse: '#6B3F79',
+} as const
+
+const CANONICAL_MAP_FILTERS = [
+  'Vauvat & taaperot',
+  'Leikki-ikäiset',
+  'Kouluikäiset & perheet',
+  'Kaikenikäisille / Perheet',
+  'Perhekahvila & vertaistuki',
+  'Liikunta & ulkoilu',
+  'Kulttuuri & askartelu',
+  'Maksuton',
+] as const
+
+type CanonicalMapFilter = (typeof CANONICAL_MAP_FILTERS)[number]
+
+function isDebugMapEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  const debug = new URLSearchParams(window.location.search).get('debug')
+  return debug === '1' || debug === 'true'
+}
+
+function getEventSourceColor(source: string | undefined): string {
+  const normalized = (source ?? '').toLowerCase()
+  if (normalized.includes('lahella')) return MAP_SOURCE_COLORS.lahella
+  if (normalized.includes('linked')) return MAP_SOURCE_COLORS.linked
+  if (normalized.includes('karo') || normalized.includes('eventpulse')) {
+    return MAP_SOURCE_COLORS.eventPulse
+  }
+  return MAP_MARKER_COLORS.event
+}
+
+function getMeetingPlaceMarkerSvg(color: string, selected = false): string {
+  const ring = selected ? '#2E211B' : '#FFFFFF'
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 44 52" role="img" aria-label="Kohtaamispaikka">
+    <path d="M22 2C11.5 2 3 10.5 3 21c0 14 19 29 19 29s19-15 19-29C41 10.5 32.5 2 22 2Z" fill="${color}" stroke="${ring}" stroke-width="3"/>
+    <path d="M15 19h10v9c0 4-3 7-7 7h-1c-4 0-7-3-7-7v-1h5m5-8h3c3 0 5 2 5 5s-2 5-5 5h-3" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`
+}
+
+function getEventMarkerSvg(color: string, selected = false, count?: number): string {
+  const ring = selected ? '#2E211B' : '#FFFFFF'
+  const countLabel = count === undefined ? '' : count > 99 ? '99+' : String(count)
+  const countFontSize = countLabel.length > 2 ? 9 : 13
+  const iconContent = count === undefined
+    ? '<rect x="13" y="13" width="18" height="16" rx="3" fill="none" stroke="#FFFFFF" stroke-width="2"/><path d="M18 10v6M26 10v6M13 20h18M18 24h8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>'
+    : `<text x="22" y="29" text-anchor="middle" font-size="${countFontSize}" font-weight="800" fill="#FFFFFF">${countLabel}</text>`
+  const ariaLabel = count === undefined ? 'Tapahtuma' : `${count} tapahtumaa samassa sijainnissa`
+  const width = count === undefined ? 26 : 30
+  const height = count === undefined ? 34 : 38
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 44 52" role="img" aria-label="${ariaLabel}">
+    <path d="M22 2C11.5 2 3 10.5 3 21c0 14 19 29 19 29s19-15 19-29C41 10.5 32.5 2 22 2Z" fill="${color}" stroke="${ring}" stroke-width="3"/>
+    ${iconContent}
+  </svg>`
+}
+
+function getFamilyMarkerSvg(selected = false): string {
+  const ring = selected ? '#2E211B' : '#FFFFFF'
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 44 52" role="img" aria-label="Perhematsi">
+    <path d="M22 2C11.5 2 3 10.5 3 21c0 14 19 29 19 29s19-15 19-29C41 10.5 32.5 2 22 2Z" fill="#9CB9B7" stroke="${ring}" stroke-width="3"/>
+    <circle cx="17" cy="18" r="4" fill="#2F5D50"/>
+    <circle cx="27" cy="18" r="4" fill="#2F5D50"/>
+    <path d="M12 31c1-6 5-9 10-9s9 3 10 9" fill="none" stroke="#2F5D50" stroke-width="3" stroke-linecap="round"/>
+  </svg>`
+}
+
+function getHomeMarkerSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 48 56" role="img" aria-label="Oma kotisijainti">
+    <circle cx="24" cy="24" r="21" fill="#1F4E79" fill-opacity=".16" stroke="#1F4E79" stroke-width="3"/>
+    <path d="M24 6C14.1 6 6 14.1 6 24c0 13.2 18 27 18 27s18-13.8 18-27C42 14.1 33.9 6 24 6Z" fill="#1F4E79" stroke="#FFFFFF" stroke-width="3"/>
+    <path d="m15 24 9-8 9 8v9H28v-7h-8v7h-5v-9Z" fill="#FFFFFF"/>
+  </svg>`
+}
+
+function wrapMarkerSvg(svg: string): string {
+  return `<div style="width:44px;height:44px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none;">${svg}</div>`
+}
 
 function getEventVenueLabel(evt: MapEventRecord): string {
   return evt.locationName || evt.venue || evt.address || evt.city
@@ -180,6 +265,8 @@ export function PksMapView({
 
   // MLL-perhekahvilat: oletuksena pois päältä, tottelee geneeristä kaupunkifiltteriä
   const [showMllCafes, setShowMllCafes] = useState(false)
+  const [meetingPlaceMode, setMeetingPlaceMode] = useState<'off' | 'alongside' | 'only'>('off')
+  const [activeCanonicalFilters, setActiveCanonicalFilters] = useState<CanonicalMapFilter[]>([])
 
   // Kartan alla olevan listan sivutus (25 tai 50 kpl / sivu)
   const [listPageSize, setListPageSize] = useState<25 | 50>(25)
@@ -202,8 +289,28 @@ export function PksMapView({
         if (activeCityFilter === PKS_ALL_CITIES) return true
         return (evt.city || '').toLowerCase() === activeCityFilter.toLowerCase()
       })
+      .filter((evt) => {
+        const tagText = [
+          ...(evt.tags ?? []),
+          ...(evt.keywords ?? []),
+          evt.ageGroup ?? '',
+          evt.description ?? '',
+        ]
+          .join(' ')
+          .toLowerCase()
+        const isMeetingPlace =
+          /hm_kohtaamispaikka|\bplace\b|kohtaamispaikka|perhekahvil/.test(tagText)
+        if (meetingPlaceMode === 'only' && !isMeetingPlace) return false
+        if (meetingPlaceMode === 'off' && isMeetingPlace) return false
+        if (activeCanonicalFilters.length === 0) return true
+        const eventTags = [...(evt.tags ?? []), ...(evt.keywords ?? [])]
+        return activeCanonicalFilters.every((filter) =>
+          eventTags.some((tag) => tag.toLowerCase() === filter.toLowerCase()) ||
+          tagText.includes(filter.toLowerCase()),
+        )
+      })
       .sort((a, b) => a.distanceKm - b.distanceKm)
-  }, [events, safeHome, activeCityFilter])
+  }, [events, safeHome, activeCityFilter, activeCanonicalFilters, meetingPlaceMode])
 
   // Kartalle piirretään enintään 25 lähintä tapahtumaa per kaupunki.
   const mapCappedEvents = useMemo(() => {
@@ -228,7 +335,7 @@ export function PksMapView({
 
   // MLL-perhekahvilat näytetään vain jos oma filtterikytkin on päällä + rajataan geneerisellä kaupunkifiltterillä
   const visibleMllCafes = useMemo(() => {
-    if (!showMllCafes) return []
+    if (!showMllCafes && meetingPlaceMode === 'off') return []
     return PKS_MLL_FAMILY_CAFES.map((cafe) => ({
       ...cafe,
       distanceKm: calcDistanceKm(safeHome, cafe.coords),
@@ -239,7 +346,7 @@ export function PksMapView({
           cafe.city.toLowerCase() === activeCityFilter.toLowerCase(),
       )
       .sort((a, b) => a.distanceKm - b.distanceKm)
-  }, [showMllCafes, activeCityFilter, safeHome])
+  }, [showMllCafes, meetingPlaceMode, activeCityFilter, safeHome])
 
   const visibleMatchedFamilies = useMemo(() => {
     if (activeCityFilter === PKS_ALL_CITIES) return matchedFamilies
@@ -377,17 +484,19 @@ export function PksMapView({
 
     const defaultBounds = L.latLngBounds(PKS_SEUTULA_BOUNDS[0], PKS_SEUTULA_BOUNDS[1])
 
-    // Oma koti: terrakotta
-    L.circleMarker(safeHome, {
-      radius: 12,
-      fillColor: MAP_MARKER_COLORS.home,
-      color: '#ffffff',
-      weight: 3,
-      fillOpacity: 0.98,
+    // Oma koti: syvä sininen koti-ikoni
+    L.marker(safeHome, {
+      icon: L.divIcon({
+        className: 'perhepiiri-home-marker',
+        html: wrapMarkerSvg(getHomeMarkerSvg()),
+        iconSize: [44, 44],
+        iconAnchor: [22, 44],
+      }),
+      title: 'Oma kotisijainti',
     })
       .addTo(markerLayer)
       .bindPopup(
-        `<strong>🟠 Oma koti (${familyName})</strong><br/>${homeLabel}<br/><span style="font-size:11px;color:${MAP_MARKER_COLORS.home};">Klikkaus zoomaa oletusnäkymään</span>`,
+        `<strong>Oma koti (${familyName})</strong><br/>${homeLabel}<br/><span style="font-size:11px;color:#1F4E79;">Klikkaus zoomaa oletusnäkymään</span>`,
       )
       .on('click', () => {
         map.fitBounds(defaultBounds, { padding: [12, 12] })
@@ -414,11 +523,14 @@ export function PksMapView({
       const eventCount = pins.length
 
       if (eventCount > 1) {
+        const clusterColor = isDebugMapEnabled()
+          ? getEventSourceColor(firstPin.event.source)
+          : MAP_MARKER_COLORS.event
         const badgeIcon = L.divIcon({
           className: 'perhepiiri-event-cluster',
-          html: `<div role="img" aria-label="${eventCount} tapahtumaa samassa sijainnissa" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:${MAP_MARKER_COLORS.event};color:#fff;border:2px solid #fff;border-radius:9999px;box-shadow:0 2px 8px rgba(15,23,42,.4);font-size:10px;font-weight:800;">${eventCount}</div>`,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
+          html: wrapMarkerSvg(getEventMarkerSvg(clusterColor, false, eventCount)),
+          iconSize: [44, 44],
+          iconAnchor: [22, 44],
         })
         const eventRows = pins
           .map(({ event: evt }) => {
@@ -429,7 +541,10 @@ export function PksMapView({
           })
           .join('')
 
-        L.marker(coords, { icon: badgeIcon })
+        L.marker(coords, {
+          icon: badgeIcon,
+          title: `${eventCount} tapahtumaa samassa sijainnissa`,
+        })
           .addTo(markerLayer)
           .bindPopup(
             `<strong>${eventCount} tapahtumaa samassa sijainnissa</strong><ul style="max-height:240px;overflow-y:auto;list-style:none;padding:0;margin:6px 0 0;">${eventRows}</ul>`,
@@ -450,16 +565,19 @@ export function PksMapView({
         ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:${MAP_MARKER_COLORS.event};text-decoration:underline;">Lisätiedot ↗</a>`
         : ''
 
-      L.circleMarker(coords, {
-        radius: isSelected ? 12 : 9.5,
-        fillColor: MAP_MARKER_COLORS.event,
-        color: isSelected ? '#2E211B' : '#6D3514',
-        weight: isSelected ? 4 : 2.5,
-        fillOpacity: 0.96,
+      const eventColor = isDebugMapEnabled() ? getEventSourceColor(evt.source) : MAP_MARKER_COLORS.event
+      L.marker(coords, {
+        icon: L.divIcon({
+          className: 'perhepiiri-event-marker',
+          html: wrapMarkerSvg(getEventMarkerSvg(eventColor, isSelected)),
+          iconSize: [44, 44],
+          iconAnchor: [22, 44],
+        }),
+        title: evt.title,
       })
         .addTo(markerLayer)
         .bindPopup(
-          `<span style="font-size:10px;font-weight:700;color:${MAP_MARKER_COLORS.event};">TARKKA SIJAINTI (${evt.city})</span><br/><strong>📅 ${evt.title}</strong><br/>${venueText}<br/>${
+          `<span style="font-size:10px;font-weight:700;color:${eventColor};">TARKKA SIJAINTI (${evt.city})</span><br/><strong>${escapeHtml(evt.title)}</strong><br/>${escapeHtml(venueText)}<br/>${
             isGoing ? '✅ Olet menossa mukaan' : timeText
           }${descHtml}${linkHtml}`,
         )
@@ -480,12 +598,15 @@ export function PksMapView({
         ? `<br/><a href="${evt.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:#2F5D50;text-decoration:underline;">Lisätiedot ↗</a>`
         : ''
 
-      L.circleMarker(plotCoords, {
-        radius: isSelected ? 11 : 8.5,
-        fillColor: MAP_MARKER_COLORS.area,
-        color: isSelected ? '#2E211B' : '#2F5D50',
-        weight: isSelected ? 4 : 2,
-        fillOpacity: 0.9,
+      const eventColor = isDebugMapEnabled() ? getEventSourceColor(evt.source) : MAP_MARKER_COLORS.event
+      L.marker(plotCoords, {
+        icon: L.divIcon({
+          className: 'perhepiiri-area-event-marker',
+          html: wrapMarkerSvg(getEventMarkerSvg(eventColor, isSelected)),
+          iconSize: [44, 44],
+          iconAnchor: [22, 44],
+        }),
+        title: evt.title,
       })
         .addTo(markerLayer)
         .bindPopup(
@@ -518,18 +639,20 @@ export function PksMapView({
     })
 
     // 4. MLL-perhekahvilat: murrettu lila — vain kun filtteri on päällä
-    if (showMllCafes) {
+    if (showMllCafes || meetingPlaceMode !== 'off') {
       visibleMllCafes.forEach((cafe) => {
         const linkHtml = cafe.url
           ? `<br/><a href="${cafe.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:${MAP_MARKER_COLORS.cafe};text-decoration:underline;">Yhdistyksen sivu ↗</a>`
           : ''
 
-        L.circleMarker(cafe.coords, {
-          radius: 9,
-          fillColor: MAP_MARKER_COLORS.cafe,
-          color: '#4E3D5A',
-          weight: 2.5,
-          fillOpacity: 0.94,
+        L.marker(cafe.coords, {
+          icon: L.divIcon({
+            className: 'perhepiiri-meeting-marker',
+            html: wrapMarkerSvg(getMeetingPlaceMarkerSvg('#BE5518')),
+            iconSize: [44, 44],
+            iconAnchor: [22, 44],
+          }),
+          title: `MLL-perhekahvila: ${cafe.name}`,
         })
           .addTo(markerLayer)
           .bindPopup(
@@ -552,12 +675,14 @@ export function PksMapView({
           ? `<br/><span style="font-size:11px;color:#475569;">🫂 Läheiset: ${fam.closeRelativesSummary}</span>`
           : ''
 
-      L.circleMarker(fam.coords, {
-        radius: isSelected ? 14 : 11,
-        fillColor: MAP_MARKER_COLORS.family,
-        color: isSelected ? '#2E211B' : '#ffffff',
-        weight: isSelected ? 4 : 2.5,
-        fillOpacity: 0.96,
+      L.marker(fam.coords, {
+        icon: L.divIcon({
+          className: 'perhepiiri-family-marker',
+          html: wrapMarkerSvg(getFamilyMarkerSvg(isSelected)),
+          iconSize: [44, 44],
+          iconAnchor: [22, 44],
+        }),
+        title: `${fam.name}, perhematsi`,
       })
         .addTo(markerLayer)
         .bindPopup(
@@ -570,6 +695,7 @@ export function PksMapView({
     resolvedMap,
     visibleMllCafes,
     showMllCafes,
+    meetingPlaceMode,
     eventTitleById,
     attendingIds,
     visibleMatchedFamilies,
@@ -642,22 +768,63 @@ export function PksMapView({
               Osumat ({visibleMatchedFamilies.length})
             </span>
 
-            {/* MLL-perhekahviloiden oma kytkin (oletuksena pois päältä) */}
+            {/* Kanoniset karttasuodattimet */}
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Sisältö- ja ikätägeittäin suodatus">
+              {CANONICAL_MAP_FILTERS.map((filter) => {
+                const active = activeCanonicalFilters.includes(filter)
+                return (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setActiveCanonicalFilters((current) =>
+                        active
+                          ? current.filter((item) => item !== filter)
+                          : [...current, filter],
+                      )
+                    }
+                    className={`min-h-11 px-2.5 py-1 rounded-full border text-[11px] font-bold ${
+                      active
+                        ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]'
+                        : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)]'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Kohtaamispaikat oletuksena pois; välitettävä lisäluokka muiden rinnalle tai pelkistetyksi suodattimeksi */}
             <button
               type="button"
-              onClick={() => setShowMllCafes((prev) => !prev)}
+              aria-pressed={meetingPlaceMode === 'alongside'}
+              onClick={() =>
+                setMeetingPlaceMode((current) => (current === 'alongside' ? 'off' : 'alongside'))
+              }
               className={`min-h-11 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border font-bold transition-colors ${
-                showMllCafes
-                  ? 'bg-[#6E567F] text-white border-[#4E3D5A]'
+                meetingPlaceMode === 'alongside'
+                  ? 'bg-[#BE5518] text-white border-[#8A3D10]'
                   : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)] hover:bg-[var(--color-bg)]'
               }`}
             >
-              <span
-                className={`w-2.5 h-2.5 rounded-full inline-block ${
-                  showMllCafes ? 'bg-white' : 'bg-[#6E567F]'
-                }`}
-              />
-              ☕ MLL-kahvilat {showMllCafes ? `(${visibleMllCafes.length})` : '(pois)'}
+              <span className={`w-2.5 h-2.5 rounded-full inline-block ${meetingPlaceMode === 'alongside' ? 'bg-white' : 'bg-[#BE5518]'}`} />
+              Kohtaamispaikat {meetingPlaceMode === 'alongside' ? `(${visibleMllCafes.length})` : '(pois)'}
+            </button>
+            <button
+              type="button"
+              aria-pressed={meetingPlaceMode === 'only'}
+              onClick={() =>
+                setMeetingPlaceMode((current) => (current === 'only' ? 'off' : 'only'))
+              }
+              className={`min-h-11 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border font-bold ${
+                meetingPlaceMode === 'only'
+                  ? 'bg-[#BE5518] text-white border-[#8A3D10]'
+                  : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border)]'
+              }`}
+            >
+              Vain kohtaamispaikat
             </button>
           </div>
 
